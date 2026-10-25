@@ -33,8 +33,7 @@ body {
   grid-template-areas:
     'view side'
     'chat side';
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
 }
 
 #viewport {

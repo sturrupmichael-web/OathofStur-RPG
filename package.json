@@ -1,0 +1,16 @@
+{
+  "name": "tile-rpg",
+  "private": true,
+  "type": "module",
+  "workspaces": ["shared", "client"],
+  "scripts": {
+    "dev": "npm run dev -w client",
+    "build": "npm run build -w client",
+    "test": "vitest run",
+    "typecheck": "tsc -p shared && tsc -p client"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tile RPG</title>
+  </head>
+  <body>
+    <div id="app">
+      <main id="viewport">
+        <div id="labels"></div>
+        <div id="tooltip" hidden></div>
+        <div id="context-menu" hidden></div>
+        <div id="controls-hint">Click to walk · Right-click for options · Q/E or middle-drag to rotate · Wheel to zoom</div>
+      </main>
+      <aside id="side">
+        <canvas id="minimap" aria-label="Minimap"></canvas>
+        <div id="player-card">
+          <span id="player-name">…</span>
+          <span id="combat-level"></span>
+        </div>
+        <nav class="tabs">
+          <button class="tab active" data-tab="inventory">Inventory</button>
+          <button class="tab" data-tab="equipment">Equipment</button>
+          <button class="tab" data-tab="skills">Skills</button>
+          <button class="tab" data-tab="quests">Quests</button>
+        </nav>
+        <section class="panel" id="panel-inventory">
+          <div id="inventory-grid"></div>
+        </section>
+        <section class="panel" id="panel-equipment" hidden>
+          <div id="equipment-grid"></div>
+        </section>
+        <section class="panel" id="panel-skills" hidden>
+          <div id="skills-grid"></div>
+          <div id="total-level"></div>
+        </section>
+        <section class="panel" id="panel-quests" hidden>
+          <p class="muted">No quests yet. Someone in town might have a task for you.</p>
+        </section>
+      </aside>
+      <footer id="chat">
+        <div id="chat-log" aria-live="polite"></div>
+        <input id="chat-input" placeholder="Player chat arrives with multiplayer" disabled />
+      </footer>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "maxLevel": 99,
+  "xpCurve": {
+    "comment": "XP needed to reach level L = round(base * (growth^(L-1) - 1) / (growth - 1)). Level 2 = base XP.",
+    "base": 70,
+    "growth": 1.1
+  },
+  "startingLevels": { "hitpoints": 10 },
+  "combatLevel": {
+    "comment": "combat = floor(meleeWeight * (attack + strength + defence) / 3 + hitpointsWeight * hitpoints)",
+    "meleeWeight": 0.75,
+    "hitpointsWeight": 0.25
+  },
+  "skills": [
+    { "id": "attack", "name": "Attack" },
+    { "id": "strength", "name": "Strength" },
+    { "id": "defence", "name": "Defence" },
+    { "id": "hitpoints", "name": "Hitpoints" },
+    { "id": "woodcutting", "name": "Woodcutting" },
+    { "id": "mining", "name": "Mining" },
+    { "id": "fishing", "name": "Fishing" },
+    { "id": "cooking", "name": "Cooking" },
+    { "id": "smithing", "name": "Smithing" }
+  ]
+}

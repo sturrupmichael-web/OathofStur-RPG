@@ -1,0 +1,373 @@
+:root {
+  --panel: #3b3226;
+  --panel-dark: #2a231b;
+  --panel-light: #54473a;
+  --edge: #1a150f;
+  --ink: #f1e6cf;
+  --muted: #b5a68a;
+  --gold: #ffcf4a;
+  --target: #ffd84d;
+  --warn: #ff8a6a;
+  --side-w: 260px;
+  --chat-h: 150px;
+  font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  color: var(--ink);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #12161c;
+  overflow: hidden;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 1fr var(--side-w);
+  grid-template-rows: 1fr var(--chat-h);
+  grid-template-areas:
+    'view side'
+    'chat side';
+  height: 100vh;
+  height: 100dvh;
+}
+
+#viewport {
+  grid-area: view;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+#viewport canvas {
+  display: block;
+  cursor: pointer;
+  touch-action: none;
+}
+
+#labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 12px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+  white-space: nowrap;
+}
+
+#tooltip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  padding: 3px 7px;
+  font-size: 13px;
+  background: rgba(20, 16, 11, 0.85);
+  border: 1px solid #000;
+  white-space: nowrap;
+}
+
+.tip-target {
+  color: var(--target);
+}
+
+#context-menu {
+  position: absolute;
+  left: 0;
+  top: 0;
+  min-width: 150px;
+  background: #5d5446;
+  border: 2px solid #000;
+  font-size: 13px;
+  z-index: 10;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+.menu-title {
+  background: #000;
+  color: #5d5446;
+  padding: 2px 6px;
+  font-weight: bold;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: #fff;
+  background: none;
+  border: 0;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  color: var(--target);
+  background: rgba(0, 0, 0, 0.25);
+  outline: none;
+}
+
+#controls-hint {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  text-shadow: 1px 1px 0 #000;
+  pointer-events: none;
+}
+
+#side {
+  grid-area: side;
+  background: var(--panel);
+  border-left: 3px solid var(--edge);
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+#minimap {
+  width: 100%;
+  image-rendering: pixelated;
+  border: 3px solid var(--edge);
+  border-radius: 4px;
+  cursor: crosshair;
+  background: #000;
+}
+
+#player-card {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--gold);
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+}
+
+.tab {
+  font: inherit;
+  font-size: 11px;
+  padding: 6px 0;
+  color: var(--muted);
+  background: var(--panel-dark);
+  border: 1px solid var(--edge);
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+}
+
+.tab.active {
+  color: var(--gold);
+  background: var(--panel-light);
+}
+
+.panel {
+  background: var(--panel-dark);
+  border: 1px solid var(--edge);
+  padding: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+#inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.inv-slot {
+  aspect-ratio: 1;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  border-radius: 3px;
+}
+
+#equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-areas:
+    '. helmet .'
+    'weapon body shield'
+    '. legs .';
+  gap: 6px;
+}
+
+.equip-slot {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  text-transform: capitalize;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  border-radius: 4px;
+}
+
+.equip-helmet { grid-area: helmet; }
+.equip-weapon { grid-area: weapon; }
+.equip-body { grid-area: body; }
+.equip-shield { grid-area: shield; }
+.equip-legs { grid-area: legs; }
+
+#skills-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.skill {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  grid-template-rows: auto auto auto;
+  column-gap: 5px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.skill-icon {
+  grid-row: 1 / 4;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: bold;
+  color: #111;
+  background: #c9b48a;
+}
+
+.skill-attack { background: #d9534f; }
+.skill-strength { background: #5cb85c; }
+.skill-defence { background: #6f9ee8; }
+.skill-hitpoints { background: #f08aa0; }
+.skill-woodcutting { background: #8bc34a; }
+.skill-mining { background: #b0a090; }
+.skill-fishing { background: #5bc0de; }
+.skill-cooking { background: #e8a33d; }
+.skill-smithing { background: #9e9e9e; }
+
+.skill-info {
+  display: flex;
+  justify-content: space-between;
+}
+
+.skill-level {
+  color: var(--gold);
+  font-weight: bold;
+}
+
+.skill-bar {
+  height: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  margin: 2px 0;
+}
+
+.skill-bar > div {
+  height: 100%;
+  background: var(--gold);
+}
+
+.skill-next {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+#total-level {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--gold);
+}
+
+#chat {
+  grid-area: chat;
+  display: flex;
+  flex-direction: column;
+  background: #d8c9a3;
+  border-top: 3px solid var(--edge);
+  color: #1b1408;
+  min-height: 0;
+}
+
+#chat-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 10px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.msg-warn {
+  color: #a3200f;
+}
+
+.msg-examine {
+  color: #1f3f8a;
+}
+
+.msg-quest {
+  color: #6a2c91;
+}
+
+#chat-input {
+  font: inherit;
+  font-size: 13px;
+  border: 0;
+  border-top: 1px solid #a8987a;
+  padding: 6px 10px;
+  background: #cbbb93;
+}
+
+@media (max-width: 720px) {
+  #app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 110px auto;
+    grid-template-areas: 'view' 'chat' 'side';
+  }
+
+  #side {
+    border-left: 0;
+    border-top: 3px solid var(--edge);
+    max-height: 40vh;
+  }
+
+  #minimap {
+    max-width: 200px;
+  }
+
+  #controls-hint {
+    display: none;
+  }
+}

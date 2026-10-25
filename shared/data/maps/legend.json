@@ -1,0 +1,52 @@
+{
+  "width": 100,
+  "height": 60,
+  "spawn": { "x": 42, "y": 31 },
+  "tiles": {
+    ".": { "name": "grass",        "walkable": true },
+    "=": { "name": "road",         "walkable": true },
+    ":": { "name": "dirt path",    "walkable": true },
+    "_": { "name": "floor",        "walkable": true },
+    "+": { "name": "door",         "walkable": true },
+    "P": { "name": "player spawn", "walkable": true, "base": "." },
+    "^": { "name": "mountain",     "walkable": false },
+    "~": { "name": "water",        "walkable": false },
+    "#": { "name": "wall",         "walkable": false },
+    "|": { "name": "fence",        "walkable": false },
+    "G": { "name": "gate",         "walkable": true, "requires": { "skill": "combat", "level": 20 }, "note": "Blocks entry to the Hollowmere (SE) until requirement is met" }
+  },
+  "resources": {
+    "T": { "name": "tree",          "skill": "woodcutting", "level": 1,  "item": "logs",        "respawnTicks": 10 },
+    "O": { "name": "oak tree",      "skill": "woodcutting", "level": 15, "item": "oak logs",    "respawnTicks": 15 },
+    "W": { "name": "willow tree",   "skill": "woodcutting", "level": 30, "item": "willow logs", "respawnTicks": 20 },
+    "Y": { "name": "yew tree",      "skill": "woodcutting", "level": 60, "item": "yew logs",    "respawnTicks": 60 },
+    "m": { "name": "copper rock",   "skill": "mining", "level": 1,  "item": "copper ore",    "respawnTicks": 4 },
+    "t": { "name": "tin rock",      "skill": "mining", "level": 1,  "item": "tin ore",       "respawnTicks": 4 },
+    "i": { "name": "iron rock",     "skill": "mining", "level": 15, "item": "iron ore",      "respawnTicks": 9 },
+    "c": { "name": "coal rock",     "skill": "mining", "level": 30, "item": "coal",          "respawnTicks": 30 },
+    "a": { "name": "starsteel rock","skill": "mining", "level": 55, "item": "starsteel ore", "respawnTicks": 100 },
+    "f": { "name": "shallow fishing spot", "skill": "fishing", "level": 1,  "item": "raw minnow / raw perch", "tool": "small net" },
+    "F": { "name": "deep fishing spot",    "skill": "fishing", "level": 35, "item": "raw pike / raw salmon",  "tool": "rod and bait" }
+  },
+  "stations": {
+    "B": { "name": "bank chest" },
+    "U": { "name": "furnace" },
+    "A": { "name": "anvil" },
+    "R": { "name": "range" }
+  },
+  "npcs": {
+    "N": { "name": "Town Guide",  "role": "tutorial dialogue" },
+    "S": { "name": "Shopkeeper",  "role": "general store" },
+    "Q": { "name": "Elder Maren", "role": "starter quest giver" },
+    "C": { "name": "Cook Tobin",  "role": "cooking tips, sells raw food" }
+  },
+  "monsters": {
+    "r": { "name": "giant rat",        "combatLevel": 3,  "aggressive": false },
+    "h": { "name": "hen",              "combatLevel": 1,  "aggressive": false, "drops": ["feathers", "raw chicken"] },
+    "g": { "name": "goblin",           "combatLevel": 5,  "aggressive": false },
+    "v": { "name": "marsh wolf",       "combatLevel": 25, "aggressive": true },
+    "k": { "name": "barrow skeleton",  "combatLevel": 35, "aggressive": true },
+    "D": { "name": "Cinder Drake",     "combatLevel": 60, "aggressive": true, "boss": true }
+  },
+  "notes": "Monster and spawn tiles are walkable grass underneath; the character marks a spawn point. Resource, station and NPC tiles block movement and are interacted with from an adjacent tile."
+}

@@ -9,9 +9,11 @@ combat. All names, art and lore are original. Art is procedural placeholder geom
 npm install
 npm run dev        # http://localhost:5173
 npm test           # simulation tests
-npm run typecheck
+npm run typecheck  # game code and tests
 npm run build      # static site in client/dist, deploy anywhere
 ```
+
+GitHub Actions runs the typecheck, tests and build on every push to main and every pull request.
 
 ## Controls
 

@@ -188,7 +188,6 @@ export function buildHeightmap(map: MapData, info: TileInfo, areas: Area[], buil
       const broad = Math.max(0, noise(cx / 38, cy / 38, 4) + 0.15) * 3.2;
       let h = 0.9 + broad + noise(cx / 14, cy / 14, 1) * 2.5 + noise(cx / 6, cy / 6, 2) * 0.6 + noise(cx / 2.5, cy / 2.5, 3) * 0.12;
       const tiles = around(cx, cy);
-      const share = (pred: (i: number) => boolean) => tiles.filter(([x, y]) => pred(tileIndex(x, y))).length / Math.max(1, tiles.length);
       h += tiles.reduce((sum, [x, y]) => sum + lift[tileIndex(x, y)], 0) / Math.max(1, tiles.length);
       if (tiles.some(([x, y]) => areas[tileIndex(x, y)] === 'town')) h -= 0.3; // the city sits a little lower
       h = BANK_Y + (h - BANK_Y) * smoothstep(0, 9, waterDist[cy * cw + cx]);

@@ -30,7 +30,7 @@ function find(sim: Simulation, defKey: string, tx: number, ty: number): ObjectEn
   const y = ky(ty);
   for (let id = 1; id < 60000; id++) {
     const e = sim.getEntity(id);
-    if (e && e.kind !== 'player' && e.kind !== 'item' && e.defKey === defKey && e.x === x && e.y === y) return e;
+    if (e && e.kind !== 'player' && e.kind !== 'item' && e.kind !== 'monster' && e.defKey === defKey && e.x === x && e.y === y) return e;
   }
   throw new Error(`no ${defKey} at ${x},${y}`);
 }

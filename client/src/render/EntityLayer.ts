@@ -3,6 +3,7 @@ import type { EntityId, MapData, WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView } from '../state/ClientState';
 import { CHARACTER_STYLES, activityPhase, animateCharacter, buildCharacter, characterBusy, playCharacter, styleForNpc, withGear, type CharacterRig } from './character';
 import { animateCreature, buildCreature, creatureBusy, isCreature, playCreature, shotMs, type CreatureRig } from './creatures';
+import { disposeModel } from './dispose';
 import { Effects } from './effects';
 import { FLICKER, RESOURCE_STYLES, buildGroundItem, buildStation, type PartStyle } from './models';
 import type { Heightmap } from './heightmap';
@@ -177,9 +178,17 @@ export class EntityLayer {
   }
 
   private remove(id: EntityId): void {
+    this.facing.delete(id);
+    this.workPhase.delete(id);
     const obj = this.meshes.get(id);
     if (obj) {
+      // Things come and go all the time (walking about, monsters respawning), so free their buffers.
       this.group.remove(obj);
+      obj.traverse((o) => {
+        const i = this.flickers.indexOf(o);
+        if (i >= 0) this.flickers.splice(i, 1);
+      });
+      disposeModel(obj);
       this.meshes.delete(id);
       this.rigs.delete(id);
       this.creatures.delete(id);

@@ -130,6 +130,20 @@ describe('Fighting', () => {
     expect(Math.hypot(goblin.x - goblin.wander.cx, goblin.y - goblin.wander.cy)).toBeLessThanOrEqual(goblin.wander.radius + 1);
   });
 
+  it('stops showing a player as under attack once the monster gives up', () => {
+    const sim = new Simulation({ map, seed: 5 });
+    const goblin = monsters(sim, 'goblin')[0];
+    const newbie = addPlayer(sim, { at: besides(sim, goblin) });
+    run(sim, 30, () => newbie.attackedBy === goblin.id);
+    expect(newbie.attackedBy).toBe(goblin.id);
+    // Out of its reach in one step (as a teleport would), far from any other monster.
+    newbie.x = map.spawn.x;
+    newbie.y = map.spawn.y;
+    run(sim, 2);
+    expect(goblin.target).toBeNull();
+    expect(newbie.attackedBy).toBeNull();
+  });
+
   it('keeps wandering monsters inside their area and off each other', () => {
     const sim = new Simulation({ map, seed: 11 });
     const all = entities(sim).filter((e): e is MonsterEntity => e.kind === 'monster');

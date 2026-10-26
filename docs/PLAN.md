@@ -1,4 +1,4 @@
-# Tile RPG: plan before code
+# Oath of Stur: plan before code
 
 ## Rendering choice
 **Three.js with a fixed-pitch orthographic camera (angled top-down, rotatable with Q/E or middle-drag).**

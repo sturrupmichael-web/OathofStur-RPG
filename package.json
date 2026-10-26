@@ -1,5 +1,5 @@
 {
-  "name": "tile-rpg",
+  "name": "oath-of-stur",
   "private": true,
   "type": "module",
   "workspaces": ["shared", "client"],

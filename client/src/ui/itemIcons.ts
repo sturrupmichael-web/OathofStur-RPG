@@ -93,6 +93,77 @@ const arrowheads = (metal: string) => [[9, 22], [19, 14], [22, 25]]
   .map(([x, y]) => `<path d="M${x} ${y - 6} L${x + 4} ${y + 3} L${x} ${y + 1} L${x - 4} ${y + 3} Z" fill="${metal}" stroke="#222" stroke-width="0.9"/>`)
   .join('');
 
+/** A herb sprig. Grimy ones are darker and flecked with dirt. */
+const herb = (leaf: string, vein: string, grimy: boolean) => `
+  <path d="M18 33 Q17 22 18 12" stroke="${grimy ? '#4a3a22' : '#4a6a22'}" stroke-width="1.6" fill="none"/>
+  <g stroke="${grimy ? '#2a2014' : '#2a3a12'}" stroke-width="1" fill="${leaf}">
+    <path d="M18 14 Q8 12 6 4 Q15 4 18 14 Z"/><path d="M18 14 Q28 12 30 4 Q21 4 18 14 Z"/>
+    <path d="M18 22 Q7 22 4 14 Q14 13 18 22 Z"/><path d="M18 22 Q29 22 32 14 Q22 13 18 22 Z"/>
+    <path d="M18 12 Q14 6 18 1 Q22 6 18 12 Z"/>
+  </g>
+  <path d="M18 14 L9 7 M18 14 L27 7 M18 22 L8 16 M18 22 L28 16" stroke="${vein}" stroke-width="0.7"/>
+  ${grimy ? '<g fill="#4a3a1e"><circle cx="9" cy="8" r="1.3"/><circle cx="26" cy="9" r="1.1"/><circle cx="10" cy="18" r="1.4"/><circle cx="25" cy="19" r="1.2"/><circle cx="18" cy="6" r="1"/><circle cx="20" cy="27" r="1.3"/></g>' : ''}`;
+
+/** A glass vial, filled to `level` (0..1) with `liquid`. */
+const vial = (liquid: string | null, level: number) => {
+  const top = 30 - 18 * level;
+  return `
+  <path d="M13 9 L13 12 Q8 16 8 22 Q8 31 18 31 Q28 31 28 22 Q28 16 23 12 L23 9 Z" fill="rgba(210,235,245,.35)" stroke="#3a4a52" stroke-width="1.2"/>
+  ${liquid ? `<path d="M9 ${Math.max(top, 14)} Q18 ${Math.max(top, 14) + 2} 27 ${Math.max(top, 14)} Q28 30 18 30.5 Q8 30 9 ${Math.max(top, 14)} Z" fill="${liquid}" opacity=".9"/>` : ''}
+  <rect x="12" y="5" width="12" height="5" rx="1.5" fill="#9a7448" stroke="#3d2c14" stroke-width="1"/>
+  <path d="M12 16 Q10 20 11 25" stroke="rgba(255,255,255,.7)" stroke-width="1.4" fill="none"/>`;
+};
+
+const bones = (scale: number, color: string) => `
+  <g transform="translate(18 18) scale(${scale}) rotate(-35) translate(-18 -18)" fill="${color}" stroke="#5a5040" stroke-width="1.1">
+    <rect x="9" y="15.5" width="18" height="5" rx="2"/>
+    <circle cx="8" cy="15" r="3.4"/><circle cx="8" cy="21" r="3.4"/><circle cx="28" cy="15" r="3.4"/><circle cx="28" cy="21" r="3.4"/>
+  </g>`;
+
+/** Potions by what they do. */
+const POTION_COLOURS: Record<string, string> = {
+  attack: '#e8a030',
+  strength: '#c8443a',
+  devotion: '#9fd4ff',
+  defence: '#4aa05a',
+  ranging: '#3aa8b0',
+  fireward: '#a050c8',
+};
+/** Leaf and vein colours for each herb. */
+const HERB_COLOURS: Record<string, [string, string]> = {
+  sunleaf: ['#e8c840', '#9a7a10'],
+  marshwort: ['#5a8a3a', '#2a4a1a'],
+  duskroot: ['#5a3a5a', '#2a1a2a'],
+  silverfern: ['#b8c8c8', '#6a7a7a'],
+  hawkweed: ['#8aa83a', '#3a4a12'],
+  emberbloom: ['#d8402a', '#7a1a0a'],
+};
+
+const HERBLORE_ICONS: Record<string, string> = Object.fromEntries([
+  ...Object.entries(HERB_COLOURS).flatMap(([id, [leaf, vein]]) => [
+    [id, herb(leaf, vein, false)],
+    [`grimy_${id}`, herb(shade(leaf), vein, true)],
+    [`${id}_potion_unf`, vial(mixColour(leaf), 0.85)],
+  ]),
+  ...Object.entries(POTION_COLOURS).flatMap(([id, colour]) => [1, 2, 3].map((d) => [`${id}_potion${d}`, vial(colour, d / 3.3)])),
+]);
+
+/** A darker, muddier version of a colour. */
+function shade(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const mud = [0x5a, 0x4a, 0x2a];
+  const c = [n >> 16, (n >> 8) & 255, n & 255].map((v, i) => Math.round(v * 0.55 + mud[i] * 0.45));
+  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Herb steeping in water: its colour, clouded. */
+function mixColour(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const water = [0x9a, 0xb8, 0x8a];
+  const c = [n >> 16, (n >> 8) & 255, n & 255].map((v, i) => Math.round(v * 0.5 + water[i] * 0.5));
+  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
 const ICONS: Record<string, string> = {
   shortbow_u: bow('#a8743e', '#5a3a1e', false, false),
   shortbow: bow('#a8743e', '#5a3a1e', false, true),
@@ -193,6 +264,15 @@ const ICONS: Record<string, string> = {
   raw_pike: fish('#5f7f52', '#d8e0b8', '<circle cx="15" cy="15" r="1" fill="#e8f0c8"/><circle cx="20" cy="18" r="1" fill="#e8f0c8"/>'),
   pike: fish('#a8743a', '#ecc890'),
   burnt_fish: fish('#2a2420', '#3d3530'),
+  ...HERBLORE_ICONS,
+  vial: vial(null, 0),
+  vial_of_water: vial('#9fc8e8', 0.75),
+  bones: bones(1, '#ece4cc'),
+  big_bones: bones(1.18, '#e0d6b8'),
+  drake_bones: bones(1.18, '#5a4a40') + '<g fill="#f08a32" opacity=".8"><circle cx="11" cy="23" r="1.4"/><circle cx="24" cy="12" r="1.2"/></g>',
+  cow_horn: `<path d="M8 30 Q6 16 16 9 Q24 4 30 6 Q22 9 19 15 Q15 22 14 31 Z" fill="#e8dcbc" stroke="#5a4a2a" stroke-width="1.2"/><path d="M9 28 L14 29 M9 24 L15 25 M11 19 L17 20" stroke="#b8a882" stroke-width="1"/><path d="M27 6 Q29 6 30 6" stroke="#3a3020" stroke-width="2"/>`,
+  spirit_dust: `<path d="M5 29 Q9 18 18 16 Q27 18 31 29 Z" fill="#dfe6f0" stroke="#7a8496" stroke-width="1.1"/><g fill="#ffffff"><circle cx="14" cy="22" r="1.2"/><circle cx="22" cy="24" r="1"/><circle cx="18" cy="11" r="1.1" opacity=".7"/><circle cx="24" cy="8" r=".8" opacity=".5"/><circle cx="12" cy="9" r=".9" opacity=".5"/></g>`,
+  scorpion_stinger: `<path d="M8 30 Q10 20 16 16 Q22 12 24 6 Q27 10 26 14 Q24 20 16 24 Q12 27 11 31 Z" fill="#8a5a2a" stroke="#3a2010" stroke-width="1.2"/><path d="M24 6 L27 2" stroke="#1a1008" stroke-width="2" stroke-linecap="round"/><path d="M13 25 Q18 21 22 15" stroke="#b8844a" stroke-width="1" fill="none"/>`,
   coins: `<g stroke="#7a5a10" stroke-width="1"><ellipse cx="14" cy="24" rx="8" ry="4" fill="#e8b830"/><ellipse cx="22" cy="20" rx="8" ry="4" fill="#f0c840"/><ellipse cx="16" cy="15" rx="8" ry="4" fill="#ffd84d"/></g>`,
 };
 

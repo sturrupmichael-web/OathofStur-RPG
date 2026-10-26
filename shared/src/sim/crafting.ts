@@ -2,8 +2,11 @@ import recipeData from '../../data/recipes.json';
 import shopData from '../../data/shops.json';
 import type { SkillId } from './skills';
 
-/** Where things are made. Fletching isn't a place: it opens from the pack, anywhere. */
-export type StationKind = 'furnace' | 'anvil' | 'range' | 'fletching';
+/** Where things are made. Fletching and Herblore aren't places: they open from the pack, anywhere. */
+export type StationKind = 'furnace' | 'anvil' | 'range' | 'fletching' | 'herblore';
+
+/** The windows that open from the pack rather than at a station. */
+export type PackStation = 'fletching' | 'herblore';
 
 export interface Recipe {
   id: string;
@@ -31,11 +34,14 @@ export const STATION_TITLES: Record<StationKind, string> = {
   anvil: 'What would you like to smith?',
   range: 'What would you like to cook?',
   fletching: 'What would you like to fletch?',
+  herblore: 'What would you like to mix?',
 };
 
-/** Whether using an item from the pack opens the fletching window: a knife, or anything fletched from. */
-export function opensFletching(itemId: string): boolean {
-  return itemId === 'knife' || RECIPES.some((r) => r.station === 'fletching' && r.inputs.some((i) => i.itemId === itemId));
+/** The windows using an item from the pack opens: fletching for a knife or anything fletched from, herblore for anything brewed with. */
+export function packStations(itemId: string): PackStation[] {
+  return (['fletching', 'herblore'] as const).filter(
+    (station) => (station === 'fletching' && itemId === 'knife') || RECIPES.some((r) => r.station === station && r.inputs.some((i) => i.itemId === itemId)),
+  );
 }
 
 /** Chance a cooking attempt burns the food. */

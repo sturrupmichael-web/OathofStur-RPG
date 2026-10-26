@@ -9,7 +9,10 @@ import {
   levelForXp,
   xpForLevel,
   MAX_LEVEL,
+  PRAYERS,
+  PRAYER_IDS,
   type AttackStyle,
+  type PrayerId,
   type EquipSlot,
   type Inventory,
   type QuestView,
@@ -54,6 +57,11 @@ export interface EquipmentHandlers {
   examine: (itemId: string) => void;
 }
 
+/** What the Prayer tab asks the game to do. */
+export interface PrayerHandlers {
+  toggle: (prayer: PrayerId) => void;
+}
+
 /** DOM side of the interface: side panel, chat, tooltip and context menu. */
 export class Hud {
   private readonly chatLog = el('chat-log');
@@ -73,6 +81,8 @@ export class Hud {
   private equipment: SelfState['equipment'] = {};
   equipmentHandlers: EquipmentHandlers = { unequip: () => {}, setStyle: () => {}, examine: () => {} };
   dialogueHandlers: DialogueHandlers = { choose: () => {} };
+  prayerHandlers: PrayerHandlers = { toggle: () => {} };
+  private prayerKey = '';
   private readonly dialogue = el('dialogue');
   private dialogueOptions: string[] | null = null;
   private questsKey = '';
@@ -292,7 +302,7 @@ export class Hud {
       const skill = SKILLS.find((s) => s.id === r.skill)?.name ?? r.skill;
       const needs = r.inputs.map((i) => `${i.qty} × ${ITEMS[i.itemId]?.name ?? i.itemId}`).join(', ');
       const tool = r.tool ? ` · needs ${ITEMS[r.tool]?.name.toLowerCase() ?? r.tool}` : '';
-      detail.textContent = `${skill} ${r.level} · ${needs}${tool} · ${r.xp} XP`;
+      detail.textContent = `${skill} ${r.level} · ${needs}${tool}${r.xp ? ` · ${r.xp} XP` : ''}`;
       info.append(name, detail);
       const buttons = document.createElement('div');
       buttons.className = 'recipe-buttons';
@@ -451,14 +461,40 @@ export class Hud {
     }
   }
 
+  /** The prayer points bar, and the Prayer tab: every prayer, lit while it is on. */
+  renderPrayer(self: SelfState): void {
+    el('prayer-text').textContent = `${self.prayer} / ${self.prayerMax}`;
+    el('prayer-fill').style.width = `${self.prayerMax ? (self.prayer / self.prayerMax) * 100 : 0}%`;
+    el('prayer-bar').classList.toggle('praying', self.prayers.length > 0);
+    const level = levelForXp(self.skills.prayer);
+    const key = JSON.stringify([level, self.prayer, self.prayers, self.fireward ?? 0]);
+    if (key === this.prayerKey) return;
+    this.prayerKey = key;
+    el('prayer-head').replaceChildren(span(`Prayer level ${level}`, ''), span(`Points ${self.prayer} / ${self.prayerMax}`, ''));
+    const grid = el('prayer-grid');
+    grid.replaceChildren();
+    for (const id of PRAYER_IDS) {
+      const p = PRAYERS[id];
+      const b = document.createElement('button');
+      b.className = `prayer${self.prayers.includes(id) ? ' on' : ''}${level < p.level ? ' locked' : ''}`;
+      b.title = `${p.name} (level ${p.level})\n${p.description}\nDrains ${p.drain} points a minute`;
+      b.setAttribute('aria-pressed', String(self.prayers.includes(id)));
+      b.innerHTML = prayerIcon(id);
+      b.addEventListener('click', () => this.prayerHandlers.toggle(id));
+      grid.appendChild(b);
+    }
+    el('prayer-effects').textContent = self.fireward ? `Fireward potion: about ${self.fireward} minute${self.fireward > 1 ? 's' : ''} left.` : 'Bury bones to train Prayer. Pray at an altar to recharge.';
+  }
+
   renderSelf(self: SelfState): void {
     el('player-name').textContent = self.name;
     el('combat-level').textContent = `Combat level ${self.combatLevel}`;
     el('hp-text').textContent = `${self.hp} / ${self.maxHp}`;
     el('hp-fill').style.width = `${(self.hp / self.maxHp) * 100}%`;
     el('hp-bar').classList.toggle('low', self.hp <= self.maxHp / 4);
-    // The state comes every tick something changes; rebuild the skills only when XP moves.
-    const key = JSON.stringify(self.skills);
+    this.renderPrayer(self);
+    // The state comes every tick something changes; rebuild the skills only when XP or boosts move.
+    const key = JSON.stringify([self.skills, self.boosts]);
     if (key === this.skillsKey) return;
     this.skillsKey = key;
     const grid = el('skills-grid');
@@ -475,7 +511,9 @@ export class Hud {
       const icon = span(skill.name.slice(0, 2), `skill-icon skill-${skill.id}`);
       const info = document.createElement('div');
       info.className = 'skill-info';
-      info.append(span(skill.name, 'skill-name'), span(`${level}`, 'skill-level'));
+      const boost = self.boosts[skill.id] ?? 0;
+      const shown = boost ? `${level + boost}/${level}` : `${level}`;
+      info.append(span(skill.name, 'skill-name'), span(shown, `skill-level${boost > 0 ? ' boosted' : boost < 0 ? ' lowered' : ''}`));
       const bar = document.createElement('div');
       bar.className = 'skill-bar';
       const fill = document.createElement('div');
@@ -589,6 +627,28 @@ export class Hud {
       grid.appendChild(slot);
     }
   }
+}
+
+/** Colours for the three tiers of each kind of prayer. */
+const PRAYER_TIERS = ['#c98a4a', '#cfd6de', '#f2c94c'];
+
+/** A small round icon for a prayer: its kind drawn in the colour of its tier. */
+function prayerIcon(id: PrayerId): string {
+  const p = PRAYERS[id];
+  const same = PRAYER_IDS.filter((x) => PRAYERS[x].group === p.group);
+  const c = p.group === 'ward' ? '#9fd4ff' : p.group === 'mending' ? '#f08aa0' : PRAYER_TIERS[same.indexOf(id)];
+  const shapes: Record<string, string> = {
+    defence: `<path d="M12 3 L20 6 V12 C20 17 16 20 12 21 C8 20 4 17 4 12 V6 Z" fill="${c}" stroke="#3a2a14" stroke-width="1.2"/>`,
+    strength: `<path d="M4 20 L12 12" stroke="#5a3a20" stroke-width="2.6" stroke-linecap="round"/><circle cx="15" cy="9" r="5" fill="${c}" stroke="#3a2a14" stroke-width="1.2"/><path d="M15 2.5 V4 M21.5 9 H20 M19.6 4.4 L18.5 5.5 M19.6 13.6 L18.5 12.5 M10.4 4.4 L11.5 5.5" stroke="#3a2a14" stroke-width="1.6" stroke-linecap="round"/>`,
+    attack: `<path d="M18 3 L21 3 L21 6 L10 17 L7 14 Z" fill="${c}" stroke="#3a2a14" stroke-width="1.2"/><path d="M5 13 L11 19 M6 18 L3 21" stroke="#5a3a20" stroke-width="2.2" stroke-linecap="round"/>`,
+    ranged: `<ellipse cx="12" cy="12" rx="9" ry="5.5" fill="#f4ecd8" stroke="#3a2a14" stroke-width="1.2"/><circle cx="12" cy="12" r="3.6" fill="${c}" stroke="#3a2a14"/><circle cx="12" cy="12" r="1.4" fill="#222"/>`,
+    mending: `<path d="M12 20 C5 15 3 11 5 8 C7 5 10 6 12 8 C14 6 17 5 19 8 C21 11 19 15 12 20 Z" fill="${c}" stroke="#3a2a14" stroke-width="1.2"/><path d="M12 10 V16 M9 13 H15" stroke="#fff" stroke-width="1.6"/>`,
+    ward:
+      id === 'ember_ward'
+        ? `<path d="M12 3 C15 8 19 10 18 15 C17 19 14 21 12 21 C9 21 6 19 6 15 C6 12 8 10 9 8 C10 11 11 12 12 12 C12 9 11 6 12 3 Z" fill="#f08a32" stroke="#6a2a10" stroke-width="1.2"/><path d="M12 14 C13 16 14 17 13 19 C11 19 10 18 11 16 Z" fill="#ffd36a"/>`
+        : `<path d="M12 3 L20 6 V12 C20 17 16 20 12 21 C8 20 4 17 4 12 V6 Z" fill="${c}" stroke="#2a3a4a" stroke-width="1.2"/><path d="M8 8 L16 16 M16 8 L8 16" stroke="#3a4a5a" stroke-width="2"/>`,
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${shapes[p.group]}</svg>`;
 }
 
 /** An item square like an inventory slot, for the bank and shop windows. */

@@ -3,7 +3,8 @@ import type { AttackStyle } from './combat';
 import type { StationKind } from './crafting';
 import type { Equipment, Inventory, ItemStack } from './items';
 import type { DialoguePage } from './quests';
-import type { SkillXp } from './skills';
+import type { PrayerId } from './prayer';
+import type { SkillId, SkillXp } from './skills';
 
 export type EntityId = number;
 
@@ -23,6 +24,10 @@ export type PlayerAction =
   | { kind: 'talk'; targetId: EntityId }
   /** Making things at a station, one every recipe.ticks. */
   | { kind: 'craft'; stationId: EntityId; recipeId: string; remaining: number; nextAttempt: number; started?: boolean }
+  /** Cleaning every grimy herb of one kind in the pack, one each `nextAttempt`. */
+  | { kind: 'clean'; itemId: string; nextAttempt: number }
+  /** Offering bones at an altar, one at a time, once there. */
+  | { kind: 'offer'; targetId: EntityId; nextAttempt: number; started?: boolean }
   /** Lighting logs on the spot with a tinderbox; a try every tick until it catches. */
   | { kind: 'light'; itemId: string; nextAttempt: number }
   /** Fighting a monster: chase it into reach, then swing whenever the weapon is ready. */
@@ -72,6 +77,17 @@ export interface PlayerEntity {
   attackedBy: EntityId | null;
   /** Set while dead: the tick they wake up at the spawn point. */
   deadUntil?: number;
+  /** Prayer points left; the most is the Prayer level. Fractions drain away tick by tick. */
+  prayer: number;
+  prayers: PrayerId[];
+  /** Potion boosts by skill; each wears off a level a minute. */
+  boosts: Partial<Record<SkillId, number>>;
+  /** Tick the next boost level wears off. */
+  nextBoostFade: number;
+  /** Tick from which more bones can be buried. */
+  nextBury: number;
+  /** Set while a fireward potion works: the tick it runs out. */
+  firewardUntil?: number;
 }
 
 /** A monster at its spawn point. Dead monsters stay in the world, hidden, until they respawn. */

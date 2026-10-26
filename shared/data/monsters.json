@@ -1,5 +1,5 @@
 {
-  "comment": "Combat stats for every monster on the map, keyed like the map's monster defs. Levels follow the same combat-level formula as players. maxHit is in hitpoints. attackSpeed is ticks between attacks (0.6 s each). Aggressive monsters attack players within aggroRange tiles whose combat level is at most twice theirs. Each drop is rolled on its own: chance 1 means always; qty is a fixed number or [min, max]. attack is the animation they use. A boss attacks anyone, whatever their level. breath is a fire attack it may use instead of a bite, from up to range tiles away: it always lands, for 0 to maxHit, and a fireward shield cuts it to a third.",
+  "comment": "Combat stats for every monster on the map, keyed like the map's monster defs. Levels follow the same combat-level formula as players. maxHit is in hitpoints. attackSpeed is ticks between attacks (0.6 s each). Aggressive monsters attack players within aggroRange tiles whose combat level is at most twice theirs. Each drop is rolled on its own: chance 1 means always; qty is a fixed number or [min, max]. attack is the animation they use. A boss attacks anyone, whatever their level. breath is a fire attack it may use instead of a bite, from up to range tiles away: it always lands, for 0 to maxHit, and a fireward shield cuts it to a third, as does a fireward potion, and the Ember Ward prayer halves it. Most things drop bones, for Prayer.",
   "monsters": {
     "crimson_swift": {
       "hitpoints": 3, "attack": 1, "strength": 1, "defence": 1, "maxHit": 1, "attackSpeed": 4,
@@ -15,6 +15,9 @@
       "aggressive": true, "aggroRange": 3, "respawnTicks": 25, "attackAnim": "swing",
       "examine": "An ugly, green-skinned scavenger.",
       "drops": [
+        { "item": "bones", "qty": 1, "chance": 1 },
+        { "item": "grimy_sunleaf", "qty": 1, "chance": 0.12 },
+        { "item": "grimy_marshwort", "qty": 1, "chance": 0.06 },
         { "item": "coins", "qty": [1, 10], "chance": 0.5 },
         { "item": "bronze_dagger", "qty": 1, "chance": 0.05 },
         { "item": "bronze_arrow", "qty": [3, 8], "chance": 0.15 },
@@ -26,6 +29,8 @@
       "respawnTicks": 25, "attackAnim": "butt",
       "examine": "Converts grass to beef, and beef to leather.",
       "drops": [
+        { "item": "big_bones", "qty": 1, "chance": 1 },
+        { "item": "cow_horn", "qty": 1, "chance": 0.4 },
         { "item": "raw_beef", "qty": 1, "chance": 1 },
         { "item": "cowhide", "qty": 1, "chance": 1 }
       ]
@@ -35,6 +40,7 @@
       "respawnTicks": 30, "attackAnim": "bite",
       "examine": "It suns itself on the hot stones and watches you with one eye.",
       "drops": [
+        { "item": "bones", "qty": 1, "chance": 1 },
         { "item": "coins", "qty": [5, 25], "chance": 0.4 },
         { "item": "lizard_scales", "qty": 1, "chance": 0.6 }
       ]
@@ -44,6 +50,11 @@
       "aggressive": true, "aggroRange": 4, "respawnTicks": 35, "attackAnim": "swing",
       "examine": "A druid who talks to thunder. It doesn't like visitors.",
       "drops": [
+        { "item": "bones", "qty": 1, "chance": 1 },
+        { "item": "grimy_sunleaf", "qty": 1, "chance": 0.1 },
+        { "item": "grimy_marshwort", "qty": 1, "chance": 0.1 },
+        { "item": "grimy_duskroot", "qty": 1, "chance": 0.08 },
+        { "item": "grimy_silverfern", "qty": 1, "chance": 0.05 },
         { "item": "coins", "qty": [8, 40], "chance": 0.6 },
         { "item": "iron_dagger", "qty": 1, "chance": 0.05 },
         { "item": "perch", "qty": 1, "chance": 0.15 }
@@ -54,6 +65,7 @@
       "aggressive": true, "aggroRange": 3, "respawnTicks": 30, "attackAnim": "sting",
       "examine": "Its tail is already curled to strike.",
       "drops": [
+        { "item": "scorpion_stinger", "qty": 1, "chance": 0.5 },
         { "item": "coins", "qty": [5, 30], "chance": 0.3 },
         { "item": "iron_ore", "qty": 1, "chance": 0.2 }
       ]
@@ -63,6 +75,9 @@
       "aggressive": true, "aggroRange": 5, "respawnTicks": 60, "attackAnim": "wail",
       "examine": "A cold shape that keens over the old battlefield.",
       "drops": [
+        { "item": "spirit_dust", "qty": [1, 3], "chance": 0.6 },
+        { "item": "grimy_duskroot", "qty": 1, "chance": 0.06 },
+        { "item": "grimy_hawkweed", "qty": 1, "chance": 0.04 },
         { "item": "coins", "qty": [20, 80], "chance": 0.8 },
         { "item": "steel_dagger", "qty": 1, "chance": 0.05 }
       ]
@@ -72,6 +87,9 @@
       "respawnTicks": 40, "attackAnim": "swing",
       "examine": "One of Lord Falcrest's guards. Best not to start trouble.",
       "drops": [
+        { "item": "bones", "qty": 1, "chance": 1 },
+        { "item": "grimy_marshwort", "qty": 1, "chance": 0.06 },
+        { "item": "grimy_duskroot", "qty": 1, "chance": 0.05 },
         { "item": "coins", "qty": [15, 60], "chance": 0.9 },
         { "item": "iron_bar", "qty": 1, "chance": 0.1 },
         { "item": "iron_helm", "qty": 1, "chance": 0.04 }
@@ -82,6 +100,9 @@
       "aggressive": true, "aggroRange": 4, "respawnTicks": 40, "attackAnim": "swing",
       "examine": "It rattles when it moves, and it moves toward you.",
       "drops": [
+        { "item": "bones", "qty": 1, "chance": 1 },
+        { "item": "grimy_duskroot", "qty": 1, "chance": 0.06 },
+        { "item": "grimy_silverfern", "qty": 1, "chance": 0.05 },
         { "item": "coins", "qty": [10, 60], "chance": 0.6 },
         { "item": "iron_sword", "qty": 1, "chance": 0.04 },
         { "item": "iron_shield", "qty": 1, "chance": 0.03 }
@@ -92,6 +113,8 @@
       "aggressive": true, "aggroRange": 3, "respawnTicks": 40, "attackAnim": "bite",
       "examine": "Too many legs, all of them quick.",
       "drops": [
+        { "item": "grimy_silverfern", "qty": 1, "chance": 0.06 },
+        { "item": "grimy_hawkweed", "qty": 1, "chance": 0.05 },
         { "item": "coins", "qty": [10, 50], "chance": 0.5 },
         { "item": "coal", "qty": 1, "chance": 0.2 },
         { "item": "gold_ore", "qty": 1, "chance": 0.05 }
@@ -102,6 +125,9 @@
       "aggressive": true, "aggroRange": 4, "respawnTicks": 45, "attackAnim": "swing",
       "examine": "Sun-browned and sharp-eyed. He's sizing up your purse.",
       "drops": [
+        { "item": "bones", "qty": 1, "chance": 1 },
+        { "item": "grimy_hawkweed", "qty": 1, "chance": 0.06 },
+        { "item": "grimy_emberbloom", "qty": 1, "chance": 0.03 },
         { "item": "coins", "qty": [30, 120], "chance": 0.9 },
         { "item": "steel_dagger", "qty": 1, "chance": 0.05 },
         { "item": "steel_helm", "qty": 1, "chance": 0.03 }
@@ -113,6 +139,8 @@
       "breath": { "chance": 0.3, "maxHit": 18, "range": 4 },
       "examine": "A drake the colour of banked coals. The air around it ripples with heat.",
       "drops": [
+        { "item": "drake_bones", "qty": 1, "chance": 1 },
+        { "item": "grimy_emberbloom", "qty": [2, 3], "chance": 0.5 },
         { "item": "coins", "qty": [400, 1200], "chance": 1 },
         { "item": "drake_scale", "qty": [1, 2], "chance": 1 },
         { "item": "pike", "qty": [2, 4], "chance": 0.5 },

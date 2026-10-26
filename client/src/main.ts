@@ -7,7 +7,7 @@ import {
   WorldGrid,
   areaAt,
   isBanker,
-  opensFletching,
+  packStations,
   shopForNpc,
   type EntityId,
   type JsonMapFile,
@@ -115,6 +115,10 @@ async function start(): Promise<void> {
     wail: 'wail',
     breath: 'breath',
     shoot: 'shoot',
+    drink: 'drink',
+    bury: 'bury',
+    scatter: 'scatter',
+    pray: 'pray',
   };
   state.on('animation', ({ entityId, kind }) => {
     const e = state.entities.get(entityId)?.data;
@@ -139,10 +143,15 @@ async function start(): Promise<void> {
     if (kind === 'quest' && !text.startsWith('Congratulations')) sound.play('quest');
   });
   let coins: number | null = null;
+  let praying: readonly string[] | null = null;
   state.on('self', (self) => {
     const now = countItem(self.inventory, 'coins');
     if (coins !== null && now > coins) sound.play('coins');
     coins = now;
+    // A chime as a prayer comes on, a falling one as they go off.
+    if (praying && self.prayers.some((p) => !praying!.includes(p))) sound.play('prayer_on');
+    else if (praying && praying.some((p) => !(self.prayers as string[]).includes(p))) sound.play('prayer_off');
+    praying = self.prayers;
   });
 
   // Whoever is speaking gestures as each page of a conversation appears, and the person turns to you.
@@ -169,7 +178,7 @@ async function start(): Promise<void> {
   };
 
   const GATHER_LABELS = { chop: 'Chop down', mine: 'Mine', net: 'Net', rod: 'Bait' } as const;
-  const STATION_LABELS: Record<string, string> = { furnace: 'Smelt', anvil: 'Smith', range: 'Cook', fire: 'Cook', campfire: 'Cook', bank_booth: 'Bank' };
+  const STATION_LABELS: Record<string, string> = { furnace: 'Smelt', anvil: 'Smith', range: 'Cook', fire: 'Cook', campfire: 'Cook', bank_booth: 'Bank', altar: 'Pray' };
   /** What each person offers, from the role the map gives them. */
   const NPC_ACTIONS: Record<string, string> = Object.fromEntries(
     Object.values(map.defs.npcs).flatMap((n): [string, string][] => {
@@ -252,6 +261,9 @@ async function start(): Promise<void> {
       const primary = primaryAction(e);
       const options = [];
       if (primary) options.push({ label: primary.label, target, action: primary.run });
+      if (e?.kind === 'station' && e.defKey === 'altar') {
+        options.push({ label: 'Offer-bones', target, action: () => server.send({ type: 'interact', targetId: e.id, action: 'offer' }) });
+      }
       if (e?.kind === 'npc' && primary?.label !== 'Talk-to') {
         options.push({ label: 'Talk-to', target, action: () => server.send({ type: 'interact', targetId: e.id, action: 'talk' }) });
       }
@@ -305,12 +317,21 @@ async function start(): Promise<void> {
           : item?.equip
             ? [{ label: item.equip.slot === 'weapon' ? 'Wield' : 'Wear', target: name, action: () => server.send({ type: 'equip', slot }) }]
             : [];
-        if (opensFletching(stack.itemId)) use.unshift({ label: 'Fletch', target: name, action: () => server.send({ type: 'useItem', slot }) });
+        for (const station of packStations(stack.itemId).reverse()) {
+          use.unshift({ label: station === 'fletching' ? 'Fletch' : 'Mix', target: name, action: () => server.send({ type: 'useItem', slot, station }) });
+        }
         if (item?.burn) use.unshift({ label: 'Light', target: name, action: () => server.send({ type: 'light', slot }) });
+        if (item?.bury) use.unshift({ label: stack.itemId === 'ashes' ? 'Scatter' : 'Bury', target: name, action: () => server.send({ type: 'bury', slot }) });
+        if (item?.clean) use.unshift({ label: 'Clean', target: name, action: () => server.send({ type: 'clean', slot }) });
+        if (item?.drink) use.unshift({ label: 'Drink', target: name, action: () => server.send({ type: 'drink', slot }) });
         hud.showMenu(x, y, [...use, { label: 'Drop', target: name, action: () => server.send({ type: 'invDrop', slot }) }, examine]);
       }
     },
     move: (from, to) => server.send({ type: 'invMove', from, to }),
+  };
+
+  hud.prayerHandlers = {
+    toggle: (prayer) => server.send({ type: 'togglePrayer', prayer }),
   };
 
   hud.equipmentHandlers = {

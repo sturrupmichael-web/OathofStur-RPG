@@ -362,6 +362,9 @@ const IMPACT: Record<string, number[]> = {
   smelt: [0.25],
   fletch: [0.65],
   light: [0.6],
+  clean: [0.4, 0.85],
+  mix: [0.2, 0.6],
+  offer: [0.85],
 };
 
 function shortestAngle(from: number, to: number): number {

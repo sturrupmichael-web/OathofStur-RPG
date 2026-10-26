@@ -669,6 +669,9 @@ function buildBlade(kind: WeaponKind, color: number): THREE.Group {
   return g;
 }
 
+/** How long one offering at the altar takes, matching the simulation's three ticks. */
+const OFFER_MS = 1800;
+
 /** One full stride (two steps) per 1.2 s, matching one tile per 0.6 s tick. */
 const STRIDE_RATE = (Math.PI * 2) / 1.2;
 
@@ -748,6 +751,42 @@ const TOOL_MODELS: Record<string, () => THREE.Group> = {
     g.rotation.set(Math.PI / 2, 0, -1.5);
     return g;
   },
+  // A small glass vial, held upright between the fingers, with something green in it.
+  vial: () => {
+    const g = new THREE.Group();
+    const glass = new THREE.MeshLambertMaterial({ color: 0xcfe8f0, transparent: true, opacity: 0.45 });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.08, 10), glass);
+    body.position.set(0, 0, 0.035);
+    g.add(body);
+    g.add(part(new THREE.CylinderGeometry(0.019, 0.019, 0.05, 10), 0x4f9a52, 0, -0.012, 0.035));
+    g.add(part(new THREE.CylinderGeometry(0.012, 0.01, 0.02, 8), 0x8a6a42, 0, 0.05, 0.035));
+    return g;
+  },
+  // A bone, gripped in the middle.
+  bone: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.012, 0.012, 0.16, 6), 0xe8e0c8, 0, 0, 0.03));
+    for (const y of [-0.08, 0.08]) {
+      g.add(part(new THREE.SphereGeometry(0.018, 6, 5), 0xe8e0c8, 0.01, y, 0.03));
+      g.add(part(new THREE.SphereGeometry(0.018, 6, 5), 0xe8e0c8, -0.01, y, 0.03));
+    }
+    g.rotation.x = Math.PI / 2;
+    return g;
+  },
+  // A sprig of leaves, held in the left hand.
+  herb: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.004, 0.005, 0.1, 4), 0x5a7a2a, 0, 0.03, 0.02));
+    for (let i = 0; i < 4; i++) {
+      const leaf = part(new THREE.SphereGeometry(0.022, 6, 4).scale(0.5, 1, 0.25), 0x6aa03a, 0, 0.05 + i * 0.016, 0.02);
+      leaf.rotation.z = (i % 2 ? 1 : -1) * 0.7;
+      leaf.position.x = (i % 2 ? 1 : -1) * 0.014;
+      g.add(leaf);
+    }
+    g.rotation.set(Math.PI / 2, 0, -1.2);
+    g.scale.setScalar(1.6);
+    return g;
+  },
   pan: () => {
     const g = new THREE.Group();
     g.add(part(new THREE.CylinderGeometry(0.01, 0.012, 0.2, 6), 0x2a2a2a, 0, 0.02, 0.02));
@@ -759,9 +798,23 @@ const TOOL_MODELS: Record<string, () => THREE.Group> = {
 };
 
 /** Which tool each activity shows in the hand. */
-const ACTIVITY_TOOL: Record<string, string | undefined> = { chop: 'axe', mine: 'pickaxe', smith: 'hammer', net: 'net', rod: 'rod', cook: 'pan', fletch: 'knife', light: 'tinderbox' };
+const ACTIVITY_TOOL: Record<string, string | undefined> = {
+  chop: 'axe',
+  mine: 'pickaxe',
+  smith: 'hammer',
+  net: 'net',
+  rod: 'rod',
+  cook: 'pan',
+  fletch: 'knife',
+  light: 'tinderbox',
+  mix: 'vial',
+  offer: 'bone',
+  // One-off moves that show something in the hand.
+  drink: 'vial',
+  bury: 'bone',
+};
 /** What each activity holds in the left hand too, if anything. */
-const ACTIVITY_OFFHAND: Record<string, string | undefined> = { fletch: 'stave' };
+const ACTIVITY_OFFHAND: Record<string, string | undefined> = { fletch: 'stave', mix: 'herb', clean: 'herb' };
 const OFFHAND_TOOLS = new Set(Object.values(ACTIVITY_OFFHAND));
 
 type Pose = Partial<{
@@ -923,6 +976,57 @@ const ACTIVITIES: Record<string, { period: number; pose: (u: number) => Pose }> 
       return { shoulderLx: -1.4 + sway, shoulderLz: 0.1, elbowL: -0.1, shoulderRx: -0.15 + sway, shoulderRz: 1.45, elbowR: -2.5, torsoY: 0.5, hipL: -0.15, kneeL: 0.12, hipR: 0.1, headX: 0.04 };
     },
   },
+  // Cleaning a herb: the sprig held up in the left hand, the right thumb rubbing the dirt off, a shake now and then.
+  clean: {
+    period: 1200,
+    pose: (u) => {
+      const rub = Math.sin(u * Math.PI * 6) * 0.08;
+      const shake = u > 0.8 ? Math.sin(((u - 0.8) / 0.2) * Math.PI * 3) * 0.12 : 0;
+      return { shoulderLx: -0.75 + shake, shoulderLz: 0.3, elbowL: -1.35, shoulderRx: -0.65 + rub, shoulderRz: -0.3, elbowR: -1.4 - rub, torsoX: 0.15, headX: 0.38 };
+    },
+  },
+  // Mixing: drop the herb into the vial, then hold the vial up and swirl it, watching it change.
+  mix: {
+    period: 2200,
+    pose: (u) => {
+      const drop = u < 0.35 ? Math.sin((u / 0.35) * Math.PI) : 0;
+      const swirl = u >= 0.35 ? Math.sin(((u - 0.35) / 0.65) * Math.PI * 6) * 0.1 : 0;
+      const lift = u >= 0.35 ? Math.sin(((u - 0.35) / 0.65) * Math.PI) : 0;
+      return {
+        shoulderRx: -0.7 - 0.45 * lift,
+        shoulderRz: -0.25 + swirl,
+        elbowR: -1.25 - 0.3 * lift,
+        shoulderLx: -0.8 - 0.3 * drop,
+        shoulderLz: 0.3 + 0.1 * drop,
+        elbowL: -1.2 + 0.25 * drop,
+        torsoX: 0.12,
+        headX: 0.3 - 0.25 * lift,
+      };
+    },
+  },
+  // Offering at an altar: on both knees, the bones lifted up high, then laid down with a bow.
+  offer: {
+    period: OFFER_MS,
+    pose: (u) => {
+      const raise = u < 0.5 ? Math.sin((u / 0.5) * Math.PI * 0.5) : Math.cos(((u - 0.5) / 0.5) * Math.PI * 0.5);
+      const bow = u > 0.6 ? Math.sin(((u - 0.6) / 0.4) * Math.PI) : 0;
+      return {
+        hipsY: -0.36,
+        hipL: -0.25,
+        hipR: -0.25,
+        kneeL: 1.85,
+        kneeR: 1.85,
+        torsoX: -0.1 * raise + 0.5 * bow,
+        headX: -0.3 * raise + 0.4 * bow,
+        shoulderRx: -1.0 - 1.4 * raise,
+        shoulderLx: -1.0 - 1.4 * raise,
+        shoulderRz: -0.15,
+        shoulderLz: 0.15,
+        elbowR: -0.5,
+        elbowL: -0.5,
+      };
+    },
+  },
   // Feeding the furnace: lean in and push the ore forward with both hands.
   smelt: {
     period: 1800,
@@ -1055,6 +1159,68 @@ const ONE_SHOTS: Record<string, { ms: number; pose: (u: number) => Pose }> = {
       };
     },
   },
+  // A vial to the lips, the head tipped back to drain it, then a wipe of the mouth.
+  drink: {
+    ms: 1300,
+    pose: (u) => {
+      const k = Math.min(1, Math.sin(u * Math.PI) * 1.5);
+      const tip = u > 0.3 && u < 0.75 ? Math.sin(((u - 0.3) / 0.45) * Math.PI) : 0;
+      return { shoulderRx: -1.15 * k - 0.45 * tip, shoulderRz: -1.05 * k, elbowR: -2.2 * k, headX: -0.4 * tip, torsoX: -0.08 * tip };
+    },
+  },
+  // Down on one knee, a hole scraped in the earth, the bones laid in and the soil patted flat.
+  bury: {
+    ms: 1300,
+    pose: (u) => {
+      const k = Math.min(1, Math.sin(u * Math.PI) * 2);
+      const dig = u < 0.55 ? Math.abs(Math.sin((u / 0.55) * Math.PI * 3)) : 0;
+      const pat = u >= 0.55 ? Math.abs(Math.sin(((u - 0.55) / 0.45) * Math.PI * 2)) : 0;
+      return {
+        hipsY: -0.3 * k,
+        hipL: -1.4 * k,
+        kneeL: 1.55 * k,
+        hipR: 0.1 * k,
+        kneeR: 1.7 * k,
+        torsoX: 0.65 * k,
+        headX: 0.35 * k,
+        shoulderRx: (-0.9 + 0.35 * dig + 0.25 * pat) * k,
+        elbowR: -0.3 * k,
+        shoulderLx: -0.6 * k,
+        elbowL: -0.4 * k,
+      };
+    },
+  },
+  // Ashes on the wind: a pinch from the hand, the arm swept wide and open.
+  scatter: {
+    ms: 1100,
+    pose: (u) => {
+      const k = Math.min(1, Math.sin(u * Math.PI) * 1.6);
+      const sweep = Math.min(1, Math.max(0, (u - 0.2) / 0.5));
+      return { shoulderRx: (-0.9 - 0.4 * sweep) * k, shoulderRz: (-0.4 + 1.3 * sweep) * k, elbowR: (-1.2 + 1.0 * sweep) * k, torsoY: (0.25 - 0.45 * sweep) * k, headX: -0.1 * k };
+    },
+  },
+  // Praying at an altar: on both knees, palms together before the chest, head bowed.
+  pray: {
+    ms: 2600,
+    pose: (u) => {
+      const k = Math.min(1, Math.sin(u * Math.PI) * 2.5);
+      return {
+        hipsY: -0.36 * k,
+        hipL: -0.25 * k,
+        hipR: -0.25 * k,
+        kneeL: 1.85 * k,
+        kneeR: 1.85 * k,
+        torsoX: 0.12 * k,
+        headX: 0.5 * k,
+        shoulderRx: -0.75 * k,
+        shoulderLx: -0.75 * k,
+        shoulderRz: -0.75 * k,
+        shoulderLz: 0.75 * k,
+        elbowR: -1.9 * k,
+        elbowL: -1.9 * k,
+      };
+    },
+  },
   // Food to the mouth, a couple of chews.
   eat: {
     ms: 1100,
@@ -1138,7 +1304,9 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
   const target = activity && !moving ? activity : null;
   if (target) rig.activity = target;
   rig.work += ((target ? 1 : 0) - rig.work) * Math.min(1, dt * 10);
-  const shown = rig.work > 0.05 ? rig.activity : null;
+  // A one-off move with something in the hand (a vial to drink) shows that instead.
+  const oneShotTool = rig.oneShot && now - rig.oneShot.start < ONE_SHOTS[rig.oneShot.kind].ms && ACTIVITY_TOOL[rig.oneShot.kind] ? rig.oneShot.kind : null;
+  const shown = oneShotTool ?? (rig.work > 0.05 ? rig.activity : null);
   for (const [key, tool] of rig.tools) tool.visible = !!shown && (ACTIVITY_TOOL[shown] === key || ACTIVITY_OFFHAND[shown] === key);
   if (rig.weapon) rig.weapon.visible = !(shown && ACTIVITY_TOOL[shown]);
   const anim = rig.activity ? ACTIVITIES[rig.activity] : undefined;

@@ -278,6 +278,7 @@ const ROLE_LINES: Record<string, string> = {
   Shopkeeper: "Have a look around. If I haven't got it, you don't need it.",
   'Stall holder': 'Fresh today! Well, fresh-ish.',
   Priest: 'May the dawn find you well, traveller.',
+  Apothecary: 'Vials, herbs and tonics. Mind the shelf, it wobbles.',
   Librarian: "Quietly, please. The books don't like noise.",
   Barkeep: "What'll it be? The stew's better than it looks.",
   Smith: 'Mind the sparks. And bring me good ore.',
@@ -465,13 +466,55 @@ function oldNessa(_def: NpcDef, a: TalkActions): DialoguePage[] {
         return [
           you('Two lizard scales.'),
           npc('In they go... and a pinch of ash... and stir.'),
-          { speaker: 'npc', text: "There. The pot's warm again. When I've herbs to spare, come back and I'll show you how a proper brew is done.", effect: () => a.complete('nessas_cauldron') },
+          { speaker: 'npc', text: "There. The pot's warm again. Now, you've earned a lesson: talk to me again and I'll show you how a proper brew is done.", effect: () => a.complete('nessas_cauldron') },
         ];
       }
       return [npc('Two lizard scales, from the desert west of Qadir.')];
     default:
-      return [npc("The cauldron's bubbling nicely, thanks to you. Herbs, that's what I need next.")];
+      return [
+        {
+          speaker: 'npc',
+          text: "The cauldron's bubbling nicely, thanks to you. What'll it be, dearie?",
+          options: [
+            { label: 'Teach me to brew.', then: () => brewingLesson() },
+            ...(a.trade ? [{ label: "Let's trade.", then: () => (a.trade!(), []) }] : []),
+            { label: 'Just visiting.', then: () => [] },
+          ],
+        },
+      ];
   }
+}
+
+/** Old Nessa's lesson: how herbs become potions. */
+function brewingLesson(): DialoguePage[] {
+  return [
+    npc("Herbs come out of the ground filthy. Monsters carry them about, the dirty things. Clean them first; you'll learn a little each time."),
+    npc('Drop a clean herb into a vial of water and you have an unfinished potion. Wren the apothecary sells vials, and so do I.'),
+    npc('Then one more thing to finish it. Sunleaf takes crimson feathers for an attack potion. Marshwort takes a cow horn, for strength.'),
+    npc('Duskroot and a pinch of ashes makes a devotion potion: it gives back prayer points. The priests drink it by the bucket.'),
+    npc("The rest you'll work out. Silverfern, hawkweed, emberbloom... Use any of it from your pack to see what it makes."),
+  ];
+}
+
+/** Priests teach Prayer: bones to bury, altars to pray at. */
+function priest(def: NpcDef): DialoguePage[] {
+  return [
+    {
+      speaker: 'npc',
+      text: ROLE_LINES[def.role],
+      options: [
+        {
+          label: 'Tell me about Prayer.',
+          then: () => [
+            npc('The gods are pleased when the dead are given rest. Bury the bones you find on your travels and they will hear your prayers more clearly.'),
+            npc('Kneel at an altar like this one and your prayer points will be restored. Offer bones on the altar itself and the gods are twice as pleased.'),
+            npc('Open your Prayer book to call on them. Each prayer takes a little of your strength while it lasts, so use them when it matters.'),
+          ],
+        },
+        { label: 'Just passing by.', then: () => [] },
+      ],
+    },
+  ];
 }
 
 const QUEST_TALK: Record<string, (def: NpcDef, a: TalkActions) => DialoguePage[]> = {
@@ -486,5 +529,6 @@ const QUEST_TALK: Record<string, (def: NpcDef, a: TalkActions) => DialoguePage[]
 /** The conversation you get when you talk to someone. */
 export function conversation(def: NpcDef, a: TalkActions): DialoguePage[] {
   if (def.key === 'elder_maren') return elderMaren(a);
+  if (def.role === 'Priest') return priest(def);
   return QUEST_TALK[def.key]?.(def, a) ?? smallTalk(def, a);
 }

@@ -10,6 +10,11 @@ const SPLAT_MS = 1100;
 /** Height above the ground (tiles) where splats and bars float, by monster. */
 const HEIGHTS: Record<string, number> = { cow: 1.15, desert_lizard: 0.55, scorpion: 0.7, cave_creeper: 0.75, crimson_swift: 1.35, goblin: 1.0, cinder_drake: 3.3 };
 
+const OVERHEAD_ICONS: Record<string, string> = {
+  ward_of_blades: `<svg viewBox="0 0 24 24"><path d="M12 2 L21 5.5 V12 C21 17.5 17 21 12 22.5 C7 21 3 17.5 3 12 V5.5 Z" fill="#9fd4ff" stroke="#1e3a52" stroke-width="1.4"/><path d="M7.5 7.5 L16.5 16.5 M16.5 7.5 L7.5 16.5" stroke="#1e3a52" stroke-width="2.2" stroke-linecap="round"/></svg>`,
+  ember_ward: `<svg viewBox="0 0 24 24"><path d="M12 2 C15.5 7.5 20 10 19 15.5 C18 20 14.5 22.5 12 22.5 C8.5 22.5 5 20 5 15.5 C5 12 7.5 9.5 8.5 7.5 C9.5 10.5 11 11.5 12 11.5 C12 8.5 11 5.5 12 2 Z" fill="#f08a32" stroke="#6a2a10" stroke-width="1.4"/><path d="M12 14 C13.5 16 14.5 17.5 13.2 19.5 C11 19.6 9.8 18 11 16 Z" fill="#ffd36a"/></svg>`,
+};
+
 /**
  * Hit splats and health bars over the 3D view, drawn as DOM elements that
  * follow their entity's screen position each frame.
@@ -17,6 +22,8 @@ const HEIGHTS: Record<string, number> = { cow: 1.15, desert_lizard: 0.55, scorpi
 export class CombatOverlay {
   private readonly splats: { el: HTMLElement; target: EntityId; at: number; offset: number }[] = [];
   private readonly bars = new Map<EntityId, HTMLElement>();
+  /** Ward prayers glowing over people's heads. */
+  private readonly overheads = new Map<EntityId, HTMLElement>();
   private readonly bossBar = document.getElementById('boss-bar')!;
   private bossKey = '';
 
@@ -88,7 +95,36 @@ export class CombatOverlay {
         this.bars.delete(id);
       }
     }
+    this.updateOverheads(now);
     this.updateBossBar();
+  }
+
+  /** A ward prayer shows as an icon floating over the head of whoever has it on. */
+  private updateOverheads(now: number): void {
+    const seen = new Set<EntityId>();
+    for (const view of this.state.entities.values()) {
+      const d = view.data;
+      if (!d.overhead || d.dead) continue;
+      seen.add(d.id);
+      let icon = this.overheads.get(d.id);
+      if (icon?.dataset.kind !== d.overhead) {
+        icon?.remove();
+        icon = document.createElement('div');
+        icon.className = `overhead overhead-${d.overhead}`;
+        icon.dataset.kind = d.overhead;
+        icon.innerHTML = OVERHEAD_ICONS[d.overhead];
+        this.layer.appendChild(icon);
+        this.overheads.set(d.id, icon);
+      }
+      // Above the health bar, bobbing gently.
+      const pos = this.renderer.screenPosition(d.id, this.height(d.id) + 0.62 + Math.sin(now / 500) * 0.03, now);
+      if (pos) icon.style.transform = `translate(${pos.x - 12}px, ${pos.y - 12}px)`;
+    }
+    for (const [id, icon] of this.overheads) {
+      if (seen.has(id)) continue;
+      icon.remove();
+      this.overheads.delete(id);
+    }
   }
 
   /** A big health bar across the top while you fight a boss. */

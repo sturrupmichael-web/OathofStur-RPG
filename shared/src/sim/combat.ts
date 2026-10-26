@@ -1,5 +1,6 @@
 import monsterData from '../../data/monsters.json';
 import { ITEMS, type Equipment } from './items';
+import { prayerBoost, type PrayerId } from './prayer';
 import { levelForXp, type SkillId, type SkillXp } from './skills';
 
 /** Ticks between attacks for every weapon, and for fists. */
@@ -83,25 +84,37 @@ export interface Fighter {
   bonuses: Bonuses;
 }
 
-export function playerFighter(skills: SkillXp, equipment: Equipment, style: AttackStyle): Fighter {
-  const boost = (skill: SkillId) => (ATTACK_STYLES[style].skill === skill ? 3 : 0);
+/** What changes a player's levels in a fight for now: potions drunk and prayers on. */
+export interface LevelMods {
+  boosts?: Partial<Record<SkillId, number>>;
+  prayers?: readonly PrayerId[];
+}
+
+/** A level as it counts in a fight: the real level, plus any potion boost, raised by any prayer. */
+export function effectiveLevel(skills: SkillXp, skill: SkillId, mods: LevelMods = {}): number {
+  const level = levelForXp(skills[skill]) + (mods.boosts?.[skill] ?? 0);
+  return Math.floor(level * (1 + prayerBoost(mods.prayers ?? [], skill)));
+}
+
+export function playerFighter(skills: SkillXp, equipment: Equipment, style: AttackStyle, mods: LevelMods = {}): Fighter {
+  const level = (skill: SkillId) => effectiveLevel(skills, skill, mods) + (ATTACK_STYLES[style].skill === skill ? 3 : 0);
   return {
-    attack: levelForXp(skills.attack) + boost('attack'),
-    strength: levelForXp(skills.strength) + boost('strength'),
-    defence: levelForXp(skills.defence) + boost('defence'),
+    attack: level('attack'),
+    strength: level('strength'),
+    defence: level('defence'),
     bonuses: equipmentBonuses(equipment),
   };
 }
 
 /** A player shooting: Ranged for both aim and power, the bow's accuracy and the arrow's strength. */
-export function rangedFighter(skills: SkillXp, equipment: Equipment, style: AttackStyle, arrowStrength: number): Fighter {
-  const ranged = levelForXp(skills.ranged) + (style === 'accurate' ? 3 : 0);
+export function rangedFighter(skills: SkillXp, equipment: Equipment, style: AttackStyle, arrowStrength: number, mods: LevelMods = {}): Fighter {
+  const ranged = effectiveLevel(skills, 'ranged', mods) + (style === 'accurate' ? 3 : 0);
   const bow = equipment.weapon ? ITEMS[equipment.weapon]?.equip : undefined;
   const worn = equipmentBonuses(equipment);
   return {
     attack: ranged,
     strength: ranged,
-    defence: levelForXp(skills.defence) + (style === 'defensive' ? 3 : 0),
+    defence: effectiveLevel(skills, 'defence', mods) + (style === 'defensive' ? 3 : 0),
     bonuses: { attack: bow?.attack ?? 0, strength: arrowStrength, defence: worn.defence },
   };
 }

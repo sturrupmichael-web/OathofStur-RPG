@@ -579,6 +579,9 @@ export function buildStation(defKey: string, near: NeighbourLookup = () => null,
 }
 
 /** Small models for items lying on the ground. */
+/** Potion colours on the ground, by the first word of the potion's id. */
+const POTION_TINTS: Record<string, number> = { attack: 0xe8a030, strength: 0xc8443a, devotion: 0x9fd4ff, defence: 0x4aa05a, ranging: 0x3aa8b0, fireward: 0xa050c8 };
+
 export function buildGroundItem(itemId: string): THREE.Group {
   const g = new THREE.Group();
   if (itemId.endsWith('logs')) {
@@ -651,6 +654,38 @@ export function buildGroundItem(itemId: string): THREE.Group {
     for (const a of [0, 0.7]) g.add(mesh(new THREE.ConeGeometry(0.03, 0.22, 4).rotateZ(Math.PI / 2).rotateY(a), 0xc8262a, 0, 0.02, 0));
   } else if (itemId === 'lizard_scales') {
     for (const [x, z] of [[0, 0], [0.06, 0.04], [-0.05, 0.05]]) g.add(mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.01, 6), 0xd8b050, x, 0.01, z));
+  } else if (/^(grimy_)?(sunleaf|marshwort|duskroot|silverfern|hawkweed|emberbloom)$/.test(itemId)) {
+    // A small bundle of leaves; grimy ones are muddier.
+    const leaf = { sunleaf: 0xe8c840, marshwort: 0x5a8a3a, duskroot: 0x5a3a5a, silverfern: 0xb8c8c8, hawkweed: 0x8aa83a, emberbloom: 0xd8402a }[itemId.replace('grimy_', '')]!;
+    const color = itemId.startsWith('grimy') ? new THREE.Color(leaf).lerp(new THREE.Color(0x5a4a2a), 0.45).getHex() : leaf;
+    for (const a of [0, 1.3, 2.6, 3.9, 5.2]) {
+      const blade = mesh(new THREE.SphereGeometry(0.05, 6, 4).scale(1.8, 0.3, 0.8), color, Math.cos(a) * 0.06, 0.02, Math.sin(a) * 0.06);
+      blade.rotation.y = -a;
+      g.add(blade);
+    }
+  } else if (itemId.startsWith('vial') || itemId.includes('potion')) {
+    const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.14, 10), new THREE.MeshLambertMaterial({ color: 0xcfe8f0, transparent: true, opacity: 0.45 }));
+    glass.position.y = 0.07;
+    g.add(glass);
+    const liquid = itemId === 'vial' ? null : itemId === 'vial_of_water' ? 0x9fc8e8 : itemId.endsWith('_unf') ? 0x8aa060 : POTION_TINTS[itemId.split('_')[0]];
+    if (liquid) g.add(mesh(new THREE.CylinderGeometry(0.04, 0.045, 0.09, 10), liquid, 0, 0.048, 0));
+    g.add(mesh(new THREE.CylinderGeometry(0.022, 0.02, 0.03, 8), 0x9a7448, 0, 0.155, 0));
+  } else if (itemId.endsWith('bones')) {
+    const color = itemId === 'drake_bones' ? 0x5a4a40 : 0xe8e0c8;
+    const k = itemId === 'bones' ? 1 : 1.3;
+    for (const [x, z, r] of [[0, 0, 0.4], [0.05, 0.06, -0.6]] as const) {
+      const bone = new THREE.Group();
+      bone.add(mesh(new THREE.CylinderGeometry(0.016 * k, 0.016 * k, 0.2 * k, 6).rotateZ(Math.PI / 2), color, 0, 0, 0));
+      for (const end of [-0.1 * k, 0.1 * k]) bone.add(mesh(new THREE.SphereGeometry(0.026 * k, 6, 5), color, end, 0, 0));
+      bone.position.set(x, 0.025 * k, z);
+      bone.rotation.y = r;
+      g.add(bone);
+    }
+  } else if (itemId === 'cow_horn' || itemId === 'scorpion_stinger') {
+    const horn = mesh(new THREE.ConeGeometry(0.035, 0.24, 7).rotateZ(Math.PI / 2 + 0.3), itemId === 'cow_horn' ? 0xe8dcbc : 0x8a5a2a, 0, 0.04, 0);
+    g.add(horn);
+  } else if (itemId === 'spirit_dust') {
+    g.add(mesh(new THREE.SphereGeometry(0.12, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.35, 1), 0xdfe6f0, 0, 0, 0));
   } else if (itemId === 'coins') {
     for (const [x, z] of [[0, 0], [0.06, 0.04], [-0.04, 0.05]]) g.add(mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.012, 10), 0xf0c840, x, 0.01, z));
   } else {

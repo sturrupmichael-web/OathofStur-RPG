@@ -50,6 +50,11 @@ export function shopForNpc(npcKey: string): ShopDef | undefined {
   return Object.values(SHOPS).find((s) => s.npc === npcKey);
 }
 
+/** Bankers are whoever the map calls a banker. */
+export function isBanker(npc: { role: string } | undefined): boolean {
+  return npc?.role === 'Banker';
+}
+
 export function shopBuys(shop: ShopDef, itemId: string): boolean {
   if (itemId === 'coins') return false;
   return shop.buys === 'all' || shop.buys.includes(itemId) || shop.stock.includes(itemId);

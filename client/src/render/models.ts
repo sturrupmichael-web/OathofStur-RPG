@@ -132,7 +132,43 @@ export const RESOURCE_STYLES: Record<string, PartStyle[]> = {
   tin_rock: rockParts(0xd4d8e0),
   iron_rock: rockParts(0x9a5238),
   coal_rock: rockParts(0x1c1c1c),
-  starsteel_rock: rockParts(0x8fe0ff, 0x2a8ad0),
+  gold_rock: rockParts(0xf0c840),
+  cobalt_rock: rockParts(0x3a5ad0),
+  verdite_rock: rockParts(0x2f8a5a),
+  glacite_rock: rockParts(0x8fe0ff, 0x2a8ad0),
+  gold_rock_stump: rockParts(0x6f6a62).slice(0, 3),
+  cobalt_rock_stump: rockParts(0x6f6a62).slice(0, 3),
+  verdite_rock_stump: rockParts(0x6f6a62).slice(0, 3),
+  glacite_rock_stump: rockParts(0x6f6a62).slice(0, 3),
+  // Starwood: pale bark and a canopy with a faint light in it.
+  starwood_tree: [
+    { geometry: trunk(0.15, 0.95), color: 0xd8d0c0, position: [0, 0.47, 0], vary: 0.06 },
+    ...roots(0xc8c0b0, 0.15),
+    { geometry: blob(0.4), color: 0x7fd8c8, emissive: 0x16483f, position: [0, 1.2, 0], scale: [1.1, 0.85, 1.1], vary: 0.1 },
+    { geometry: blob(0.3), color: 0x9fe8dc, emissive: 0x1d5a50, position: [0.26, 1.3, 0.1], vary: 0.1 },
+    { geometry: blob(0.27), color: 0x6fc8bc, emissive: 0x16483f, position: [-0.24, 1.32, -0.1], vary: 0.1 },
+    { geometry: blob(0.22), color: 0xcdf6ef, emissive: 0x2a7a6c, position: [0.02, 1.55, 0.02], vary: 0.1 },
+  ],
+  oak_tree_stump: [
+    { geometry: trunk(0.2, 0.22), color: 0x5e3f24, position: [0, 0.11, 0], vary: 0.08 },
+    { geometry: new THREE.CylinderGeometry(0.14, 0.14, 0.01, 7), color: 0xd9b47c, position: [0, 0.225, 0] },
+    ...roots(0x553820, 0.2),
+  ],
+  willow_tree_stump: [
+    { geometry: trunk(0.16, 0.22), color: 0x6f5a3a, position: [0, 0.11, 0], vary: 0.08 },
+    { geometry: new THREE.CylinderGeometry(0.115, 0.115, 0.01, 7), color: 0xd9c08c, position: [0, 0.225, 0] },
+    ...roots(0x5f4a2f, 0.16),
+  ],
+  yew_tree_stump: [
+    { geometry: trunk(0.18, 0.24), color: 0x3f2b1a, position: [0, 0.12, 0], vary: 0.08 },
+    { geometry: new THREE.CylinderGeometry(0.13, 0.13, 0.01, 7), color: 0xb08a5c, position: [0, 0.245, 0] },
+    ...roots(0x35241a, 0.18),
+  ],
+  starwood_tree_stump: [
+    { geometry: trunk(0.17, 0.24), color: 0xd8d0c0, position: [0, 0.12, 0], vary: 0.06 },
+    { geometry: new THREE.CylinderGeometry(0.12, 0.12, 0.01, 7), color: 0xcdf6ef, emissive: 0x2a7a6c, position: [0, 0.245, 0] },
+    ...roots(0xc8c0b0, 0.17),
+  ],
   shallow_fishing_spot: fishingParts(false),
   deep_fishing_spot: fishingParts(true),
 };
@@ -364,6 +400,120 @@ export function buildStation(defKey: string, near: NeighbourLookup = () => null,
       const fire = mesh(B(0.38, 0.14, 0.03), 0xff7a2a, 0, 0.24, 0.43, { emissive: 0xc02a00 });
       fire.name = FLICKER;
       g.add(fire);
+      break;
+    }
+    case 'gravestone': {
+      const stone = mesh(B(0.44, 0.62, 0.12), 0x9a958c, 0, 0.31, 0, { map: bricks });
+      stone.rotation.z = (k % 7) * 0.012 - 0.04;
+      g.add(stone, mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.12, 10, 1, false, 0, Math.PI).rotateX(Math.PI / 2), 0x9a958c, 0, 0.62, 0));
+      g.add(mesh(B(0.56, 0.08, 0.3), 0x7f7a72, 0, 0.04, 0, { map: bricks }));
+      for (const y of [0.42, 0.34, 0.26]) g.add(mesh(B(0.22, 0.02, 0.01), 0x6a665e, 0, y, 0.065));
+      break;
+    }
+    case 'cactus': {
+      g.add(mesh(C(0.16, 0.2, 1.1, 9), 0x3f7a42, 0, 0.55, 0));
+      g.add(mesh(new THREE.SphereGeometry(0.16, 9, 6), 0x47884a, 0, 1.1, 0));
+      for (const side of [-1, 1]) {
+        if ((k >> (side > 0 ? 1 : 2)) % 3 === 0) continue;
+        const arm = mesh(C(0.08, 0.09, 0.42, 7), 0x3f7a42, side * 0.2, 0.62, 0);
+        arm.rotation.z = -side * 1.1;
+        g.add(arm, mesh(C(0.08, 0.085, 0.32, 7), 0x47884a, side * 0.37, 0.84, 0));
+        g.add(mesh(new THREE.SphereGeometry(0.085, 8, 5), 0x47884a, side * 0.37, 1.0, 0));
+      }
+      // A few spines, and a flower on some.
+      for (let n = 0; n < 6; n++) g.add(mesh(new THREE.ConeGeometry(0.012, 0.07, 4).rotateX(Math.PI / 2), 0xe8e0c8, Math.cos(n) * 0.17, 0.3 + n * 0.12, Math.sin(n) * 0.17));
+      if (k % 3 === 0) g.add(mesh(new THREE.IcosahedronGeometry(0.07, 0), 0xe8505b, 0, 1.24, 0));
+      break;
+    }
+    case 'palm_tree': {
+      const bend = ((k % 5) - 2) * 0.05;
+      for (let n = 0; n < 5; n++) {
+        const seg = mesh(C(0.1 - n * 0.008, 0.12 - n * 0.008, 0.42, 7), 0x8a6a42, bend * n * 0.5, 0.21 + n * 0.4, 0, { map: planks });
+        seg.rotation.z = -bend;
+        g.add(seg);
+      }
+      const top: [number, number, number] = [bend * 2.2, 2.1, 0];
+      for (let n = 0; n < 7; n++) {
+        const a = (n / 7) * Math.PI * 2;
+        const frond = mesh(new THREE.ConeGeometry(0.1, 0.9, 4), 0x4f8f3a, top[0] + Math.cos(a) * 0.35, top[1] - 0.1, top[2] + Math.sin(a) * 0.35);
+        frond.rotation.set(Math.sin(a) * 1.1, -a, -Math.cos(a) * 1.1);
+        g.add(frond);
+      }
+      for (const [dx, dz] of [[0.08, 0.05], [-0.07, 0.06], [0.01, -0.09]]) g.add(mesh(new THREE.SphereGeometry(0.06, 7, 5), 0x8a6a2a, top[0] + dx, top[1] - 0.12, top[2] + dz));
+      break;
+    }
+    case 'aether_stone': {
+      // A seam of pale stone waiting for the Glyphcraft phase.
+      g.add(mesh(new THREE.DodecahedronGeometry(0.34, 0), 0x6f6a62, 0, 0.22, 0, { map: textures.rock() }));
+      for (const [x, y, z] of [[0.1, 0.42, 0.04], [-0.14, 0.34, -0.1], [0.04, 0.3, 0.26]] as const) {
+        g.add(mesh(new THREE.OctahedronGeometry(0.1, 0), 0xcfe8ff, x, y, z, { emissive: 0x2a4a7a }));
+      }
+      break;
+    }
+    case 'glyph_shrine': {
+      g.add(
+        mesh(new THREE.CylinderGeometry(0.44, 0.5, 0.14, 12), 0x8a8478, 0, 0.07, 0, { map: bricks }),
+        mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.62, 10), 0xd8d0c0, 0, 0.45, 0, { map: bricks }),
+        mesh(new THREE.CylinderGeometry(0.4, 0.36, 0.1, 12), 0xe8e0d0, 0, 0.8, 0),
+        mesh(new THREE.TorusGeometry(0.22, 0.03, 6, 18).rotateX(Math.PI / 2), 0x9ad8ff, 0, 0.92, 0, { emissive: 0x2a6a9a }),
+        mesh(new THREE.OctahedronGeometry(0.14, 0), 0xcfe8ff, 0, 1.1, 0, { emissive: 0x3a7aba }),
+      );
+      break;
+    }
+    case 'spinning_wheel': {
+      g.add(mesh(B(0.5, 0.06, 0.3), 0x7a5230, 0, 0.3, 0, { map: planks }));
+      for (const x of [-0.2, 0.2]) for (const z of [-0.1, 0.1]) g.add(mesh(C(0.025, 0.03, 0.3, 6), 0x6b4a2b, x, 0.15, z));
+      const wheel = mesh(new THREE.TorusGeometry(0.26, 0.025, 5, 16), 0x8a6240, -0.12, 0.56, 0);
+      g.add(wheel, mesh(C(0.03, 0.03, 0.1, 6).rotateX(Math.PI / 2), 0x5a3a20, -0.12, 0.56, 0));
+      for (let n = 0; n < 6; n++) {
+        const spoke = mesh(B(0.02, 0.5, 0.02), 0x8a6240, -0.12, 0.56, 0);
+        spoke.rotation.z = (n / 6) * Math.PI;
+        g.add(spoke);
+      }
+      g.add(mesh(C(0.05, 0.05, 0.22, 8), 0xe8e0c8, 0.18, 0.46, 0), mesh(C(0.02, 0.02, 0.34, 6), 0x6b4a2b, 0.18, 0.64, 0));
+      break;
+    }
+    case 'farming_patch': {
+      g.add(mesh(B(0.96, 0.08, 0.96), 0x5a4330, 0, 0.04, 0));
+      for (const z of [-0.28, 0, 0.28]) g.add(mesh(B(0.9, 0.06, 0.16), 0x6b5038, 0, 0.09, z));
+      for (const x of [-0.46, 0.46]) g.add(mesh(B(0.04, 0.16, 0.96), 0x7a5230, x, 0.08, 0, { map: planks }));
+      break;
+    }
+    case 'homestead_gate': {
+      g.add(
+        mesh(C(0.08, 0.1, 1.7, 8), 0x8a8478, -0.38, 0.85, 0, { map: bricks }),
+        mesh(C(0.08, 0.1, 1.7, 8), 0x8a8478, 0.38, 0.85, 0, { map: bricks }),
+        mesh(B(0.94, 0.14, 0.18), 0x8a8478, 0, 1.75, 0, { map: bricks }),
+      );
+      const veil = mesh(B(0.66, 1.4, 0.04), 0x7fc8e8, 0, 0.78, 0, { emissive: 0x2a6a9a });
+      Object.assign(veil.material as THREE.MeshLambertMaterial, { transparent: true, opacity: 0.6 });
+      g.add(veil);
+      break;
+    }
+    case 'cave_entrance': {
+      g.add(mesh(new THREE.DodecahedronGeometry(0.7, 0), 0x6f6a62, 0, 0.3, -0.2, { map: textures.rock() }));
+      g.add(mesh(new THREE.CylinderGeometry(0.34, 0.4, 0.9, 10, 1, false, 0, Math.PI).rotateY(Math.PI), 0x15120f, 0, 0.44, 0.12));
+      g.add(mesh(new THREE.DodecahedronGeometry(0.22, 0), 0x7d776e, -0.5, 0.14, 0.3, { map: textures.rock() }));
+      g.add(mesh(new THREE.DodecahedronGeometry(0.18, 0), 0x7d776e, 0.52, 0.12, 0.34, { map: textures.rock() }));
+      break;
+    }
+    case 'training_dummy': {
+      g.add(mesh(C(0.07, 0.09, 1.0, 7), 0x7a5230, 0, 0.5, 0, { map: planks }));
+      g.add(mesh(B(0.7, 0.07, 0.07), 0x7a5230, 0, 0.95, 0));
+      g.add(mesh(new THREE.SphereGeometry(0.17, 8, 6), 0xd9ccaa, 0, 1.2, 0));
+      g.add(mesh(B(0.34, 0.44, 0.2), 0xc8b48a, 0, 0.88, 0));
+      for (const r of [0.12, 0.08, 0.04]) g.add(mesh(new THREE.TorusGeometry(r, 0.012, 4, 14), 0xc0392b, 0, 0.9, 0.11));
+      break;
+    }
+    case 'archery_target': {
+      for (const x of [-0.22, 0.22]) {
+        const leg = mesh(C(0.035, 0.04, 1.1, 6), 0x7a5230, x, 0.5, 0.12);
+        leg.rotation.x = 0.25;
+        g.add(leg);
+      }
+      const rings = [0xf2ead8, 0x2a2a2a, 0x2f6a9a, 0xc0392b, 0xe8c04a];
+      rings.forEach((c, n) => g.add(mesh(new THREE.CylinderGeometry(0.42 - n * 0.08, 0.42 - n * 0.08, 0.06 + n * 0.005, 14).rotateX(Math.PI / 2), c, 0, 0.95, -0.02 + n * 0.01)));
+      g.add(mesh(C(0.012, 0.012, 0.3, 5).rotateX(Math.PI / 2), 0xe8e0c8, 0.08, 1.0, 0.16));
       break;
     }
     default:

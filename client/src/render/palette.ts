@@ -27,10 +27,28 @@ export const GROUND_COLORS: Record<string, number> = {
   bone_scatter: 0x6e5438,
   ditch: 0x3a3028,
   city_wall: 0x7c7b77,
+  sandstone_wall: 0xbfa172,
   building_wall: 0xc4b08e,
+  sandstone_paving: 0xc8b48a,
+  swamp: 0x55663e,
+  mountain: 0x8b8378,
+  lava: 0xd4471c,
+  agility_obstacle: 0x8a6a45,
 };
 
-export const WATER_COLORS = { shallow: 0x3c7fbb, deep: 0x2a5f99 };
+export const WATER_COLORS = { shallow: 0x3c7fbb, deep: 0x2a5f99, sea: 0x1d4a7a };
+
+/** Water, the sea and lava all pool rather than sit as ground. */
+export function isWaterKey(key: string): boolean {
+  return key === 'water' || key === 'deep_sea';
+}
+
+/** Walls that stand a tile tall, and the colour each is cut from. */
+export const WALL_TONES: Record<string, { tone: number; city: boolean }> = {
+  city_wall: { tone: 0x6e6862, city: true },
+  sandstone_wall: { tone: 0xbfa172, city: true },
+  building_wall: { tone: 0xc4b08e, city: false },
+};
 
 /** Grass tint by region, so Thornwood, the city and the farm read at a glance. */
 const GRASS_BY_AREA: Record<Area, number> = {
@@ -73,10 +91,20 @@ export type Area = 'grass' | 'forest' | 'town' | 'farm' | 'camp' | 'ash' | 'othe
 /** Named regions from the map that change how the land looks. */
 const REGION_AREAS: Record<string, Area> = {
   Kelmoor: 'town',
+  Falcrest: 'town',
+  Qadir: 'town',
+  Brightwater: 'town',
+  Saltcombe: 'town',
+  Hallowmere: 'town',
   'Hollin Farm': 'farm',
+  'Brightwater Pasture': 'farm',
+  'Brightwater Allotments': 'farm',
   'Goblin Encampment': 'camp',
   'The Ashen Waste': 'ash',
+  'Black Keep': 'ash',
   Thornwood: 'forest',
+  Elderglen: 'forest',
+  'Starwood Grove': 'forest',
 };
 
 /** Which look each tile gets: the map's named regions first, then tree density. */
@@ -120,7 +148,7 @@ export function buildTileColors(map: MapData, info: TileInfo, areas: Area[]): nu
   const keyAt = (x: number, y: number) => (x < 0 || y < 0 || x >= width || y >= height ? '' : info.terrainKey[y * width + x]);
   const waterNear = (x: number, y: number) => {
     let n = 0;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (keyAt(x + dx, y + dy) === 'water') n++;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (isWaterKey(keyAt(x + dx, y + dy))) n++;
     return n;
   };
   const grassColor = (i: number) => {
@@ -133,7 +161,8 @@ export function buildTileColors(map: MapData, info: TileInfo, areas: Area[]): nu
       const i = y * width + x;
       const key = info.terrainKey[i];
       let c: number;
-      if (key === 'water') c = waterNear(x, y) >= 8 ? WATER_COLORS.deep : WATER_COLORS.shallow;
+      if (key === 'deep_sea') c = WATER_COLORS.sea;
+      else if (key === 'water') c = waterNear(x, y) >= 8 ? WATER_COLORS.deep : WATER_COLORS.shallow;
       else if (isGrassy(key) || key === 'fence' || key === 'palisade') {
         // Blend with neighbouring grass so region edges fade instead of forming squares.
         let r = 0;

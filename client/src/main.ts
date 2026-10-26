@@ -1,11 +1,26 @@
-import { ITEMS, JsonMapSource, RESOURCE_DATA, SELL_RATE, WorldGrid, areaAt, type EntityId, type JsonMapFile, type MapSource, type Point, type PublicEntity } from '@rpg/shared';
-import kelmoor from '@rpg/shared/data/maps/kelmoor.json';
+import {
+  ITEMS,
+  JsonMapSource,
+  RESOURCE_DATA,
+  SELL_RATE,
+  WorldGrid,
+  areaAt,
+  isBanker,
+  shopForNpc,
+  type EntityId,
+  type JsonMapFile,
+  type MapSource,
+  type Point,
+  type PublicEntity,
+} from '@rpg/shared';
+import vellReaches from '@rpg/shared/data/maps/vell-reaches.json';
 import { LocalServer } from './net/LocalServer';
 import type { ServerConnection } from './net/ServerConnection';
 import { Renderer, type PickResult } from './render/Renderer';
 import { ClientState } from './state/ClientState';
 import { Hud } from './ui/Hud';
 import { Minimap } from './ui/Minimap';
+import { WorldMap } from './ui/WorldMap';
 import { PointerInput } from './ui/PointerInput';
 import { clearLocal, downloadSave, loadLocal, readSaveFile, storeLocal } from './ui/saves';
 import './styles.css';
@@ -14,7 +29,7 @@ const WORLD_SEED = 20261025;
 
 async function start(): Promise<void> {
   // Swap this for a Tiled/LDtk MapSource later; nothing below depends on the format.
-  const mapSource: MapSource = new JsonMapSource('kelmoor', kelmoor as JsonMapFile);
+  const mapSource: MapSource = new JsonMapSource('vell-reaches', vellReaches as unknown as JsonMapFile);
   const map = mapSource.load();
   const grid = new WorldGrid(map);
 
@@ -39,6 +54,7 @@ async function start(): Promise<void> {
     walk,
   );
 
+  const worldMap = new WorldMap(map, minimap.worldImage, state, walk);
   state.on('self', (self) => {
     hud.renderSelf(self);
     hud.renderInventory(self.inventory);
@@ -58,7 +74,14 @@ async function start(): Promise<void> {
 
   const GATHER_LABELS = { chop: 'Chop down', mine: 'Mine', net: 'Net', rod: 'Bait' } as const;
   const STATION_LABELS: Record<string, string> = { furnace: 'Smelt', anvil: 'Smith', range: 'Cook', bank_booth: 'Bank' };
-  const NPC_ROLES: Record<string, string> = Object.fromEntries(Object.values(map.defs.npcs).map((n) => [n.key, n.role]));
+  /** What each person offers, from the role the map gives them. */
+  const NPC_ACTIONS: Record<string, string> = Object.fromEntries(
+    Object.values(map.defs.npcs).flatMap((n): [string, string][] => {
+      if (isBanker(n)) return [[n.key, 'Bank']];
+      if (shopForNpc(n.key)) return [[n.key, 'Trade']];
+      return [];
+    }),
+  );
 
   /** The left-click action on an entity, if it has one besides walking. */
   const primaryAction = (e: PublicEntity | undefined): { label: string; run: () => void } | null => {
@@ -68,9 +91,8 @@ async function start(): Promise<void> {
     const data = e.kind === 'resource' && e.defKey ? RESOURCE_DATA[e.defKey] : undefined;
     if (data && !e.depleted) return { label: GATHER_LABELS[data.verb], run: use('gather') };
     if (e.kind === 'station' && e.defKey && STATION_LABELS[e.defKey]) return { label: STATION_LABELS[e.defKey], run: use('use') };
-    const role = e.kind === 'npc' && e.defKey ? NPC_ROLES[e.defKey] : undefined;
-    if (role === 'shop') return { label: 'Trade', run: use('use') };
-    if (role === 'bank') return { label: 'Bank', run: use('use') };
+    const npcAction = e.kind === 'npc' && e.defKey ? NPC_ACTIONS[e.defKey] : undefined;
+    if (npcAction) return { label: npcAction, run: use('use') };
     return null;
   };
 
@@ -273,10 +295,12 @@ async function start(): Promise<void> {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
     keys.add(e.key.toLowerCase());
     if (e.key === 'Escape') {
-      if (!hud.menuOpen && state.self?.ui) server.send({ type: 'closeInterface' });
+      if (worldMap.isOpen) worldMap.hide();
+      else if (!hud.menuOpen && state.self?.ui) server.send({ type: 'closeInterface' });
       hud.hideMenu();
     }
     if (e.key.toLowerCase() === 'r') renderer.buildings.roofsEnabled = !renderer.buildings.roofsEnabled;
+    if (e.key.toLowerCase() === 'm') worldMap.toggle();
   });
   window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
   window.addEventListener('blur', () => keys.clear());
@@ -297,6 +321,7 @@ async function start(): Promise<void> {
 
     renderer.frame(now);
     minimap.draw(now);
+    worldMap.draw();
     const me = state.player?.data;
     const here = me ? (areaAt(map, me.x, me.y)?.name ?? '') : '';
     if (regionLabel.textContent !== here) regionLabel.textContent = here;
@@ -337,7 +362,7 @@ async function start(): Promise<void> {
   requestAnimationFrame(frame);
 
   // Test hook for automated browser checks: only with #debug in the address.
-  if (location.hash === '#debug') Object.assign(window, { __oath: { state, send: (m: Parameters<ServerConnection['send']>[0]) => server.send(m) } });
+  if (location.hash === '#debug') Object.assign(window, { __oath: { state, renderer, send: (m: Parameters<ServerConnection['send']>[0]) => server.send(m) } });
 
   await server.connect('Wanderer', loadLocal());
 }

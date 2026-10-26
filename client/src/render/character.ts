@@ -123,7 +123,120 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     hatColor: 0xffffff,
     holding: 'ladle',
   },
+  priest: {
+    tunic: 0xe8e2d0,
+    trim: 0xd4a73a,
+    trousers: 0x6a6252,
+    boots: 0x3a3028,
+    robe: 0xf0ead8,
+    belt: 0x8a7a52,
+    hair: 0x8a8a8a,
+    hairStyle: 'short',
+    hat: 'hood',
+    hatColor: 0xe8e2d0,
+  },
+  noble: {
+    tunic: 0x5b2a6a,
+    trim: 0xe8c04a,
+    trousers: 0x2a1a3a,
+    boots: 0x2a1a10,
+    robe: 0x6b3a7a,
+    belt: 0x3a2a1a,
+    buckle: 0xe8c04a,
+    hair: 0x3a2a1a,
+    hairStyle: 'short',
+    cape: 0x7a1f3a,
+  },
+  guard: {
+    tunic: 0x8a8f99,
+    trim: 0xd4a73a,
+    trousers: 0x3a3f49,
+    boots: 0x2a2a2a,
+    belt: 0x2a2a2a,
+    buckle: 0xb8bcc4,
+    hair: 0x3a2a1a,
+    hairStyle: 'short',
+    hat: 'cap',
+    hatColor: 0x9aa0aa,
+    holding: 'staff',
+  },
+  ranger: {
+    tunic: 0x3f6a3a,
+    trim: 0x8a6a3a,
+    trousers: 0x4a3a28,
+    boots: 0x2f2318,
+    belt: 0x5b3a20,
+    pouch: 0x7a5230,
+    hair: 0x6a4a2a,
+    hairStyle: 'short',
+    hat: 'hood',
+    hatColor: 0x35592f,
+  },
+  farmer: {
+    tunic: 0xc8a85a,
+    trousers: 0x6a5a3a,
+    boots: 0x4a3020,
+    apron: 0xd9ccaa,
+    belt: 0x6a4a2a,
+    hair: 0xc8b070,
+    hairStyle: 'short',
+    hat: 'cap',
+    hatColor: 0xd8c070,
+  },
 };
+
+/**
+ * The look an NPC gets from what the map calls them. The world has dozens of
+ * named people, so they share a handful of looks rather than one each.
+ */
+const STYLE_BY_ROLE: Record<string, string> = {
+  Shopkeeper: 'shopkeeper',
+  'Stall holder': 'shopkeeper',
+  'Trade clerk': 'banker',
+  Banker: 'banker',
+  Librarian: 'elder_maren',
+  Priest: 'priest',
+  Swordsmith: 'aldric',
+  Smith: 'aldric',
+  Smelter: 'aldric',
+  Armourer: 'aldric',
+  'Scimitar seller': 'aldric',
+  Tanner: 'aldric',
+  'Sawmill operator': 'aldric',
+  Shipwright: 'aldric',
+  Barkeep: 'cook_tobin',
+  'Head chef': 'cook_tobin',
+  'Castle cook': 'cook_tobin',
+  Apothecary: 'elder_maren',
+  'Herb witch': 'elder_maren',
+  'Glyph merchant': 'elder_maren',
+  'Glyphcraft tutor': 'elder_maren',
+  'Master crafter': 'shopkeeper',
+  'Gem trader': 'shopkeeper',
+  Fletcher: 'ranger',
+  'Hunter supplier': 'ranger',
+  'Range master': 'ranger',
+  'Fishing supplier': 'ranger',
+  'Farming supplier': 'farmer',
+  'Farming tools': 'farmer',
+  'Agility trainer': 'guard',
+  'Combat instructor': 'guard',
+  'Bounty master': 'guard',
+  Archaeologist: 'town_guide',
+  'Estate agent': 'town_guide',
+  'Ruler of Kelmoor': 'noble',
+  'Ruler of Qadir': 'noble',
+  'Lord of Falcrest': 'noble',
+  'Lord of Brightwater': 'noble',
+};
+
+/** Which look to build for an NPC: their own if they have one, else their role's. */
+export function styleForNpc(key: string, role: string | undefined): string {
+  if (CHARACTER_STYLES[key]) return key;
+  if (role && STYLE_BY_ROLE[role]) return STYLE_BY_ROLE[role];
+  if (role?.includes('guard')) return 'guard';
+  return 'town_guide';
+}
 
 export interface CharacterRig {
   root: THREE.Group;

@@ -1,6 +1,6 @@
 import type { MapData } from '@rpg/shared';
 import type { Building } from './buildings';
-import { hash2, isBridge, type Area, type TileInfo } from './palette';
+import { hash2, isBridge, isWaterKey, type Area, type TileInfo } from './palette';
 
 /** Height of the river surface. Small ponds and the fountain sit at their own level. */
 export const WATER_Y = -0.3;
@@ -100,7 +100,7 @@ export function buildHeightmap(map: MapData, info: TileInfo, areas: Area[], buil
   const inMap = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H;
   const bridge = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) if (isBridge(info, i)) bridge[i] = 1;
-  const isWaterTile = (x: number, y: number) => inMap(x, y) && (info.terrainKey[tileIndex(x, y)] === 'water' || bridge[tileIndex(x, y)] === 1);
+  const isWaterTile = (x: number, y: number) => inMap(x, y) && (isWaterKey(info.terrainKey[tileIndex(x, y)]) || bridge[tileIndex(x, y)] === 1);
 
   // Split water into the river (big, carves a valley at WATER_Y) and pools
   // (the fountain, the park pond, the Thornwood pond) that sit at local ground level.
@@ -163,10 +163,23 @@ export function buildHeightmap(map: MapData, info: TileInfo, areas: Area[], buil
   // 2. Rolling hills, pulled down into a valley near the river. The mine sits
   // on a plateau and the Ashen Waste is a raised moor beyond the ditch.
   const lift = new Float32Array(W * H);
-  const LIFT_BY_AREA: Record<string, number> = { 'Copperback Mine': 1.3, 'The Ashen Waste': 0.7, 'Dig Site': 0.3 };
+  const LIFT_BY_AREA: Record<string, number> = {
+    'Copperback Mine': 1.3,
+    'The Ashen Waste': 0.7,
+    'Dig Site': 0.3,
+    'Greyspine Mountains': 1.6,
+    'Ironcrag Peaks': 1.6,
+  };
   for (const a of map.areas) {
     const l = LIFT_BY_AREA[a.name];
     if (l) for (let y = a.y; y < a.y + a.h; y++) for (let x = a.x; x < a.x + a.w; x++) lift[tileIndex(x, y)] = l;
+  }
+  // Mountains are real high ground rather than blocks on flat land, and lava
+  // sits in a hollow. Both are smoothed with everything else below.
+  const LIFT_BY_TILE: Record<string, number> = { mountain: 2.6, lava: -0.5 };
+  for (let i = 0; i < W * H; i++) {
+    const l = LIFT_BY_TILE[info.terrainKey[i]];
+    if (l !== undefined) lift[i] += l;
   }
   const raw = new Float32Array(n);
   for (let cy = 0; cy < ch; cy++) {
@@ -184,7 +197,7 @@ export function buildHeightmap(map: MapData, info: TileInfo, areas: Area[], buil
   // 3. Level the city, farm and camp and soften roads: blend toward a heavily blurred copy.
   const blurred = blur(blur(raw, cw, ch, 4), cw, ch, 4);
   const flat = new Float32Array(n);
-  const BUILT = new Set(['building_wall', 'city_wall', 'stone_floor', 'wooden_floor', 'door', 'fence', 'palisade', 'cobblestone', 'sewer_hatch', 'crop_field', 'flower_bed', 'trampled_mud', 'bone_scatter']);
+  const BUILT = new Set(['building_wall', 'city_wall', 'sandstone_wall', 'stone_floor', 'wooden_floor', 'door', 'fence', 'palisade', 'cobblestone', 'sandstone_paving', 'sewer_hatch', 'crop_field', 'flower_bed', 'trampled_mud', 'bone_scatter', 'agility_obstacle', 'farming_patch']);
   const isBuilt = (i: number) => BUILT.has(info.terrainKey[i]);
   const isRoad = (i: number) => info.terrainKey[i] === 'dirt_path' || info.terrainKey[i] === 'sand';
   for (let cy = 0; cy < ch; cy++) {

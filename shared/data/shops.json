@@ -1,14 +1,31 @@
 {
-  "comment": "Shops, keyed by id. npc is the townsfolk key that runs it. Stock never runs out. Shops pay sellRate x value for anything in `buys` (\"all\" = any item except coins).",
+  "comment": "Shops, keyed by id. npc is the key of the person who runs it (the slug of their name on the map). Stock never runs out. Shops pay sellRate x value for anything in `buys` (\"all\" = any item except coins). Shops whose stock belongs to a later phase are added with that phase.",
   "sellRate": 0.4,
   "shops": {
-    "general_store": { "name": "Kelmoor General Store", "npc": "shopkeeper", "buys": "all",
+    "general_store": { "name": "Kelmoor General Store", "npc": "mara", "buys": "all",
       "stock": ["bronze_axe", "iron_axe", "bronze_pickaxe", "iron_pickaxe", "small_net", "fishing_rod", "fishing_bait", "hammer"] },
     "aldrics_blades": { "name": "Aldric's Blades", "npc": "aldric",
       "buys": ["bronze_dagger", "bronze_sword", "iron_dagger", "iron_sword", "steel_dagger", "steel_sword", "bronze_bar", "iron_bar", "steel_bar"],
       "stock": ["bronze_dagger", "bronze_sword", "iron_dagger", "iron_sword"] },
-    "blue_gull_kitchen": { "name": "Blue Gull Kitchen", "npc": "cook_tobin",
+    "kelmoor_smithy": { "name": "Brenna's Smithy", "npc": "brenna",
+      "buys": ["copper_ore", "tin_ore", "iron_ore", "coal", "gold_ore", "bronze_bar", "iron_bar", "steel_bar", "gold_bar"],
+      "stock": ["hammer", "bronze_bar", "iron_bar", "steel_bar"] },
+    "blue_gull_kitchen": { "name": "The Blue Gull", "npc": "tamsin",
       "buys": ["raw_minnows", "raw_perch", "raw_pike", "minnows", "perch", "pike"],
-      "stock": ["minnows", "perch"] }
+      "stock": ["minnows", "perch"] },
+    "kelmoor_sawmill": { "name": "Kelmoor Sawmill", "npc": "jory",
+      "buys": ["logs", "oak_logs", "willow_logs", "yew_logs", "starwood_logs", "ashwood_logs"],
+      "stock": ["bronze_axe", "iron_axe", "steel_axe"] },
+    "falcrest_forge": { "name": "Falcrest Forge", "npc": "gunnar",
+      "buys": ["copper_ore", "tin_ore", "iron_ore", "coal", "gold_ore", "cobalt_ore", "verdite_ore", "glacite_ore", "bronze_bar", "iron_bar", "steel_bar", "gold_bar"],
+      "stock": ["hammer", "steel_axe", "steel_pickaxe", "iron_bar", "steel_bar"] },
+    "qadir_smelter": { "name": "Qadir Smelter", "npc": "nazir",
+      "buys": ["gold_ore", "gold_bar", "coal", "cobalt_ore", "verdite_ore", "glacite_ore"],
+      "stock": ["coal", "gold_bar"] },
+    "brightwater_store": { "name": "Brightwater Store", "npc": "dunstan", "buys": "all",
+      "stock": ["bronze_axe", "bronze_pickaxe", "small_net", "hammer"] },
+    "net_and_tackle": { "name": "Net & Tackle", "npc": "gerrick",
+      "buys": ["raw_minnows", "raw_perch", "raw_pike", "small_net", "fishing_rod", "fishing_bait"],
+      "stock": ["small_net", "fishing_rod", "fishing_bait"] }
   }
 }

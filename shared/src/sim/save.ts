@@ -2,7 +2,13 @@ import type { Point } from '../map/types';
 import { INVENTORY_SIZE, ITEMS, type Inventory, type ItemStack } from './items';
 import { MAX_XP, SKILLS, startingXp, type SkillXp } from './skills';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
+
+/**
+ * Version 1 saves hold Kelmoor's own coordinates. Kelmoor now sits inside the
+ * Vell Reaches at this offset, so an old character keeps the spot they left.
+ */
+const KELMOOR_OFFSET = { x: 130, y: 70 };
 
 /**
  * Everything needed to bring a character back. XP is stored, levels are
@@ -33,9 +39,13 @@ export function parseSave(raw: unknown): SaveData | null {
   const s = raw as Partial<SaveData>;
   if (typeof s.version !== 'number' || s.version < 1 || s.version > SAVE_VERSION) return null;
   if (typeof s.name !== 'string' || !s.position || typeof s.skills !== 'object' || !Array.isArray(s.inventory)) return null;
-  const x = Number(s.position.x);
-  const y = Number(s.position.y);
+  let x = Number(s.position.x);
+  let y = Number(s.position.y);
   if (!Number.isInteger(x) || !Number.isInteger(y)) return null;
+  if (s.version < 2) {
+    x += KELMOOR_OFFSET.x;
+    y += KELMOOR_OFFSET.y;
+  }
 
   const skills = startingXp();
   for (const { id } of SKILLS) {

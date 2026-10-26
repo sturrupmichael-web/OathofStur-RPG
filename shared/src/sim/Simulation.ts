@@ -10,7 +10,7 @@ import {
   type UiView,
 } from '../protocol/messages';
 import { Rng } from '../rng';
-import { RECIPES, RECIPE_BY_ID, SELL_RATE, SHOPS, STATION_TITLES, burnChance, shopBuys, shopForNpc, type StationKind } from './crafting';
+import { RECIPES, RECIPE_BY_ID, SELL_RATE, SHOPS, STATION_TITLES, burnChance, isBanker, shopBuys, shopForNpc, type StationKind } from './crafting';
 import type { Entity, EntityId, GroundItemEntity, ObjectEntity, PlayerEntity } from './entities';
 import { ATTEMPT_TICKS, EXAMINE, RESOURCE_DATA, gatherChance, requiredLevel } from './gathering';
 import { NEIGHBOURS_4, NEIGHBOURS_8, WorldGrid } from './grid';
@@ -33,6 +33,11 @@ import { SAVE_VERSION, type SaveData } from './save';
 import { MAX_XP, SKILLS, combatLevel, levelForXp, requirementLevel, startingXp, type SkillId } from './skills';
 
 export const TICK_MS = 600;
+/**
+ * How far around a player entities are sent. The world is far larger than the
+ * screen, so only what is near the player goes over the wire.
+ */
+export const VIEW_RADIUS = 48;
 /** Dropped items stay on the ground for two minutes. */
 export const GROUND_ITEM_TICKS = 200;
 /** What a new character carries. */
@@ -136,7 +141,7 @@ export class Simulation {
       player.id,
       save
         ? `Welcome back, ${player.name}.`
-        : 'Welcome to Kelmoor. Click the ground to walk, right-click for options. Chop trees with your axe, net fish in the River Vell, and visit the General Store for more tools.',
+        : 'Welcome to Kelmoor, in the Vell Reaches. Click the ground to walk, right-click for options. Chop trees with your axe, net fish in the River Vell, and visit the General Store for more tools.',
     );
     return player.id;
   }
@@ -535,8 +540,7 @@ export class Simulation {
 
   private usable(target: ObjectEntity): boolean {
     if (target.kind === 'station') return STATIONS.includes(target.defKey) || target.defKey === 'bank_booth';
-    const role = this.map.defs.npcs[target.defKey]?.role;
-    return role === 'bank' || (role === 'shop' && !!shopForNpc(target.defKey));
+    return isBanker(this.map.defs.npcs[target.defKey]) || !!shopForNpc(target.defKey);
   }
 
   /** Opens the window for a station, banker or shopkeeper once the player is next to it. */
@@ -549,7 +553,7 @@ export class Simulation {
     // Bankers stand behind their booths, so allow a counter between.
     const reach = target.kind === 'npc' ? 2 : 1;
     if (Math.max(Math.abs(target.x - player.x), Math.abs(target.y - player.y)) > reach) return;
-    if (target.defKey === 'bank_booth' || this.map.defs.npcs[target.defKey]?.role === 'bank') {
+    if (target.defKey === 'bank_booth' || isBanker(this.map.defs.npcs[target.defKey])) {
       player.ui = { kind: 'bank', at: target.id };
       return;
     }
@@ -756,8 +760,13 @@ export class Simulation {
   }
 
   /** Everything is visible in single-player; a view radius slots in here for multiplayer. */
-  private visibleTo(_player: PlayerEntity): PublicEntity[] {
-    return [...this.entities.values()].map((e) => this.toPublic(e));
+  private visibleTo(player: PlayerEntity): PublicEntity[] {
+    const out: PublicEntity[] = [];
+    for (const e of this.entities.values()) {
+      if (e.id !== player.id && Math.max(Math.abs(e.x - player.x), Math.abs(e.y - player.y)) > VIEW_RADIUS) continue;
+      out.push(this.toPublic(e));
+    }
+    return out;
   }
 
   private toPublic(e: Entity): PublicEntity {

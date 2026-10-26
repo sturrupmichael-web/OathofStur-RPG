@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { WorldGrid } from '../src/sim/grid';
 import { findPath } from '../src/sim/pathfinding';
-import { loadWorld } from './helpers';
+import { kx, ky, loadWorld } from './helpers';
 
 describe('findPath', () => {
   const map = loadWorld();
@@ -9,7 +9,7 @@ describe('findPath', () => {
 
   it('finds a valid path out of the city and across the river to the dig site', () => {
     const start = map.spawn;
-    const target = { x: 109, y: 40 };
+    const target = { x: kx(109), y: ky(40) };
     const { path, reachedGoal } = findPath(grid, start, [target], target);
     expect(reachedGoal).toBe(true);
     expect(path[path.length - 1]).toEqual(target);
@@ -22,12 +22,12 @@ describe('findPath', () => {
   });
 
   it('reaches the north-east Ashen Waste over the second ditch crossing', () => {
-    const target = { x: 115, y: 5 };
+    const target = { x: kx(115), y: ky(5) };
     expect(findPath(grid, map.spawn, [target], target).reachedGoal).toBe(true);
   });
 
   it('never cuts corners diagonally', () => {
-    const { path } = findPath(grid, map.spawn, [{ x: 10, y: 40 }], { x: 10, y: 40 });
+    const { path } = findPath(grid, map.spawn, [{ x: kx(10), y: ky(40) }], { x: kx(10), y: ky(40) });
     let prev = map.spawn;
     for (const step of path) {
       if (step.x !== prev.x && step.y !== prev.y) {
@@ -39,7 +39,7 @@ describe('findPath', () => {
   });
 
   it('walks as close as possible to an unreachable tile', () => {
-    const water = { x: 101, y: 30 }; // middle of the River Vell
+    const water = { x: kx(101), y: ky(30) }; // middle of the River Vell
     const { path, reachedGoal } = findPath(grid, map.spawn, [water], water);
     expect(reachedGoal).toBe(false);
     const end = path[path.length - 1];

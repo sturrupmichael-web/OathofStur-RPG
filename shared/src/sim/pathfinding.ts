@@ -4,7 +4,7 @@ import { NEIGHBOURS_8, type WorldGrid } from './grid';
 export interface PathOptions {
   /** Extra per-step rule on top of static collision (e.g. gate requirements). */
   canStep?: (fromX: number, fromY: number, toX: number, toY: number) => boolean;
-  /** Search budget; large enough for any path on a 100x60 map. */
+  /** Search budget. The default covers the whole grid, however large. */
   maxNodes?: number;
 }
 
@@ -31,8 +31,8 @@ export function findPath(
   target: Point,
   options: PathOptions = {},
 ): PathResult {
-  const { canStep, maxNodes = 20000 } = options;
   const w = grid.width;
+  const { canStep, maxNodes = Math.max(20000, w * grid.height) } = options;
   const startIndex = grid.index(start.x, start.y);
   const goalSet = new Set(goals.filter((g) => grid.inBounds(g.x, g.y)).map((g) => grid.index(g.x, g.y)));
 

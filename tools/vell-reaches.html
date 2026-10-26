@@ -1,0 +1,1052 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Vell Reaches · Oath of Stur</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@700&family=Alegreya+Sans:wght@400;500;700&family=Pixelify+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: one-screen tool. Stone toolbar on top, the map canvas fills the stage, an interface-style side panel with a minimap (bottom sheet on phones). Single dark look, committed. */
+:root{
+  --ink:#16120d;
+  --stone:#3b3227;
+  --stone-edge:#5a4c3a;
+  --stone-lo:#211b14;
+  --parch:#e8dcbf;
+  --muted:#a9997a;
+  --gold:#ff981f;
+  --yellow:#ffe14a;
+  --ok:#7cc356;
+  --no:#e3603f;
+  --f-display:"Alegreya SC", Georgia, serif;
+  --f-body:"Alegreya Sans", system-ui, sans-serif;
+  --f-pixel:"Pixelify Sans", ui-monospace, monospace;
+  color-scheme:dark;
+}
+html{box-sizing:border-box;height:100%}
+*,*::before,*::after{box-sizing:inherit}
+body{height:100%;background:var(--ink);color:var(--parch);font-family:var(--f-body);font-size:15px;line-height:1.45;overflow:hidden}
+.app{height:100%;display:flex;flex-direction:column;gap:10px;padding-block:12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;min-width:0}
+h1{margin:0;font-family:var(--f-display);font-size:30px;line-height:1;color:var(--gold);letter-spacing:.02em;text-shadow:2px 2px 0 #000;text-wrap:balance}
+.sub{font-family:var(--f-pixel);font-size:13px;color:var(--muted);letter-spacing:.04em}
+.tools{display:flex;flex-wrap:wrap;gap:6px}
+.btn{font-family:var(--f-body);font-weight:700;font-size:14px;color:var(--gold);background:linear-gradient(#54473699,#2c241b);border:1px solid var(--stone-lo);box-shadow:inset 0 1px 0 #ffffff14,0 1px 0 #000;padding:7px 12px;border-radius:3px;cursor:pointer;min-width:38px;line-height:1.1}
+.btn:hover{color:var(--yellow)}
+.btn[aria-pressed="true"]{color:var(--yellow);background:#1d1812;box-shadow:inset 0 1px 3px #000}
+.btn:focus-visible,canvas:focus-visible,summary:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
+.main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:10px}
+.stage{position:relative;min-height:0;min-width:0;background:#0c0a07;border:3px solid var(--stone-lo);box-shadow:0 0 0 1px var(--stone-edge),inset 0 0 18px #000;border-radius:4px;overflow:hidden}
+canvas#map{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.zoomtag{position:absolute;right:8px;bottom:8px;font-family:var(--f-pixel);font-size:12px;color:var(--parch);background:#000a;padding:2px 7px;border-radius:2px;pointer-events:none;font-variant-numeric:tabular-nums}
+.toast{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:var(--stone);border:1px solid var(--stone-lo);box-shadow:0 2px 8px #000a;color:var(--yellow);font-weight:700;padding:6px 12px;border-radius:3px;white-space:nowrap;max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis}
+.panel{min-height:0;min-width:0;overflow:auto;background:var(--stone);border:2px solid var(--stone-lo);box-shadow:inset 0 0 0 1px var(--stone-edge);border-radius:4px;padding:14px;display:flex;flex-direction:column;gap:16px}
+.mini{display:block;width:100%;height:auto;aspect-ratio:4/3;max-width:100%;border:2px solid var(--stone-lo);box-shadow:0 0 0 1px var(--stone-edge);border-radius:3px;cursor:pointer;touch-action:none;background:#0c0a07}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.readout{display:flex;flex-direction:column;gap:3px}
+.coords{font-family:var(--f-pixel);font-weight:600;font-size:28px;line-height:1.1;color:var(--yellow);text-shadow:2px 2px 0 #000;font-variant-numeric:tabular-nums}
+.terrain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:17px;font-weight:500}
+.chip{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:2px;border:1px solid currentColor}
+.chip.ok{color:var(--ok)}
+.chip.no{color:var(--no)}
+.area{color:var(--gold);font-weight:700}
+.extra{color:var(--parch);font-size:14px;min-height:1.2em}
+.extra.danger{color:var(--no);font-weight:700}
+.hint{margin:0;color:var(--muted);font-size:14px}
+.stock{font-size:13px;color:var(--muted);min-height:0}
+.stock b{color:var(--parch);font-weight:700}
+.skills summary{cursor:pointer;font-family:var(--f-display);font-size:18px;color:var(--gold);list-style:none}
+.skills summary::-webkit-details-marker{display:none}
+.skills summary::after{content:" ▾";font-size:13px;color:var(--muted)}
+.skills:not([open]) summary::after{content:" ▸"}
+.sgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:10px}
+.sbtn{font-family:var(--f-pixel);font-size:12px;color:var(--yellow);background:#2a2219;border:1px solid var(--stone-lo);box-shadow:inset 0 1px 0 #ffffff10;padding:6px 4px;border-radius:2px;cursor:pointer;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.sbtn:hover{background:#352b20}
+.sbtn[aria-pressed="true"]{background:#14100b;color:var(--gold);box-shadow:inset 0 1px 3px #000}
+.sbtn:focus-visible,.site:focus-visible{outline:2px solid var(--yellow);outline-offset:1px}
+.sinfo{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.sinfo h3{margin:0;font-family:var(--f-display);font-size:17px;color:var(--yellow)}
+.sinfo p{margin:0;font-size:14px}
+.sites{display:flex;flex-direction:column;gap:4px}
+.site{font-family:var(--f-body);font-size:14px;font-weight:500;color:var(--parch);background:none;border:0;border-left:2px solid var(--gold);padding:3px 8px;text-align:left;cursor:pointer}
+.site:hover{color:var(--yellow);background:#ffffff08}
+.site span{color:var(--muted);font-family:var(--f-pixel);font-size:11px;margin-left:6px;font-variant-numeric:tabular-nums}
+.legend summary{cursor:pointer;font-family:var(--f-display);font-size:18px;color:var(--gold);list-style:none}
+.legend summary::-webkit-details-marker{display:none}
+.legend summary::after{content:" ▾";font-size:13px;color:var(--muted)}
+.legend:not([open]) summary::after{content:" ▸"}
+.lgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin-top:10px}
+.li{display:flex;align-items:center;gap:7px;min-width:0;font-size:13px}
+.li canvas{width:20px;height:20px;image-rendering:pixelated;flex:none;border:1px solid #000}
+.li code{font-family:var(--f-pixel);color:var(--muted);font-size:12px;width:10px;flex:none}
+.li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.export{display:flex;flex-direction:column;gap:8px}
+.btn.wide{width:100%;padding:10px 12px;font-size:15px}
+.note{margin:0;color:var(--muted);font-size:13px}
+#dump{width:100%;height:120px;font-family:var(--f-pixel);font-size:11px;background:#1b1610;color:var(--parch);border:1px solid var(--stone-lo);resize:vertical}
+@media (max-width:760px){
+  h1{font-size:24px}
+  .main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto}
+  .panel{max-height:38vh;padding:12px;gap:12px}
+  .coords{font-size:22px}
+  .btn{padding:7px 10px}
+  .mini{max-width:220px}
+}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>The Vell Reaches</h1>
+      <span class="sub">Region map · 384 × 288 tiles</span>
+    </div>
+    <div class="tools" role="toolbar" aria-label="Map controls">
+      <button class="btn" id="tLabels" aria-pressed="true">Labels</button>
+      <button class="btn" id="tGrid" aria-pressed="false">Grid</button>
+      <button class="btn" id="tFollow" aria-pressed="true">Follow</button>
+      <button class="btn" id="tRun" aria-pressed="false">Run</button>
+      <button class="btn" id="zOut" aria-label="Zoom out">−</button>
+      <button class="btn" id="zIn" aria-label="Zoom in">+</button>
+      <button class="btn" id="fit">Whole region</button>
+    </div>
+  </header>
+  <div class="main">
+    <div class="stage" id="stage">
+      <canvas id="map" tabindex="0" aria-label="Tile map of the Vell Reaches. Arrow keys pan, plus and minus zoom."></canvas>
+      <div class="zoomtag" id="zt"></div>
+      <div class="toast" id="toast" hidden></div>
+    </div>
+    <aside class="panel">
+      <canvas class="mini" id="mini" width="384" height="288" aria-label="Minimap. Tap to jump there."></canvas>
+      <section class="readout" aria-live="polite">
+        <div class="eyebrow">Tile</div>
+        <div class="coords" id="rc">190, 119</div>
+        <div class="terrain"><span id="rt">Cobblestone</span><span class="chip ok" id="rw">Walkable</span></div>
+        <div class="area" id="ra">Kelmoor Square</div>
+        <div class="extra" id="rx"></div>
+        <div class="stock" id="rs"></div>
+      </section>
+      <details class="skills" id="skills" open>
+        <summary>Skills</summary>
+        <div class="sgrid" id="sgrid"></div>
+        <div class="sinfo" id="sinfo"><p class="note">Pick a skill to see where it's trained. Tap a place to jump there.</p></div>
+      </details>
+      <p class="hint">Tap a tile to walk there; the camera follows you. Drag to pan, scroll or pinch to zoom. Yellow dots are NPCs.</p>
+      <details class="legend" id="legend">
+        <summary>Key</summary>
+        <div class="lgrid" id="lgrid"></div>
+      </details>
+      <section class="export">
+        <button class="btn wide" id="copy">Copy region JSON</button>
+        <p class="note">Rows of one-character tile codes, plus the key, walkability, spawn point, named areas and NPC spawns.</p>
+        <textarea id="dump" hidden readonly aria-label="Region JSON"></textarea>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script>
+(()=>{
+/* =========================================================
+   World setup
+   ========================================================= */
+const W=384,H=288,TS=16,OX=130,OY=70,DITCH=83;
+const map=new Array(W*H).fill('.');
+const ROADSET=new Set(),SITES=[],SITEWARN=[];
+let ox=0,oy=0; // local offset used while stamping Kelmoor
+const inb=(x,y)=>x>=0&&y>=0&&x<W&&y<H;
+const gget=(x,y)=>inb(x,y)?map[y*W+x]:null;
+const gset=(x,y,c)=>{if(inb(x,y))map[y*W+x]=c};
+const get=(x,y)=>gget(x+ox,y+oy);
+const set=(x,y,c)=>gset(x+ox,y+oy,c);
+const rect=(x,y,w,h,c)=>{for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++)set(i,j,c)};
+const outline=(x,y,w,h,c)=>{for(let i=x;i<x+w;i++){set(i,y,c);set(i,y+h-1,c)}for(let j=y;j<y+h;j++){set(x,j,c);set(x+w-1,j,c)}};
+const disc=(cx,cy,r,c,ry=r)=>{for(let y=Math.floor(cy-ry);y<=cy+ry;y++)for(let x=Math.floor(cx-r);x<=cx+r;x++){const dx=(x-cx)/r,dy=(y-cy)/ry;if(dx*dx+dy*dy<=1)set(x,y,c)}};
+function building(x,y,w,h,floor,doors,wall='B'){rect(x,y,w,h,floor);outline(x,y,w,h,wall);for(const[dx,dy]of doors)set(x+dx,y+dy,'+')}
+function road(pts,w,c='d'){
+  for(let k=0;k<pts.length-1;k++){
+    const[x0,y0]=pts[k],[x1,y1]=pts[k+1];const n=Math.max(Math.abs(x1-x0),Math.abs(y1-y0))||1;
+    for(let s=0;s<=n;s++){
+      const x=Math.round(x0+(x1-x0)*s/n),y=Math.round(y0+(y1-y0)*s/n),o=Math.floor((w-1)/2);
+      for(let a=-1;a<=w;a++)for(let b=-1;b<=w;b++){const X=x-o+a,Y=y-o+b;if(get(X,Y)==='^')set(X,Y,'.')}
+      for(let a=0;a<w;a++)for(let b=0;b<w;b++){const X=x-o+a,Y=y-o+b,cur=get(X,Y);if(cur==null||cur==='V')continue;set(X,Y,cur==='~'||cur==='b'?'b':c);ROADSET.add((Y+oy)*W+X+ox)}
+    }
+  }
+}
+function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function hash(x,y,k){let h=(Math.imul(x,374761393)+Math.imul(y,668265263)+Math.imul(k,1442695041))|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return(h>>>0)/4294967296}
+function vnoise(x,y,seed){const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,s=t=>t*t*(3-2*t);
+  const a=hash(xi,yi,seed),b=hash(xi+1,yi,seed),c=hash(xi,yi+1,seed),d=hash(xi+1,yi+1,seed),u=s(xf),v=s(yf);
+  return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v}
+function fbm(x,y,seed){let t=0,amp=.5,f=1;for(let o=0;o<4;o++){t+=amp*vnoise(x*f,y*f,seed+o*17);f*=2;amp*=.5}return t/.9375}
+const rnd=mulberry(7);
+const inR=(x,y,r)=>x>=r[0]&&y>=r[1]&&x<r[0]+r[2]&&y<r[1]+r[3];
+const coastY=x=>262+Math.round((fbm(x/40,.5,3)-.5)*16);
+function riverX(y){const ly=y-OY;let b=0;if(y<OY)b=(OY-y)*.3;else if(ly>=96){const d=ly-96;b=-.12*d+10*Math.sin(d/25)}
+  return OX+101+Math.round(2*Math.sin(ly/9)+.6*Math.sin(ly/4)+b)}
+const riverW=y=>{const d=y-(OY+96);return d>0?4+Math.floor(d/45):4};
+
+/* =========================================================
+   1. Biomes
+   ========================================================= */
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  let c;
+  if(y<DITCH){c='a';if(y<22&&fbm(x/30,y/30,11)>.58)c='^'}
+  else if(y===DITCH)c='D';
+  else{
+    const yc=coastY(x);
+    if(y>yc+3)c='V';else if(y>yc)c='~';else if(y>yc-3)c='S';
+    else{
+      const e=fbm(x/45,y/45,11);
+      const desert=x>riverX(y)+6+(fbm(x/20,y/20,5)-.5)*16&&y>120+(fbm(x/22,y/18,6)-.5)*24&&(y>168||x>254);
+      const mtn=(x<72&&y<104)||(x>358&&y>210)||x>364;
+      const sw=fbm(x/18,y/18,23);
+      if((mtn&&e>.5)||e>.7)c='^';
+      else if(desert)c='S';
+      else if(x<128&&y>186&&sw>.55)c=sw>.68?'~':'q';
+      else c=fbm(x/12,y/12,31)>.58?',':'.';
+    }
+  }
+  map[y*W+x]=c;
+}
+
+/* =========================================================
+   2. Kelmoor (stamped in local coordinates)
+   ========================================================= */
+ox=OX;oy=OY;
+rect(0,14,120,82,'.');
+for(let i=0;i<42;i++)disc(rnd()*120|0,14+rnd()*82|0,2+rnd()*4,',');
+ox=oy=0;
+for(let y=0;y<H;y++){const cx=riverX(y);for(let dx=-1;dx<=riverW(y)-2;dx++)gset(cx+dx,y,'~')}
+ox=OX;oy=OY;
+rect(0,62,33,34,',');disc(15,76,4.5,'~',2.6);
+rect(4,39,21,14,'d');
+for(let k=0;k<8;k++){const a=k/8*Math.PI*2;set(Math.round(14+3.2*Math.cos(a)),Math.round(57+3.2*Math.sin(a)),'Z')}
+for(let y=14;y<33;y++)for(let x=13;x<32;x++){const d=Math.hypot(x-22,y-23);if(d<7.5){set(x,y,d>=6.5?'B':'s');if(d>=3&&d<4&&Math.abs(x-22)>1&&Math.abs(y-23)>1)set(x,y,'K')}}
+set(22,23,'O');set(22,16,'+');set(22,30,'+');set(15,23,'+');set(29,23,'+');
+outline(85,16,14,10,'F');rect(86,17,12,8,'d');building(87,17,5,4,'w',[[2,3]]);
+for(const[x,y]of[[94,18],[95,18],[94,19],[96,21],[93,22],[95,23]])set(x,y,'L');
+rect(106,32,12,22,'S');rect(108,39,3,3,'d');rect(113,42,3,4,'d');rect(109,49,4,2,'d');building(111,34,5,3,'w',[[2,2]]);
+rect(83,77,15,13,'d');
+for(let i=0;i<30;i++){const x=84+rnd()*13|0,y=78+rnd()*11|0,r=rnd();set(x,y,r<.4?'1':r<.7?'2':r<.9?'3':'4')}
+outline(43,75,15,11,'F');rect(44,76,13,9,'f');set(57,80,'d');
+outline(63,75,15,11,'F');rect(64,76,13,9,'f');set(63,80,'d');
+road([[60,0],[60,21]],3);road([[60,71],[60,95]],3);
+road([[87,46],[119,46]],3);road([[33,46],[4,46]],3);
+road([[31,46],[31,23],[30,23]],2);road([[92,46],[92,25]],2);
+road([[61,73],[90,73],[90,77]],2);road([[48,87],[58,87]],1);road([[62,87],[69,87]],1);
+building(46,88,6,5,'w',[[2,0]]);building(66,88,7,5,'w',[[3,0]]);
+building(5,39,5,4,'w',[[2,3]]);building(12,38,7,5,'w',[[3,4]]);building(20,39,4,4,'w',[[1,3]]);
+building(6,49,5,4,'w',[[2,0]]);building(16,49,6,4,'w',[[2,0]]);
+rect(20,4,5,1,'B');rect(20,4,1,4,'B');rect(80,6,1,4,'B');rect(80,6,4,1,'B');rect(40,8,3,1,'B');rect(104,3,1,2,'B');
+// Goblin encampment
+const GCl=[22,86];
+for(let y=76;y<96;y++)for(let x=12;x<33;x++){const d=Math.hypot(x-GCl[0],y-GCl[1]);if(d<9.2&&d>=7.5&&get(x,y)===',')set(x,y,'.');if(d<7.5)set(x,y,d>=6.5?'P':'m')}
+set(22,79,'d');set(29,86,'d');
+for(const[tx,ty]of[[18,82],[25,82],[18,89],[25,89]])rect(tx,ty,2,2,'E');
+set(22,86,'C');
+for(const[x,y]of[[27,84],[27,88],[21,80],[23,80]])set(x,y,'J');
+for(const[x,y]of[[20,86],[24,87],[22,90],[17,86],[25,85]])set(x,y,'k');
+road([[30,86],[42,86],[47,87]],1);road([[22,78],[22,62],[19,59]],1);
+// City walls and interior
+outline(34,22,53,49,'W');
+rect(59,22,3,1,'c');rect(59,70,3,1,'c');rect(34,45,1,3,'c');rect(86,45,1,3,'c');
+rect(59,23,3,47,'c');rect(35,45,51,3,'c');
+rect(52,39,17,15,'c');
+rect(59,45,3,3,'~');set(60,46,'O');
+for(const[x,y]of[[54,41],[56,41],[64,41],[66,41],[54,51],[66,51]])set(x,y,'M');
+set(63,52,'H');
+rect(36,38,23,1,'c');rect(62,38,23,1,'c');rect(36,57,23,2,'c');
+building(37,24,17,12,'s',[[12,11]]);rect(45,24,1,12,'B');set(45,29,'+');set(41,26,'x');
+rect(37,36,17,2,'g');rect(49,36,1,2,'c');
+building(67,25,9,9,'s',[[4,8]]);set(71,26,'x');rect(71,34,1,4,'c');
+building(78,25,7,8,'w',[[3,7]]);rect(81,33,1,5,'c');
+building(37,39,9,6,'s',[[4,5]]);rect(39,41,5,1,'K');
+building(73,39,11,6,'s',[[5,5]]);rect(75,41,7,1,'K');
+building(36,49,9,7,'s',[[4,0]]);set(39,52,'A');set(41,52,'A');set(43,50,'U');set(40,48,'c');
+building(46,49,6,6,'w',[[2,0]]);set(48,48,'c');
+building(70,49,7,6,'w',[[3,0]]);set(73,48,'c');
+building(78,49,7,6,'w',[[3,0]]);set(81,48,'c');
+building(37,59,6,5,'w',[[2,0]]);building(45,59,6,5,'w',[[2,0]]);building(53,59,5,6,'w',[[2,0]]);building(37,65,8,5,'w',[[3,0]]);
+building(63,57,7,7,'w',[[0,3]]);set(62,60,'c');set(68,58,'R');
+rect(77,62,4,3,'~');rect(73,58,3,2,'g');rect(82,66,3,2,'g');
+ox=oy=0;
+
+/* =========================================================
+   3. Other settlements and landmarks (global coordinates)
+   ========================================================= */
+function apron(x,y,w,h,g){for(let j=y-3;j<y+h+3;j++)for(let i=x-3;i<x+w+3;i++)if(gget(i,j)==='^')gset(i,j,g)}
+function walled(t){
+  apron(t.x,t.y,t.w,t.h,t.ground);
+  rect(t.x,t.y,t.w,t.h,t.ground);outline(t.x,t.y,t.w,t.h,t.wall);
+  for(const s of t.hs)rect(t.x+1,s,t.w-2,2,t.street);
+  for(const s of t.vs)rect(s,t.y+1,2,t.h-2,t.street);
+  for(const g of t.gates)rect(...g,t.street);
+}
+function autoHouses(x0,x1,streets,ground,floor,wall,minY,maxY){
+  for(const s of streets)for(const side of[-1,1]){
+    let x=x0;
+    while(x<x1){
+      const w=5+(rnd()*3|0),h=4+(rnd()*3|0),top=side<0?s-h:s+2,bottom=top+h-1,skip=side<0?bottom+1:top-1;
+      let ok=top>=minY&&bottom<=maxY&&x+w<=x1;
+      for(let yy=top-1;yy<=bottom+1&&ok;yy++){if(yy===skip)continue;for(let xx=x-1;xx<=x+w&&ok;xx++)if(gget(xx,yy)!==ground)ok=false}
+      if(ok){building(x,top,w,h,floor,[[(w/2)|0,side<0?h-1:0]],wall);x+=w+1+(rnd()*2|0)}else x++;
+    }
+  }
+}
+// Falcrest, the white city (west)
+walled({x:24,y:104,w:81,h:67,wall:'W',ground:'.',street:'c',hs:[126,136,148,160],vs:[42,62,84],gates:[[104,136,1,2],[62,170,2,1]]});
+rect(86,105,18,20,',');disc(95,115,4,'~',2.5);
+rect(51,107,26,13,'.');outline(50,106,28,15,'W');
+for(const[x,y]of[[49,105],[76,105],[49,119],[76,119]])rect(x,y,3,3,'W');
+building(55,108,18,10,'s',[[8,9]]);set(58,110,'x');rect(62,118,2,2,'c');rect(62,120,2,1,'c');
+building(28,108,16,12,'s',[[8,11]]);
+building(70,128,10,7,'s',[[5,6]]);rect(72,130,6,1,'K');
+rect(54,138,18,8,'c');rect(61,140,3,3,'~');set(62,141,'O');
+building(45,142,7,6,'w',[[3,5]]);                                                            // Apothecary
+building(26,150,12,8,'s',[[6,0]]);gset(28,152,'r');gset(30,152,'r');gset(35,152,'U');          // Crafting Hall
+building(87,128,12,7,'s',[[6,6]]);gset(89,130,'R');gset(92,130,'R');gset(95,130,'R');          // Cooks' Guild
+building(65,150,10,8,'s',[[4,0]]);gset(67,152,'U');gset(70,154,'A');gset(72,154,'A');          // Falcrest Forge
+building(45,162,7,6,'w',[[3,0]]);                                                            // Estate Agent
+building(76,162,7,6,'w',[[3,0]]);                                                            // Bow & Arrow
+autoHouses(25,103,[126,136,148,160],'.','w','B',105,169);
+// Qadir, the desert city (east)
+walled({x:296,y:156,w:61,h:51,wall:'X',ground:'S',street:'n',hs:[180,192],vs:[326,342],gates:[[296,180,1,2],[326,156,2,1]]});
+building(328,158,20,13,'n',[[10,12]],'X');rect(334,161,6,3,'~');rect(331,165,3,2,'g');rect(342,165,3,2,'g');
+building(300,184,9,6,'n',[[4,0]],'X');rect(302,186,5,1,'K');
+for(const[x,y]of[[308,178],[311,178],[314,178],[317,178],[308,183],[311,183],[314,183]])gset(x,y,'M');
+building(300,194,9,7,'n',[[4,0]],'X');gset(302,197,'U');gset(305,197,'U');                    // Qadir Smelter
+building(312,194,7,6,'n',[[3,0]],'X');                                                       // Kharim's Scimitars
+building(330,194,8,6,'n',[[4,0]],'X');                                                       // Qadir Gems
+building(344,194,8,6,'n',[[4,0]],'X');                                                       // Tanner
+autoHouses(297,355,[180,192],'S','n','X',157,205);
+// Brightwater castle and village (south)
+for(let j=208;j<248;j++)for(let i=170;i<226;i++){const c=gget(i,j);if(c==='^'||c==='q')gset(i,j,'.')}
+rect(201,215,21,21,'.');outline(200,214,23,23,'W');
+for(const[x,y]of[[199,213],[221,213],[199,235],[221,235]])rect(x,y,3,3,'W');
+building(205,219,13,11,'s',[[6,10],[6,0]]);set(211,221,'x');gset(207,227,'R');gset(215,221,'r');
+rect(211,215,1,4,'c');rect(211,230,1,6,'c');rect(210,214,3,1,'c');rect(210,236,3,1,'c');
+building(180,216,9,10,'s',[[4,9]]);set(184,217,'x');
+building(182,231,7,6,'w',[[3,0]]);building(191,238,6,5,'w',[[3,0]]);building(172,229,6,5,'w',[[3,0]]);
+outline(160,198,22,14,'F');rect(161,199,20,12,'.');gset(181,205,'d');gset(181,206,'d');
+// Saltcombe port (south coast)
+for(let i=128;i<174;i++)for(let j=232;j<coastY(i)-2;j++)if(gget(i,j)==='^')gset(i,j,'.');
+building(138,238,8,6,'w',[[4,5]]);building(150,239,6,5,'w',[[3,4]]);building(160,240,5,5,'w',[[2,4]]);building(130,241,5,4,'w',[[2,3]]);
+for(const px of[143,158])for(let j=coastY(px)-2;j<coastY(px)+12;j++)rect(px,j,2,1,'b');
+// Hallowmere swamp village and Ravenscar Manor (southwest)
+rect(86,202,34,20,'.');rect(94,209,16,4,'d');
+building(106,207,5,4,'w',[[2,3]]);building(96,214,5,4,'w',[[2,0]]);building(112,212,5,4,'w',[[0,1]]);
+building(88,214,5,4,'w',[[2,0]]);building(98,202,6,4,'w',[[2,3]]);
+rect(30,182,26,18,',');outline(30,182,26,18,'F');gset(55,195,'d');gset(55,196,'d');
+building(34,185,16,11,'w',[[8,10]]);
+disc(112,178,11,'~',6);
+// Ashen Waste: Black Keep, old graveyard, cinder pools
+rect(60,22,33,25,'a');outline(60,22,33,25,'W');
+for(let i=60;i<93;i++)for(const j of[22,46])if(hash(i,j,7)<.22)gset(i,j,'a');
+for(let j=22;j<47;j++)for(const i of[60,92])if(hash(i,j,7)<.22)gset(i,j,'a');
+rect(92,33,1,3,'d');
+building(70,28,13,10,'s',[[6,9]]);
+for(let i=70;i<83;i++)for(let j=28;j<38;j++)if(gget(i,j)==='B'&&hash(i,j,9)<.2)gset(i,j,'s');
+for(let k=0;k<40;k++){const x=62+rnd()*29|0,y=24+rnd()*21|0;if(gget(x,y)==='a')gset(x,y,'s')}
+rect(151,47,19,11,',');outline(150,46,21,13,'F');gset(160,46,'d');
+for(let x=152;x<169;x+=3)for(let y=49;y<57;y+=3)if(x!==160)gset(x,y,'G');
+disc(300,30,6,'v',4);disc(330,55,4,'v',3);disc(40,62,3.5,'v',2.5);disc(280,10,5,'v',3);
+// Desert extras: oasis and Sunscar Mine
+disc(276,236,4,'~',3);
+for(let k=0;k<9;k++){const a=k/9*Math.PI*2;gset(Math.round(276+6.2*Math.cos(a)),Math.round(236+4.8*Math.sin(a)),'p')}
+apron(338,224,18,14,'S');rect(338,224,18,14,'d');
+for(let i=0;i<26;i++){const x=339+rnd()*16|0,y=225+rnd()*12|0,r=rnd();gset(x,y,r<.3?'1':r<.55?'2':r<.8?'3':'4')}
+// Elderglen ranger's lodge
+apron(330,98,7,5,'.');rect(328,96,11,9,'.');building(330,98,7,5,'w',[[3,4]]);
+
+/* =========================================================
+   4. Region roads
+   ========================================================= */
+road([[134,116],[112,116],[106,137]],3);                       // Kelmoor west → Falcrest
+road([[190,166],[190,196],[211,206],[211,213]],3);              // Kelmoor south → Brightwater
+road([[250,116],[278,116],[302,140],[326,150],[326,154]],3);    // Kelmoor east → Qadir
+road([[211,237],[211,244],[262,244],[280,200],[294,181]],3);    // Brightwater → bridge → Qadir
+road([[211,244],[175,244],[155,248]],2);                        // Brightwater → Saltcombe
+road([[148,246],[118,226],[104,213],[92,206],[64,180],[63,172]],2); // Saltcombe → Hallowmere → Falcrest
+road([[92,212],[56,196]],1);                                    // Hallowmere → Ravenscar Manor
+road([[190,69],[190,40],[94,34]],2);                            // north into the Ashen Waste
+road([[160,38],[160,45]],1);                                    // graveyard gate
+road([[302,140],[333,104]],1);                                  // trail to the lodge
+road([[181,205],[189,205]],1);                                  // pasture gate
+
+/* =========================================================
+   4b. Skilling sites
+   ========================================================= */
+const STRUCT='WXB+bKMFPEOx~VLAU';
+function site(x,y,w,h,g){SITES.push([x,y,w,h]);
+  for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++){if(!inb(i,j)||ROADSET.has(j*W+i))continue;const c=gget(i,j);if(STRUCT.includes(c))SITEWARN.push([i,j,c]);gset(i,j,g)}}
+// Mining: Greyspine Quarry (north of Falcrest, new north gate) and Glacite Hollow (deep in the Ashen Waste)
+site(28,86,24,14,'d');
+for(let i=0;i<28;i++){const x=29+rnd()*22|0,y=87+rnd()*12|0,r=rnd();gset(x,y,r<.28?'3':r<.52?'4':r<.72?'6':r<.88?'5':'2')}
+rect(42,104,2,1,'c');road([[42,103],[42,99]],2);
+site(196,6,18,12,'a');
+for(let i=0;i<16;i++){const x=197+rnd()*16|0,y=7+rnd()*10|0,r=rnd();gset(x,y,r<.35?'7':r<.65?'6':'4')}
+gset(200,9,'8');gset(209,13,'8');gset(204,8,'8');
+road([[190,40],[204,18]],1);
+// Magic + Glyphcraft: Wizards' Spire, aether quarry, starwood grove
+site(124,183,15,15,'.');
+for(let y=184;y<197;y++)for(let x=125;x<138;x++){const d=Math.hypot(x-131,y-190);if(d<5.5)gset(x,y,d>=4.6?'B':'s')}
+gset(131,185,'+');gset(131,195,'+');
+site(140,184,10,10,'d');
+for(let i=0;i<14;i++){const x=141+rnd()*8|0,y=185+rnd()*8|0;gset(x,y,'9')}
+site(123,198,15,5,'.');for(const x of[126,130,134])gset(x,200,'Q');
+road([[131,183],[131,170],[118,140],[110,130]],1);
+// Combat, Ranged, Firemaking: training yard east of Falcrest
+site(110,98,22,14,'d');outline(110,98,22,14,'F');gset(120,111,'d');gset(121,111,'d');road([[120,112],[120,114]],1);
+for(let x=113;x<=121;x+=2){gset(x,101,'y');gset(x,105,'y')}
+for(let y=100;y<=108;y+=2)gset(129,y,'@');
+gset(124,108,'C');
+// Agility: Brightwater course and Ashen course
+site(140,213,26,16,'.');
+for(const[x,y]of[[143,216],[147,216],[151,216],[155,216],[159,216],[162,219],[162,223],[158,226],[153,226],[148,226],[143,226],[141,222]])gset(x,y,'i');
+road([[166,220],[176,222]],1);
+site(204,46,22,14,'a');outline(204,46,22,14,'F');gset(204,52,'d');gset(204,53,'d');road([[191,52],[203,52]],1);
+for(const[x,y]of[[208,49],[212,49],[216,49],[220,49],[222,53],[220,56],[215,56],[210,56],[207,53]])gset(x,y,'i');
+// Farming: Brightwater Allotments
+site(193,180,14,14,'.');rect(195,182,4,2,'h');rect(200,182,4,2,'h');rect(195,188,2,2,'h');rect(199,188,2,2,'h');rect(203,188,2,2,'h');
+// Devotion: Storm Temple in the Ashen Waste
+site(259,55,13,12,'a');building(262,58,7,6,'s',[[3,5]]);gset(265,59,'x');
+// Bounty: Ironcrag Bounty Cave
+site(262,107,9,5,'.');gset(266,107,'>');for(const x of[262,263,264,265,267,268,269,270])gset(x,107,'^');
+// Homesteading: homestead gate outside Falcrest's south gate
+site(68,173,5,4,'.');gset(70,174,'%');
+// Glyph shrines (mysterious ruins)
+const ALTARS=[['Wind',48,178],['Thought',58,92],['Tide',40,240],['Root',262,100],['Ember',312,228],['Vigour',350,132],['Star',318,90],
+  ['Storm',130,24],['Bloom',115,152],['Oath',12,90],['Dusk',76,41],['Crimson',360,40]];
+const ALTAR_AT=new Map();
+for(const[n,x,y]of ALTARS){const g=y<DITCH?'a':(gget(x,y)==='S'?'S':'.');site(x-3,y-3,7,7,g);gset(x,y,'u');
+  for(const[a,b]of[[-2,-2],[2,-2],[-2,2],[2,2]])gset(x+a,y+b,'Z');ALTAR_AT.set(y*W+x,n)}
+// Trails: an Ashen Waste bridge east to the Storm Temple and Crimson shrine, and paths to shrines walled in by mountains
+road([[192,64],[265,66]],2);road([[265,66],[330,62],[357,44]],1);
+road([[318,94],[318,104],[328,110]],1);   // Cosmic, from the Elderglen lodge trail
+road([[50,92],[56,92]],1);                // Mind, from Greyspine Quarry
+road([[51,178],[62,178]],1);              // Air, from the Falcrest–Hallowmere road
+// Fishing spots
+const FISH=new Map(),LAND='.,dScnqab';
+function fishSpots(r,count,label,needs){
+  const cand=[];
+  for(let y=r[1];y<r[1]+r[3];y++)for(let x=r[0];x<r[0]+r[2];x++){const c=gget(x,y);if(c!=='~'&&c!=='V')continue;
+    const nb=[gget(x-1,y),gget(x+1,y),gget(x,y-1),gget(x,y+1)];if(nb.some(v=>v!=null&&needs.includes(v)))cand.push([x,y])}
+  for(let i=cand.length-1;i>0;i--){const k=rnd()*(i+1)|0;[cand[i],cand[k]]=[cand[k],cand[i]]}
+  const out=[];for(const p of cand){if(out.length>=count)break;if(out.some(q=>Math.max(Math.abs(q[0]-p[0]),Math.abs(q[1]-p[1]))<3))continue;out.push(p)}
+  for(const[x,y]of out){gset(x,y,needs==='S'?'j':'I');FISH.set(y*W+x,label)}
+  return out;
+}
+const FISHG={
+  pier:fishSpots([138,250,26,30],4,'Perch & pike (rod)','b'),
+  beach:fishSpots([126,250,50,20],5,'Minnows (net)','S'),
+  river:fishSpots([214,176,30,40],5,'Perch & pike (rod)',LAND),
+  lake:fishSpots([100,171,25,15],3,'Perch & pike (rod)',LAND)
+};
+
+/* =========================================================
+   5. Vegetation
+   ========================================================= */
+const KRECT=[OX,OY+14,120,82],KC=[OX+34,OY+22,53,49],KPARK=[OX+71,OY+56,15,14],KFOREST=[OX,OY+62,33,34],KLUMBER=[OX+78,OY+12,26,24],
+KSTONES=[OX+9,OY+52,11,11],KSPAWN=[OX+56,OY+47,9,6],GC=[OX+GCl[0],OY+GCl[1]];
+const FALC=[24,104,81,67],FPARK=[86,105,18,20],QADIR=[293,153,67,57],BRIGHT=[170,208,56,40],PEN=[159,197,24,16],SALT=[126,234,48,22],
+HALLOW=[84,200,38,24],MANOR=[22,172,42,36],ELDER=[290,84,94,40],THORNX=[100,128,64,52],GRAVE=[150,46,21,13],KEEP=[60,22,33,25];
+const leafy=c=>c==='.'||c===','||c==='T'||c==='t'||c==='o'||c==='l'||c==='e';
+const n4=(x,y,f)=>f(gget(x-1,y))&&f(gget(x+1,y))&&f(gget(x,y-1))&&f(gget(x,y+1));
+const inSite=(x,y)=>SITES.some(r=>inR(x,y,r));
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  const c=gget(x,y);
+  if(inSite(x,y))continue;
+  if(c==='a'){if(!inR(x,y,KEEP)&&rnd()<.025&&n4(x,y,v=>v==='a'||v==='t'))gset(x,y,'t');continue}
+  if(c==='S'){if(inR(x,y,KRECT)||inR(x,y,QADIR)||y>coastY(x)-7)continue;if(rnd()<.012&&n4(x,y,v=>v==='S'||v==='Y'))gset(x,y,'Y');continue}
+  if(c==='q'){if(rnd()<.06&&n4(x,y,v=>v==='q'||leafy(v)))gset(x,y,'t');continue}
+  if(c!=='.'&&c!==',')continue;
+  if(Math.hypot(x-GC[0],y-GC[1])<9.5||inR(x,y,GRAVE)||inR(x,y,PEN))continue;
+  let p,obj='T';
+  if(inR(x,y,KRECT)){if(inR(x,y,KSTONES)||inR(x,y,KSPAWN))continue;p=inR(x,y,KC)?(inR(x,y,KPARK)?.2:0):inR(x,y,KFOREST)?.42:inR(x,y,KLUMBER)?.22:.045}
+  else if(inR(x,y,FALC))p=inR(x,y,FPARK)?.25:0;
+  else if(inR(x,y,BRIGHT)||inR(x,y,SALT)||inR(x,y,HALLOW)||inR(x,y,QADIR))p=0;
+  else if(inR(x,y,MANOR)){p=.22;obj=rnd()<.6?'t':'T'}
+  else if(inR(x,y,ELDER))p=.38;
+  else if(inR(x,y,THORNX))p=.3;
+  else{const f=fbm(x/30,y/30,41);p=f>.62?.4:f>.55?.14:.03}
+  if(rnd()>=p)continue;
+  if(!n4(x,y,leafy))continue;
+  if(obj==='T'){
+    let nearW=false;for(let dy=-2;dy<=2&&!nearW;dy++)for(let dx=-2;dx<=2;dx++)if(gget(x+dx,y+dy)==='~'){nearW=true;break}
+    const r=rnd();obj=nearW&&r<.55?'l':inR(x,y,ELDER)&&r<.1?'e':r<.12?'o':'T';
+  }
+  gset(x,y,obj);
+}
+
+
+/* =========================================================
+   5b. Oath of Stur fixes and additions (no random draws, so
+       the scatter above and the NPC spots below are unchanged)
+   ========================================================= */
+// Kelmoor's long-grass patches spilled over the Ashen Ditch and opened a gap in it.
+for(let y=OY;y<=DITCH;y++)for(let x=OX;x<OX+120;x++){const c=gget(x,y);if(c===','||c==='.'||c==='T'||c==='o'||c==='l'||c==='e')gset(x,y,y===DITCH?'D':'a')}
+// A second ditch crossing, east of the river.
+for(let x=OX+110;x<OX+113;x++)gset(x,DITCH,'d');
+// Kelmoor riverbank fishing (phase 3): net spots by the city, rod spots further south.
+for(const[ly,c]of[[55,'j'],[58,'j'],[66,'I'],[69,'I']]){
+  const y=OY+ly;let x=OX;while(x<OX+120&&gget(x,y)!=='~')x++;
+  if(x<OX+120&&gget(x-1,y)!=='~'){gset(x,y,c);FISH.set(y*W+x,c==='j'?'Minnows (net)':'Perch & pike (rod)')}
+}
+
+/* =========================================================
+   Tile key and named areas
+   ========================================================= */
+const TILES={
+  '.':['Grass',1],',':['Long grass',1],'d':['Dirt path',1],'c':['Cobblestone',1],'n':['Sandstone paving',1],'s':['Stone floor',1],'w':['Wooden floor',1],
+  'g':['Flower bed',1],'f':['Crop field',1],'S':['Sand',1],'a':['Scorched earth',1],'q':['Swamp',1],'b':['Bridge',1],'+':['Door',1],'H':['Sewer hatch',1],
+  'm':['Trampled mud',1],'k':['Bone scatter',1],
+  'W':['City wall',0],'X':['Sandstone wall',0],'B':['Building wall',0],'~':['Water',0],'V':['Deep sea',0],'v':['Lava',0],'D':['Ditch',0],'^':['Mountain',0],
+  'F':['Fence',0],'P':['Palisade',0],'T':['Tree',0],'t':['Dead tree',0],'Y':['Cactus',0],'p':['Palm tree',0],
+  '1':['Copper rock',0],'2':['Tin rock',0],'3':['Iron rock',0],'4':['Coal rock',0],'Z':['Standing stone',0],'G':['Gravestone',0],
+  'A':['Anvil',0],'K':['Bank booth',0],'M':['Market stall',0],'O':['Statue',0],'x':['Altar',0],'L':['Log pile',0],
+  'E':['Hide tent',0],'C':['Campfire',0],'J':['Goblin totem',0],
+  'i':['Agility obstacle',1],'o':['Oak tree',0],'l':['Willow tree',0],'e':['Yew tree',0],'Q':['Starwood tree',0],
+  '5':['Gold rock',0],'6':['Cobalt rock',0],'7':['Verdite rock',0],'8':['Glacite rock',0],'9':['Aether stone',0],
+  'U':['Furnace',0],'R':['Range',0],'r':['Spinning wheel',0],'j':['Shallow fishing spot',0],'I':['Deep fishing spot',0],'h':['Farming patch',0],
+  'u':['Glyph shrine',0],'%':['Homestead gate',0],'>':['Cave entrance',0],'y':['Training dummy',0],'@':['Archery target',0]
+};
+const walk=(x,y)=>inb(x,y)&&TILES[gget(x,y)][1]===1;
+{
+  const seen=new Uint8Array(W*H),q=[(OY+49)*W+OX+60];seen[q[0]]=1;
+  while(q.length){const i=q.pop(),x=i%W,y=(i/W)|0;
+    for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]){const a=x+dx,b=y+dy;
+      if(!walk(a,b)||seen[b*W+a])continue;if(dx&&dy&&(!walk(x+dx,y)||!walk(x,y+dy)))continue;seen[b*W+a]=1;q.push(b*W+a)}}
+  const reach=(x,y)=>{for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const a=x+dx,b=y+dy;if(!inb(a,b)||!seen[b*W+a])continue;
+    if(dx&&dy&&(!walk(x+dx,y)||!walk(x,y+dy)))continue;return true}return false};
+  const USED='olQe123456789AKURrjIhu%>y@x';
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const c=gget(x,y);if(!USED.includes(c)||reach(x,y))continue;
+    if('oleQ'.includes(c))gset(x,y,'T');else SITEWARN.push([x,y,c])}
+}
+
+const K=(n,x,y,w,h,t,o={})=>({n,x:x+OX,y:y+OY,w,h,t,kind:o.kind,lx:o.lx!=null?o.lx+OX:undefined,ly:o.ly!=null?o.ly+OY:undefined});
+const A=(n,x,y,w,h,t,o={})=>({n,x,y,w,h,t,kind:o.kind,lx:o.lx,ly:o.ly});
+const AREAS=[
+  // buildings (tier 2)
+  K('Kelmoor Keep',37,24,17,12,2),K('Chapel of the Dawn',67,25,9,9,2),K('Scriptorium',78,25,7,8,2),K('West Bank',37,39,9,6,2),
+  K('East Bank',73,39,11,6,2),K('Smithy',36,49,9,7,2),K("Aldric's Blades",46,49,6,6,2),K('General Store',70,49,7,6,2),
+  K('Glyph & Robe',78,49,7,6,2),K('Blue Gull Inn',63,57,7,7,2),K('Longhouse',12,38,7,5,2),K('Farmhouse',46,88,6,5,2),
+  K('Barn',66,88,7,5,2),K('Field Tent',111,34,5,3,2),K('Sawmill',87,17,5,4,2),
+  A('Apothecary',45,142,7,6,2),A('Crafting Hall',26,150,12,8,2),A("Cooks' Guild",87,128,12,7,2),A('Falcrest Forge',65,150,10,8,2),
+  A('Estate Agent',45,162,7,6,2),A('Bow & Arrow',76,162,7,6,2),A('Qadir Smelter',300,194,9,7,2),A("Kharim's Scimitars",312,194,7,6,2),
+  A('Qadir Gems',330,194,8,6,2),A('Tanner',344,194,8,6,2),A('Shipwright',160,240,5,5,2),A('Storm Temple',262,58,7,6,2),A('Homestead Gate',68,173,5,4,2),
+  A('Hall of the Lantern',28,108,16,12,2),A('Falcrest Bank',70,128,10,7,2),A('Qadir Bank',300,184,9,6,2),
+  A('Chapel of St. Elowen',180,216,9,10,2),A('Brightwater Store',182,231,7,6,2),A('Harbour Tavern',138,238,8,6,2),
+  A('Net & Tackle',150,239,6,5,2),A("Witch's Hut",98,202,6,4,2),A("Ranger's Lodge",330,98,7,5,2),A('Ravenscar Manor',34,185,16,11,2),
+  // places (tier 1)
+  K('Kelmoor Square',52,39,17,15,1,{ly:40.6}),K('Kelmoor Park',71,56,15,14,1,{ly:66}),K('Lumber Yard',85,16,14,10,1,{ly:15}),
+  K('The Bourse',13,14,19,19,1,{ly:14.6}),K('Brakk Village',4,38,21,15,1,{ly:44.6}),K('Standing Stones',9,53,11,10,1,{ly:61.6}),
+  K('Goblin Encampment',12,76,21,20,1,{ly:77.3}),K('Hollin Farm',43,75,35,18,1,{ly:74}),K('Copperback Mine',83,77,15,13,1,{ly:91}),
+  K('Dig Site',106,32,12,22,1),
+  A('Falcrest Castle',49,105,30,17,1,{ly:104.4}),A('Falcrest Square',54,138,18,8,1,{ly:139}),A('Palace of the Sunspire',328,158,20,13,1,{ly:157.4}),
+  A('Qadir Bazaar',306,176,14,9,1,{ly:176.6}),A('Brightwater Castle',199,213,26,26,1,{ly:212.4}),A('Brightwater Pasture',160,198,22,14,1,{ly:197.3}),
+  A('Saltcombe Docks',140,250,22,14,1,{ly:255}),A('Ravenscar Grounds',30,182,26,18,1,{ly:181.3}),A('Lake Ostra',101,172,23,13,1),
+  A('Black Keep',60,22,33,25,1,{ly:21}),A('Old Graveyard',150,46,21,13,1,{ly:45.3}),A('Cinder Pools',294,24,14,14,1,{ly:22.5}),
+  A('Sunscar Mine',338,224,18,14,1,{ly:223.3}),A('Oasis',269,230,15,13,1,{ly:229.3}),A('River Vell',220,170,16,70,1,{lx:236,ly:200}),
+  A('Greyspine Quarry',28,86,24,14,1,{ly:85.3}),A('Glacite Hollow',196,6,18,12,1,{ly:5}),A("Wizards' Spire",124,183,15,15,1,{ly:182.3}),
+  A('Aether Quarry',140,184,10,10,1,{ly:183.3}),A('Starwood Grove',123,198,15,5,1,{ly:203.6}),A('Combat Training Yard',110,98,22,14,1,{ly:97.3}),
+  A('Brightwater Agility Course',140,213,26,16,1,{ly:212.3}),A('Ashen Agility Course',204,46,22,14,1,{ly:45.3}),
+  A('Brightwater Allotments',193,180,14,14,1,{ly:179.3}),A('Ironcrag Bounty Cave',262,107,9,5,1,{ly:105.8}),
+  A('Elderglen Hunting Grounds',328,104,34,16,1,{ly:121}),A('Sunspire Hunting Grounds',255,200,30,20,1),
+  ...ALTARS.map(([n,x,y])=>A(n+' Shrine',x-3,y-3,7,7,1,{ly:y-3.6})),
+  K('Thornwood',0,62,33,34,1,{lx:7,ly:67}),A('Thornwood',100,128,64,52,1,{lx:118,ly:150}),
+  // towns and regions (tier 0)
+  K('Kelmoor',34,22,53,49,0,{kind:'town',ly:19.5}),A('Falcrest',24,104,81,67,0,{kind:'town'}),A('Qadir',296,156,61,51,0,{kind:'town'}),
+  A('Brightwater',170,208,56,40,0,{kind:'town',ly:228}),A('Saltcombe',126,234,48,22,0,{kind:'town',ly:236}),A('Hallowmere',84,200,38,24,0,{kind:'town',ly:211}),
+  A('The Ashen Waste',0,0,W,DITCH,0,{kind:'region',lx:130,ly:58}),A('Ashen Ditch',0,DITCH,W,1,1,{lx:60,ly:83.5}),
+  A('Greyspine Mountains',0,84,72,20,0,{kind:'region',lx:36,ly:93}),A('Elderglen',290,84,94,40,0,{kind:'region',lx:352,ly:114}),A('Ironcrag Peaks',256,84,84,40,0,{kind:'region',lx:290,ly:96}),
+  A('Sunspire Desert',250,120,134,140,0,{kind:'region',lx:318,ly:135}),A('Saltwind Sea',0,256,W,32,0,{kind:'region',lx:290,ly:276}),
+  A('Mirefen Swamp',0,186,128,70,0,{kind:'region',lx:50,ly:232})
+];
+const areaAt=(x,y)=>{for(const a of AREAS)if(inR(x,y,[a.x,a.y,a.w,a.h]))return a.n;return 'The Vell Reaches'};
+
+/* =========================================================
+   NPCs
+   ========================================================= */
+const NPC_GROUPS=[
+  {type:'Goblin',level:2,n:8,box:[GC[0]-6,GC[1]-6,13,13],ok:(x,y)=>Math.hypot(x-GC[0],y-GC[1])<6.3},
+  {type:'Cow',level:2,n:6,box:[161,199,20,12]},
+  {type:'Scorpion',level:14,n:6,box:[339,225,16,12]},
+  {type:'Skeleton',level:22,n:5,box:[151,47,19,11]},
+  {type:'Falcrest guard',level:21,n:4,box:[44,126,40,24]},
+  {type:'Desert bandit',level:24,n:4,box:[300,198,54,7]},
+  {type:'Storm druid',level:13,n:3,box:[263,59,5,4]},
+  {type:'Wailing spirit',level:19,n:1,box:[35,186,14,9]},
+  {type:'Cave creeper',level:23,n:3,box:[262,108,9,4]},
+  {type:'Crimson swift',level:1,n:6,box:[328,104,34,16]},
+  {type:'Desert lizard',level:12,n:5,box:[255,200,30,20]}
+];
+// People: shopkeepers, bankers and trainers, each kept inside their building
+const KB=(x,y,w,h)=>[x+OX,y+OY,w,h],IN=(x,y,w,h)=>[x+1,y+1,w-2,h-2];
+const KEEPERS=[
+  // Kelmoor
+  {type:'Mara',role:'Shopkeeper',shop:'General Store',box:KB(71,50,5,4),stock:['Pot','Jug','Bucket','Tinderbox','Chisel','Hammer','Shears','Knife']},
+  {type:'Aldric',role:'Swordsmith',shop:"Aldric's Blades",box:KB(47,50,4,4),stock:['Bronze sword','Iron sword','Steel sword','Darksteel sword','Cobalt sword','Verdite sword']},
+  {type:'Orrin',role:'Glyph merchant',shop:'Glyph & Robe',box:KB(79,50,5,4),stock:['Wind glyph','Tide glyph','Root glyph','Ember glyph','Thought glyph','Vigour glyph','Wizard robe','Staff of wind']},
+  {type:'Brenna',role:'Smith',shop:'Smithy',box:KB(37,50,7,5),stock:['Hammer','Bronze bar','Iron bar','Steel bar']},
+  {type:'Tamsin',role:'Barkeep',shop:'Blue Gull Inn',box:KB(64,58,5,5),stock:['Beer','Cider','Stew','Bread']},
+  {type:'Ysolde',role:'Librarian',shop:'Scriptorium',box:KB(79,26,5,6),stock:['Quest journal','Map of the Reaches','Glyph lore','Herbal primer']},
+  {type:'Banker',role:'Banker',shop:'West Bank',n:2,box:KB(39,40,5,1)},
+  {type:'Banker',role:'Banker',shop:'East Bank',n:2,box:KB(75,40,7,1)},
+  {type:'Exchange clerk',role:'Trade clerk',shop:'The Bourse',n:4,box:KB(19,20,7,7),ok:(x,y)=>Math.hypot(x-OX-22,y-OY-23)<3},
+  {type:'Market trader',role:'Stall holder',shop:'Kelmoor Square stalls',n:3,box:KB(53,40,15,1),stock:['Bread','Cake','Silk','Silver ring','Fur']},
+  {type:'Brother Aldo',role:'Priest',shop:'Chapel of the Dawn',box:KB(68,27,7,6)},
+  {type:'Queen Ilsabet',role:'Ruler of Kelmoor',shop:'Kelmoor Keep',box:KB(46,25,7,10)},
+  {type:'Jory',role:'Sawmill operator',shop:'Sawmill',box:KB(88,18,3,2),stock:['Plank','Oak plank','Bronze axe','Iron axe','Steel axe','Cobalt axe']},
+  {type:'Farmer Gale',role:'Farming supplier',shop:'Farmhouse',box:KB(47,89,4,3),stock:['Rake','Seed dibber','Spade','Watering can','Compost','Potato seed','Onion seed','Cabbage seed']},
+  {type:'Hrolf',role:'Bounty master',shop:'Longhouse',box:KB(13,39,5,3),stock:['Contract stone','Rock hammer','Salt sack','Polished shield','Scent mask','Bounty helm']},
+  {type:'Pell',role:'Archaeologist',shop:'Field Tent',box:KB(112,35,3,1)},
+  // Falcrest
+  {type:'Banker',role:'Banker',shop:'Falcrest Bank',n:2,box:[72,129,6,1]},
+  {type:'Sir Ambrose',role:'Armourer',shop:'Hall of the Lantern',box:IN(28,108,16,12),stock:['Iron full helm','Steel platebody','Steel kiteshield','Cobalt chainbody','Verdite platelegs']},
+  {type:'Wren',role:'Apothecary',shop:'Apothecary',box:IN(45,142,7,6),stock:['Vial of water','Pestle and mortar','Toad eye','Mintleaf seed','Bitterroot seed']},
+  {type:'Odile',role:'Master crafter',shop:'Crafting Hall',box:IN(26,150,12,8),stock:['Needle','Thread','Chisel','Ring mould','Necklace mould','Amulet mould','Soft clay','Flax']},
+  {type:'Bastien',role:'Head chef',shop:"Cooks' Guild",box:IN(87,128,12,7),stock:['Cake tin','Pie dish','Bowl','Pot of flour','Raw beef','Raw chicken']},
+  {type:'Gunnar',role:'Smith',shop:'Falcrest Forge',box:IN(65,150,10,8),stock:['Hammer','Iron ore','Coal','Steel bar','Cobalt bar']},
+  {type:'Corwin',role:'Estate agent',shop:'Estate Agent',box:IN(45,162,7,6),stock:['House deed','Plank','Steel nails','Saw','Bolt of cloth','Limestone brick']},
+  {type:'Ivy',role:'Fletcher',shop:'Bow & Arrow',box:IN(76,162,7,6),stock:['Knife','Bow string','Arrow shaft','Feather','Shortbow','Longbow','Bronze arrow','Iron arrow']},
+  {type:'Duke Halvard',role:'Lord of Falcrest',shop:'Falcrest Castle',box:IN(55,108,18,10)},
+  // Qadir
+  {type:'Banker',role:'Banker',shop:'Qadir Bank',n:2,box:[302,185,5,1]},
+  {type:'Emir Tarek',role:'Ruler of Qadir',shop:'Palace of the Sunspire',box:IN(328,158,20,13)},
+  {type:'Nazir',role:'Smelter',shop:'Qadir Smelter',box:IN(300,194,9,7),stock:['Gold ore','Silver ore','Coal','Ring mould']},
+  {type:'Kharim',role:'Scimitar seller',shop:"Kharim's Scimitars",box:IN(312,194,7,6),stock:['Bronze scimitar','Iron scimitar','Steel scimitar','Cobalt scimitar']},
+  {type:'Laleh',role:'Gem trader',shop:'Qadir Gems',box:IN(330,194,8,6),stock:['Uncut sapphire','Uncut emerald','Uncut ruby','Uncut diamond','Chisel']},
+  {type:'Ellis',role:'Tanner',shop:'Tanner',box:IN(344,194,8,6),stock:['Soft leather','Hard leather','Snakeskin','Needle','Thread']},
+  {type:'Bazaar merchant',role:'Stall holder',shop:'Qadir Bazaar',n:3,box:[307,176,12,2],stock:['Silk','Spice','Cake','Silver ring','Gem']},
+  // Brightwater
+  {type:'Dunstan',role:'Shopkeeper',shop:'Brightwater Store',box:IN(182,231,7,6),stock:['Pot','Jug','Bucket','Tinderbox','Bronze pickaxe','Bronze axe','Small fishing net']},
+  {type:'Father Edric',role:'Priest',shop:'Chapel of St. Elowen',box:IN(180,216,9,10)},
+  {type:'Duke Aldwin',role:'Lord of Brightwater',shop:'Brightwater Castle',box:IN(205,219,13,11)},
+  {type:'Cook Hilda',role:'Castle cook',shop:'Brightwater Castle',box:[206,224,4,4]},
+  // Saltcombe
+  {type:'Morwen',role:'Barkeep',shop:'Harbour Tavern',box:IN(138,238,8,6),stock:['Rum','Grog','Beer','Fish pie']},
+  {type:'Gerrick',role:'Fishing supplier',shop:'Net & Tackle',box:IN(150,239,6,5),stock:['Small fishing net','Fishing rod','Fly fishing rod','Harpoon','Crab pot','Fishing bait','Feather']},
+  {type:'Aela',role:'Shipwright',shop:'Shipwright',box:IN(160,240,5,5),stock:['Hull plank','Sail cloth','Rope','Ship repair kit','Cannonball']},
+  // Elsewhere
+  {type:'Old Nessa',role:'Herb witch',shop:"Witch's Hut",box:IN(98,202,6,4),stock:['Mintleaf','Bitterroot','Sunpetal','Vial of water','Bog pitch']},
+  {type:'Ranger Thorne',role:'Hunter supplier',shop:"Ranger's Lodge",box:IN(330,98,7,5),stock:['Bird snare','Box trap','Butterfly net','Snare rod','Rabbit snare']},
+  {type:'Archmage Selwyn',role:'Glyphcraft tutor',shop:"Wizards' Spire",box:[128,187,7,7],ok:(x,y)=>Math.hypot(x-131,y-190)<4,stock:['Aether stone','Wind token','Thought token','Tide token','Root token','Ember token','Aether satchel']},
+  {type:'Bryn',role:'Combat instructor',shop:'Combat Training Yard',box:[112,100,9,10]},
+  {type:'Kell',role:'Range master',shop:'Combat Training Yard',box:[125,99,3,10],stock:['Bronze arrow','Iron arrow','Shortbow','Oak shortbow','Leather vambraces']},
+  {type:'Garden sprite',role:'Farming tools',shop:'Brightwater Allotments',box:[193,185,14,2],stock:['Rake','Spade','Seed dibber','Secateurs','Watering can','Compost']},
+  {type:'Agility trainer Lio',role:'Agility trainer',shop:'Brightwater Agility Course',box:[141,218,20,6]}
+];
+for(const k of KEEPERS)NPC_GROUPS.push({type:k.type,role:k.role,shop:k.shop,stock:k.stock,n:k.n||1,box:k.box,ok:k.ok});
+const NPCS=[];const occ=new Set();
+for(const g of NPC_GROUPS){g.ok=g.ok||(()=>true);let placed=0,tries=0;
+  while(placed<g.n&&tries++<500){const x=g.box[0]+(rnd()*g.box[2]|0),y=g.box[1]+(rnd()*g.box[3]|0);
+    if(!walk(x,y)||!g.ok(x,y)||occ.has(y*W+x))continue;occ.add(y*W+x);
+    NPCS.push({g,x,y,fx:x,fy:y,start:0,next:rnd()*2000,sx:x,sy:y});placed++}}
+
+/* =========================================================
+   Tile painter
+   ========================================================= */
+const cl=v=>v<0?0:v>255?255:v|0;
+const rgb=(c,d=0)=>`rgb(${cl(c[0]+d)},${cl(c[1]+d)},${cl(c[2]+d)})`;
+const GR=[76,124,46],DG=[54,94,34],DIRT=[136,104,62],SAND=[204,178,122],ASH=[72,62,54],COB=[132,124,112],STONE=[152,145,132],
+WOOD=[120,84,48],FIELD=[104,82,40],WATER=[46,94,142],BRIDGE=[112,78,44],WALLC=[104,98,90],BW=[216,208,192],PAVE=[212,184,132],SSW=[196,160,104];
+const UNDER={T:',',t:'a','1':'d','2':'d','3':'d','4':'d',Z:'.',A:'s',K:'s',x:'s',M:'c',H:'c',L:'d',O:'s',F:'.',P:'m',E:'m',C:'m',J:'m',k:'m',G:',',Y:'S',p:'S',
+  o:',',l:',',e:',',Q:',','5':'d','6':'d','7':'d','8':'d','9':'d',U:'s',R:'s',r:'w',j:'~',h:'.',i:'.','%':'.','>':'^',y:'d','@':'.'};
+const ORE={'1':[198,112,58],'2':[200,200,194],'3':[154,66,48],'4':[26,24,22],'5':[238,198,64],'6':[88,98,200],'7':[72,152,98],'8':[98,192,222]};
+const TREEC={T:[[38,98,30],[58,130,42],[92,162,62]],o:[[70,112,34],[98,146,52],[132,176,80]],e:[[24,66,30],[40,90,42],[64,118,58]],Q:[[48,116,126],[80,160,170],[200,250,250]]};
+const wet=c=>c==='~'||c==='b'||c==='O'||c==='V'||c==='j'||c==null;
+function blockWall(g,px,py,x,y,N,col,ch){const S=TS,box=(d,X,Y,w,h)=>{g.fillStyle=rgb(col,d);g.fillRect(px+X,py+Y,w,h)};
+  box((hash(x,y,1)-.5)*8,0,0,S,S);box(-32,0,5,S,1);box(-32,0,10,S,1);const o=y%2;box(-32,o?4:10,0,1,5);box(-32,o?11:3,6,1,4);box(-32,o?6:13,11,1,5);
+  if(N(x,y-1)!==ch)box(32,0,0,S,2);if(N(x,y+1)!==ch){g.fillStyle='rgba(0,0,0,.35)';g.fillRect(px,py+S-2,S,2)}}
+function paint(g,c,x,y,px,py,N=gget){
+  const S=TS,j=k=>hash(x,y,k)-.5;
+  const box=(col,d,X,Y,w,h)=>{g.fillStyle=rgb(col,d);g.fillRect(px+X,py+Y,w,h)};
+  const ground=(col,amt,n=4)=>{box(col,j(1)*amt,0,0,S,S);for(let k=0;k<n;k++)box(col,j(10+k)*amt*2.2,Math.floor(hash(x,y,20+k)*14),Math.floor(hash(x,y,30+k)*14),2,2)};
+  const dot=(cx,cy,r,col,d)=>{g.fillStyle=rgb(col,d);g.beginPath();g.arc(px+cx,py+cy,r,0,7);g.fill()};
+  const shade=(cx,cy,r,a=.25)=>{g.fillStyle=`rgba(0,0,0,${a})`;g.beginPath();g.arc(px+cx,py+cy,r,0,7);g.fill()};
+  const base=c==='u'?(['S','a',',','.'].includes(N(x,y+1))?N(x,y+1):'.'):UNDER[c];
+  if(base){if(c==='O'&&N(x+1,y)==='~')paint(g,'~',x,y,px,py,()=>'~');else paint(g,base,x,y,px,py,N)}
+  switch(c){
+    case '.':ground(GR,14,5);break;
+    case 'o':case 'e':case 'Q':{const P3=TREEC[c],cx=8+j(2)*3,cy=8+j(3)*3;shade(cx+1.5,cy+2,7.4);dot(cx,cy,7.2,P3[0],j(4)*18);dot(cx-2,cy-2,4.2,P3[1],j(5)*14);dot(cx-3,cy-3,1.7,P3[2],0);
+      if(c==='Q')for(let k=0;k<4;k++)box([240,255,255],0,3+Math.floor(hash(x,y,170+k)*10),3+Math.floor(hash(x,y,175+k)*10),1,1);
+      if(c==='e')for(let k=0;k<3;k++)box([150,40,40],0,4+Math.floor(hash(x,y,170+k)*8),4+Math.floor(hash(x,y,175+k)*8),1,1);break}
+    case 'l':{shade(9.5,10,7.2);dot(8,8,7,[92,138,58],j(4)*16);g.strokeStyle=rgb([136,180,92],j(5)*12);g.lineWidth=1;g.beginPath();for(let k=0;k<6;k++){const sx=px+3+k*2+.5;g.moveTo(sx,py+4+(k%2)*2);g.lineTo(sx,py+13-(k%3))}g.stroke();break}
+    case '5':case '6':case '7':case '8':shade(9,10,6.5);dot(8,8,6.5,[104,98,92],j(4)*16);dot(6,6,3.5,[138,132,122],j(5)*12);for(let k=0;k<4;k++)box(ORE[c],0,3+Math.floor(hash(x,y,110+k)*8),3+Math.floor(hash(x,y,115+k)*8),2,2);break;
+    case '9':shade(9,10,7);dot(8,8,7,[206,206,218],j(4)*10);dot(6,6,3.8,[232,232,242],0);for(let k=0;k<3;k++)box([150,100,210],0,4+Math.floor(hash(x,y,110+k)*7),4+Math.floor(hash(x,y,115+k)*7),2,2);break;
+    case 'U':box([92,64,52],0,2,2,12,13);box([70,48,40],0,2,6,12,1);box([70,48,40],0,2,10,12,1);box([30,18,14],0,5,8,6,6);box([244,142,40],0,6,11,4,2);box([255,210,90],0,7,11,2,1);break;
+    case 'R':box([58,58,64],0,2,3,12,11);box([88,88,96],0,2,3,12,1);dot(5.5,6.5,2,[28,28,32],0);dot(10.5,6.5,2,[28,28,32],0);box([232,120,40],0,4,11,8,2);break;
+    case 'r':shade(9,13,4,.25);box([110,74,40],0,7,10,2,5);g.strokeStyle=rgb([140,96,52]);g.lineWidth=1.4;g.beginPath();g.arc(px+8,py+7,5,0,7);for(let k=0;k<4;k++){const a=k/4*3.14;g.moveTo(px+8+Math.cos(a)*5,py+7+Math.sin(a)*5);g.lineTo(px+8-Math.cos(a)*5,py+7-Math.sin(a)*5)}g.stroke();break;
+    case 'j':case 'I':{g.strokeStyle='rgba(255,255,255,.75)';g.lineWidth=1;const t=hash(x,y,3)*2;g.beginPath();g.arc(px+8,py+8,2+t,0,7);g.stroke();g.strokeStyle='rgba(255,255,255,.4)';g.beginPath();g.arc(px+8,py+8,5+t,0,7);g.stroke();box([230,240,255],0,7,7,2,1);break}
+    case 'h':box([110,80,44],0,1,1,14,14);box([78,54,30],j(1)*8,2,2,12,12);for(const r of[4,8,12])box([60,40,22],0,2,r,12,1);for(let k=0;k<4;k++)box([96,150,52],0,3+k*3,3+Math.floor(hash(x,y,180+k)*3)*4,2,2);break;
+    case 'i':{const Wd=[120,84,46];box(Wd,0,2,3,2,11);box(Wd,0,12,3,2,11);box(Wd,0,2,4,12,2);g.strokeStyle='rgba(230,220,190,.85)';g.lineWidth=.8;g.beginPath();for(let k=0;k<3;k++){g.moveTo(px+4,py+7+k*2.5);g.lineTo(px+12,py+7+k*2.5)}for(let k=0;k<3;k++){g.moveTo(px+5.5+k*2.5,py+6);g.lineTo(px+5.5+k*2.5,py+13)}g.stroke();break}
+    case 'u':dot(8,8,6.6,[132,128,140],0);dot(8,8,4.4,[92,68,140],0);dot(8,8,2,[214,186,255],0);break;
+    case '%':box([152,148,140],0,2,2,12,13);box([86,40,148],0,4,4,8,11);dot(8,9,2.6,[176,120,240],0);dot(8,9,1,[240,220,255],0);break;
+    case '>':dot(8,10,5.5,[14,12,10],0);box([14,12,10],0,2.5,10,11,6);break;
+    case 'y':shade(9,14,3,.3);box([110,76,40],0,7,6,2,9);box([204,172,92],0,3,7,10,2);dot(8,6,3.4,[204,172,92],0);dot(8,6,1.4,[150,60,40],0);break;
+    case '@':shade(9,10,6.5);dot(8,8,6.3,[240,236,226],0);dot(8,8,4.4,[200,52,40],0);dot(8,8,2.6,[240,236,226],0);dot(8,8,1.2,[240,200,60],0);break;
+    case ',':ground(DG,14,5);for(let k=0;k<3;k++)box([74,124,46],j(60+k)*24,Math.floor(hash(x,y,63+k)*15),Math.floor(hash(x,y,66+k)*13),1,3);break;
+    case 'd':ground(DIRT,16,5);box([96,72,42],0,Math.floor(hash(x,y,7)*14),Math.floor(hash(x,y,8)*14),2,1);break;
+    case 'S':ground(SAND,12,5);break;
+    case 'a':ground(ASH,14,5);if(hash(x,y,7)>.9)box([206,96,34],0,Math.floor(hash(x,y,8)*15),Math.floor(hash(x,y,9)*15),1,1);break;
+    case 'q':ground([76,88,52],14,5);dot(4+hash(x,y,7)*8,4+hash(x,y,8)*8,2.6,[52,66,54],0);break;
+    case 'D':box([30,25,20],j(1)*8,0,0,S,S);if(N(x,y-1)!=='D')box([78,66,54],0,0,0,S,3);if(N(x,y+1)!=='D')box([58,50,42],0,0,S-3,S,3);box([16,13,10],0,Math.floor(hash(x,y,4)*12),7,4,1);break;
+    case 'c':box([84,78,70],0,0,0,S,S);for(let a=0;a<2;a++)for(let b=0;b<2;b++){const o=(b&&(y%2))?4:0;box(COB,j(70+a*2+b)*28,((a*8+o)%16)+1,b*8+1,6,6);box(COB,26,((a*8+o)%16)+1,b*8+1,6,1)}break;
+    case 'n':box(PAVE,j(1)*10,0,0,S,S);box(PAVE,-26,0,S-1,S,1);box(PAVE,-26,S-1,0,1,S);box(PAVE,16,0,0,S-1,1);if((x+y)%3===0)box(PAVE,-14,4,7,8,1);break;
+    case 's':box(STONE,j(1)*10,0,0,S,S);box(STONE,-24,0,S-1,S,1);box(STONE,-24,S-1,0,1,S);box(STONE,14,0,0,S-1,1);break;
+    case 'w':for(let r=0;r<4;r++){box(WOOD,(hash(x,y*4+r,3)-.5)*26,0,r*4,S,4);box(WOOD,-34,0,r*4+3,S,1);box(WOOD,-34,Math.floor(hash(x,y*4+r,5)*14),r*4,1,3)}break;
+    case 'f':box(FIELD,j(1)*10,0,0,S,S);for(let r=0;r<4;r++)for(let i=0;i<4;i++)box([86,132,42],(hash(x*4+i,y*4+r,9)-.5)*34,i*4+1,r*4+1,2,2);break;
+    case 'g':{ground(GR,12,3);const P=[[208,62,62],[232,204,64],[164,94,206],[244,242,236]];for(let k=0;k<6;k++)box(P[Math.floor(hash(x,y,80+k)*4)],0,Math.floor(hash(x,y,86+k)*13)+1,Math.floor(hash(x,y,92+k)*13)+1,2,2);break}
+    case '~':{box(WATER,j(1)*8,0,0,S,S);g.fillStyle='rgba(255,255,255,.14)';for(let k=0;k<2;k++)g.fillRect(px+Math.floor(hash(x,y,90+k)*10),py+Math.floor(hash(x,y,95+k)*14)+1,5,1);
+      const F=[118,160,178];if(!wet(N(x,y-1)))box(F,0,0,0,S,2);if(!wet(N(x,y+1)))box(F,0,0,S-2,S,2);if(!wet(N(x-1,y)))box(F,0,0,0,2,S);if(!wet(N(x+1,y)))box(F,0,S-2,0,2,S);break}
+    case 'V':box([30,64,110],j(1)*8,0,0,S,S);g.fillStyle='rgba(255,255,255,.1)';for(let k=0;k<2;k++)g.fillRect(px+Math.floor(hash(x,y,90+k)*10),py+Math.floor(hash(x,y,95+k)*14)+1,6,1);break;
+    case 'v':{box([182,60,20],j(1)*16,0,0,S,S);for(let k=0;k<3;k++)dot(3+hash(x,y,140+k)*10,3+hash(x,y,145+k)*10,1.5+hash(x,y,150+k)*2,[250,176,48],0);
+      const E=[52,40,34];if(N(x,y-1)!=='v')box(E,0,0,0,S,2);if(N(x,y+1)!=='v')box(E,0,0,S-2,S,2);if(N(x-1,y)!=='v')box(E,0,0,0,2,S);if(N(x+1,y)!=='v')box(E,0,S-2,0,2,S);break}
+    case 'b':{let hr=0,vr=0;for(let k=-2;k<=2;k++){if(N(x+k,y)==='b')hr++;if(N(x,y+k)==='b')vr++}
+      box(BRIDGE,j(1)*8,0,0,S,S);const R=[66,44,24];
+      if(hr>=vr){for(const i of[3,7,11,15])box(BRIDGE,-32,i,0,1,S);if(N(x,y-1)!=='b')box(R,0,0,0,S,2);if(N(x,y+1)!=='b')box(R,0,0,S-2,S,2)}
+      else{for(const i of[3,7,11,15])box(BRIDGE,-32,0,i,S,1);if(N(x-1,y)!=='b')box(R,0,0,0,2,S);if(N(x+1,y)!=='b')box(R,0,S-2,0,2,S)}break}
+    case 'W':blockWall(g,px,py,x,y,N,WALLC,'W');break;
+    case 'X':blockWall(g,px,py,x,y,N,SSW,'X');break;
+    case 'B':{box(BW,j(1)*6,0,0,S,S);const E=[74,68,58];if(N(x,y-1)!=='B')box(E,0,0,0,S,1);if(N(x,y+1)!=='B')box(E,0,0,S-1,S,1);if(N(x-1,y)!=='B')box(E,0,0,0,1,S);if(N(x+1,y)!=='B')box(E,0,S-1,0,1,S);break}
+    case '^':{ground([108,100,90],16,5);const tx=7+j(3)*4,ty=2+j(4)*3;g.fillStyle=rgb([82,76,68],j(2)*12);g.beginPath();g.moveTo(px+1,py+15);g.lineTo(px+tx,py+ty);g.lineTo(px+15,py+15);g.fill();
+      g.fillStyle=rgb([148,140,126],j(5)*12);g.beginPath();g.moveTo(px+3,py+15);g.lineTo(px+tx,py+ty);g.lineTo(px+tx+1,py+15);g.fill();break}
+    case '+':box([92,58,30],0,0,0,S,S);box([134,90,48],0,2,2,S-4,S-4);box([228,196,92],0,S-6,7,2,2);break;
+    case 'T':{const cx=8+j(2)*3,cy=8+j(3)*3;shade(cx+1.5,cy+2,7.2);dot(cx,cy,7,[38,98,30],j(4)*22);dot(cx-2,cy-2,4,[58,130,42],j(5)*18);dot(cx-3,cy-3,1.6,[92,162,62],0);break}
+    case 't':{g.strokeStyle=rgb([94,72,50],j(4)*20);g.lineWidth=1.6;g.lineCap='round';g.beginPath();for(let k=0;k<4;k++){const a=hash(x,y,100+k)*6.28;g.moveTo(px+8,py+8);g.lineTo(px+8+Math.cos(a)*6,py+8+Math.sin(a)*6)}g.stroke();dot(8,8,2,[80,60,40],0);break}
+    case 'Y':{g.fillStyle='rgba(0,0,0,.25)';g.fillRect(px+5,py+13,8,2);const C2=[72,132,60],d=j(4)*14;box(C2,d,7,2,3,12);box(C2,d,4,6,3,2);box(C2,d,4,3,2,4);box(C2,d,10,8,2,2);box(C2,d,11,5,2,4);box([110,170,90],0,7,2,1,12);break}
+    case 'p':{shade(9,10,6,.22);g.strokeStyle=rgb([60,124,46],j(4)*18);g.lineWidth=2;g.lineCap='round';g.beginPath();for(let k=0;k<6;k++){const a=k/6*6.28+hash(x,y,9);g.moveTo(px+8,py+8);g.lineTo(px+8+Math.cos(a)*7,py+8+Math.sin(a)*7)}g.stroke();dot(8,8,1.8,[120,86,48],0);break}
+    case '1':case '2':case '3':case '4':shade(9,10,6.5);dot(8,8,6.5,[112,106,98],j(4)*16);dot(6,6,3.5,[142,136,126],j(5)*12);for(let k=0;k<3;k++)box(ORE[c],0,4+Math.floor(hash(x,y,110+k)*7),4+Math.floor(hash(x,y,115+k)*7),2,2);break;
+    case 'Z':g.fillStyle='rgba(0,0,0,.3)';g.fillRect(px+6,py+12,8,3);box([150,150,144],j(4)*14,5,2,6,12);box([108,108,102],0,9,2,2,12);box([186,186,180],0,5,2,6,1);break;
+    case 'G':g.fillStyle='rgba(0,0,0,.3)';g.fillRect(px+5,py+12,8,2);box([150,150,144],j(4)*12,5,5,6,8);dot(8,5,3,[150,150,144],j(4)*12);box([96,96,92],0,7,6,2,4);box([96,96,92],0,6,7,4,1);break;
+    case 'A':box([46,46,52],0,3,5,10,3);box([46,46,52],0,6,8,4,4);box([46,46,52],0,1,5,2,2);box([118,118,128],0,3,5,10,1);break;
+    case 'K':box([82,54,28],0,1,3,14,10);box([134,94,54],0,2,4,12,3);box([242,202,62],0,7,9,2,2);break;
+    case 'M':for(let i=0;i<7;i++)box(i%2?[234,224,202]:[172,42,42],0,1+i*2,1,2,10);g.fillStyle='rgba(0,0,0,.35)';g.fillRect(px+1,py+11,14,2);break;
+    case 'O':dot(8,8,6,[170,166,156],0);dot(8,8,3.2,[206,200,188],0);dot(7,7,1.2,[242,238,228],0);break;
+    case 'x':box([236,230,214],0,2,4,12,8);box([202,160,60],0,2,7,12,2);box([120,110,96],0,2,11,12,1);break;
+    case 'L':for(const[a,b]of[[5,6],[10.5,6],[7.8,10.5]]){dot(a,b,3,[118,78,40],0);dot(a,b,1.5,[178,136,84],0)}break;
+    case 'H':box([40,38,36],0,3,3,10,10);for(const i of[5,8,11])box([92,88,82],0,i,4,1,8);break;
+    case 'F':{const isF=v=>v==='F',hz=isF(N(x-1,y))||isF(N(x+1,y)),vt=isF(N(x,y-1))||isF(N(x,y+1)),FC=[114,80,42];
+      if(hz||!vt){box(FC,0,0,6,S,2);box(FC,-22,0,10,S,1)}if(vt)box(FC,0,7,0,2,S);box([84,58,30],0,6,5,4,4);break}
+    case 'm':ground([94,74,46],16,6);box([70,54,34],0,Math.floor(hash(x,y,7)*12),Math.floor(hash(x,y,8)*13),4,2);break;
+    case 'k':for(let n=0;n<2;n++){const bx=2+Math.floor(hash(x,y,120+n)*9),by=3+Math.floor(hash(x,y,124+n)*9);box([230,224,204],0,bx,by,5,1);box([230,224,204],0,bx-1,by-1,1,3);box([230,224,204],0,bx+5,by-1,1,3)}break;
+    case 'P':for(const[a,b]of[[4,4],[12,4],[4,12],[12,12]]){shade(a+1,b+1,3.8,.3);dot(a,b,3.7,[96,64,32],j(a+b)*16);dot(a,b,1.6,[150,112,66],0)}break;
+    case 'E':{box([116,108,58],j(1)*10,0,0,S,S);box([92,86,44],0,0,7,S,2);for(const i of[3,11])box([150,140,86],0,i,1,1,S-2);
+      const E=[48,42,22];if(N(x,y-1)!=='E')box(E,0,0,0,S,1);if(N(x,y+1)!=='E'){box(E,0,0,S-1,S,1);g.fillStyle='rgba(0,0,0,.3)';g.fillRect(px,py+S-3,S,2)}if(N(x-1,y)!=='E')box(E,0,0,0,1,S);if(N(x+1,y)!=='E')box(E,0,S-1,0,1,S);break}
+    case 'C':for(let k=0;k<8;k++){const a=k/8*6.28;dot(8+Math.cos(a)*6,8+Math.sin(a)*6,1.7,[128,124,116],0)}box([70,44,22],0,4,7,8,2);box([70,44,22],0,7,4,2,8);dot(8,8,3.4,[232,104,28],0);dot(8,7.5,1.8,[255,214,74],0);break;
+    case 'J':shade(9,13,3,.3);box([84,56,28],0,7,4,2,11);box([170,38,30],0,6,8,4,1);dot(8,4,2.6,[236,230,210],0);box([30,24,20],0,7,3,1,1);box([30,24,20],0,9,3,1,1);break;
+  }
+}
+
+/* =========================================================
+   Overview (4 px per tile) and minimap
+   ========================================================= */
+const OVS=4;
+const COL={'.':GR,',':DG,'d':DIRT,'c':COB,'n':PAVE,'s':STONE,'w':WOOD,'g':[112,128,70],'f':[96,110,44],'S':SAND,'a':ASH,'q':[70,84,52],'b':BRIDGE,'+':[110,72,38],'H':COB,
+  'm':[94,74,46],'k':[124,104,74],'W':WALLC,'X':SSW,'B':BW,'~':WATER,'V':[30,64,110],'v':[214,86,28],'D':[30,25,20],'^':[96,88,80],'F':[104,96,56],'P':[96,64,32],
+  'T':[40,94,30],'t':[84,70,52],'Y':[96,150,72],'p':[80,130,56],'1':[120,104,90],'2':[120,116,110],'3':[118,96,90],'4':[80,76,72],'Z':[150,150,144],'G':[136,136,130],
+  'A':[60,60,64],'K':[110,80,46],'M':[180,90,80],'O':[180,176,166],'x':[230,224,206],'L':[130,90,50],'E':[116,108,58],'C':[220,110,40],'J':[100,70,40],
+  'o':[72,114,36],'l':[96,140,62],'e':[28,70,32],'Q':[60,140,150],'5':[160,140,80],'6':[100,104,150],'7':[90,130,100],'8':[100,160,190],'9':[208,208,220],
+  'U':[92,64,52],'R':[70,70,76],'r':[130,90,50],'j':[150,190,220],'h':[90,64,36],'i':[130,100,60],'u':[110,80,160],'%':[120,70,170],'>':[20,18,16],'y':[190,160,90],'@':[210,80,60]};
+const ov=document.createElement('canvas');ov.width=W*OVS;ov.height=H*OVS;
+{const octx=ov.getContext('2d'),img=octx.createImageData(ov.width,ov.height),d=img.data;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const c=COL[gget(x,y)]||GR,t=(hash(x,y,1)-.5)*12;
+    for(let v=0;v<OVS;v++)for(let u=0;u<OVS;u++){const n=((u*7+v*13+x*3+y*5)&7)-3.5,i=((y*OVS+v)*ov.width+x*OVS+u)*4;
+      d[i]=cl(c[0]+t+n);d[i+1]=cl(c[1]+t+n);d[i+2]=cl(c[2]+t+n);d[i+3]=255}}
+  octx.putImageData(img,0,0)}
+const miniBase=document.createElement('canvas');miniBase.width=W;miniBase.height=H;
+{const m=miniBase.getContext('2d');m.imageSmoothingEnabled=true;m.drawImage(ov,0,0,W,H)}
+
+/* =========================================================
+   Key swatches
+   ========================================================= */
+const lgrid=document.getElementById('lgrid');
+for(const ch of Object.keys(TILES)){
+  const c=document.createElement('canvas');c.width=c.height=TS;
+  const N=ch==='F'?(X,Y)=>Y===5?'F':'.':ch==='b'?(X,Y)=>Y===5?'b':'~':()=>ch;
+  paint(c.getContext('2d'),ch,5,5,0,0,N);
+  const li=document.createElement('div');li.className='li';
+  const code=document.createElement('code');code.textContent=ch;
+  const sp=document.createElement('span');sp.textContent=TILES[ch][0];sp.title=TILES[ch][0]+(TILES[ch][1]?' · walkable':' · blocked');
+  li.append(c,code,sp);lgrid.append(li);
+}
+if(!matchMedia('(max-width:760px)').matches)document.getElementById('legend').open=true;
+
+/* =========================================================
+   View, chunk cache
+   ========================================================= */
+const stage=document.getElementById('stage'),cv=document.getElementById('map'),ctx=cv.getContext('2d');
+const mini=document.getElementById('mini'),mctx=mini.getContext('2d');
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let dpr=1,cw=1,ch=1,dirty=true,showLabels=true,showGrid=false,follow=true,running=false,hover=null,dest=null,first=true;
+const cam={x:190.5,y:118,z:12};
+const DETAIL=7,CH=32,MAXC=60,cache=new Map();
+function makeChunk(cx,cy){const c=document.createElement('canvas');c.width=c.height=CH*TS;const g=c.getContext('2d');
+  for(let y=0;y<CH;y++)for(let x=0;x<CH;x++){const X=cx*CH+x,Y=cy*CH+y;paint(g,gget(X,Y),X,Y,x*TS,y*TS)}return c}
+const zmin=()=>Math.max(1,Math.min(cw/W,ch/H)*.9),zmax=56;
+const clampCam=()=>{cam.z=Math.min(zmax,Math.max(zmin(),cam.z));cam.x=Math.min(W,Math.max(0,cam.x));cam.y=Math.min(H,Math.max(0,cam.y))};
+function resize(){
+  const r=stage.getBoundingClientRect();dpr=Math.min(window.devicePixelRatio||1,2);cw=Math.max(1,r.width-6);ch=Math.max(1,r.height-6);
+  cv.width=Math.round(cw*dpr);cv.height=Math.round(ch*dpr);
+  if(first){cam.z=Math.max(9,Math.min(cw/56,ch/52));first=false}
+  clampCam();dirty=true;
+}
+new ResizeObserver(resize).observe(stage);
+const toScreen=(tx,ty)=>[(tx-cam.x)*cam.z+cw/2,(ty-cam.y)*cam.z+ch/2];
+const toTile=(sx,sy)=>[(sx-cw/2)/cam.z+cam.x,(sy-ch/2)/cam.z+cam.y];
+
+/* =========================================================
+   Player and pathing
+   ========================================================= */
+const SPAWN={x:OX+60,y:OY+49};
+const P={x:SPAWN.x,y:SPAWN.y,fx:SPAWN.x,fy:SPAWN.y,start:0,path:[],moving:false};
+const stepMs=()=>running?95:170;
+const DIRS=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+function route(tx,ty){
+  const N=W*H,dist=new Int32Array(N).fill(-1),prev=new Int32Array(N),q=new Int32Array(N);let h=0,t=0;const s=P.y*W+P.x;dist[s]=0;prev[s]=-1;q[t++]=s;
+  const goal=ty*W+tx;
+  while(h<t){const i=q[h++];if(i===goal)break;const x=i%W,y=(i/W)|0;for(const[dx,dy]of DIRS){const nx=x+dx,ny=y+dy;if(!walk(nx,ny))continue;if(dx&&dy&&(!walk(x+dx,y)||!walk(x,y+dy)))continue;const n=ny*W+nx;if(dist[n]>=0)continue;dist[n]=dist[i]+1;prev[n]=i;q[t++]=n}}
+  let best=-1,bd=1e9,bs=1e9;
+  if(dist[goal]>=0)best=goal;
+  else for(let k=0;k<t;k++){const i=q[k],d=Math.max(Math.abs(i%W-tx),Math.abs(((i/W)|0)-ty));if(d<bd||(d===bd&&dist[i]<bs)){bd=d;bs=dist[i];best=i}}
+  const path=[];for(let i=best;i>=0&&i!==s;i=prev[i])path.push([i%W,(i/W)|0]);
+  return {path:path.reverse(),end:[best%W,(best/W)|0]};
+}
+function walkTo(tx,ty){
+  const r=route(tx,ty);dest=r.path.length?r.end:null;
+  if(!r.path.length)return;
+  if(P.moving){P.path=r.path}else{const[n,...rest]=r.path;P.fx=P.x;P.fy=P.y;P.x=n[0];P.y=n[1];P.start=performance.now();P.path=rest;P.moving=true}
+}
+function update(now){
+  if(!P.moving)return;
+  if(now-P.start>=stepMs()){P.fx=P.x;P.fy=P.y;
+    if(P.path.length){const n=P.path.shift();P.x=n[0];P.y=n[1];P.start=now}else{P.moving=false;dest=null;dirty=true}}
+}
+const playerPos=now=>{const k=P.moving&&!RM?Math.min(1,(now-P.start)/stepMs()):1;return[P.fx+(P.x-P.fx)*k,P.fy+(P.y-P.fy)*k]};
+
+/* NPC wandering */
+const NSTEP=420;let lastNpc=-1e9;
+function updateNpcs(now){
+  for(const n of NPCS){
+    if(now<n.next)continue;n.next=now+900+Math.random()*2600;
+    const[dx,dy]=DIRS[Math.random()*8|0],nx=n.x+dx,ny=n.y+dy,b=n.g.box;
+    if(!walk(nx,ny)||!inR(nx,ny,b)||!n.g.ok(nx,ny)||occ.has(ny*W+nx))continue;
+    if(dx&&dy&&(!walk(n.x+dx,n.y)||!walk(n.x,n.y+dy)))continue;
+    occ.delete(n.y*W+n.x);occ.add(ny*W+nx);n.fx=n.x;n.fy=n.y;n.x=nx;n.y=ny;n.start=now;lastNpc=now;
+  }
+}
+
+/* =========================================================
+   Drawing
+   ========================================================= */
+const zt=document.getElementById('zt');
+function draw(now){
+  ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#0c0a07';ctx.fillRect(0,0,cv.width,cv.height);
+  const s=dpr*cam.z/TS;
+  ctx.setTransform(s,0,0,s,dpr*(cw/2-cam.x*cam.z),dpr*(ch/2-cam.y*cam.z));
+  const[x0,y0]=toTile(0,0),[x1,y1]=toTile(cw,ch);
+  const ax=Math.max(0,Math.floor(x0)),ay=Math.max(0,Math.floor(y0)),bx=Math.min(W,Math.ceil(x1)),by=Math.min(H,Math.ceil(y1));
+  if(bx>ax&&by>ay){
+    ctx.imageSmoothingEnabled=cam.z<OVS;
+    ctx.drawImage(ov,ax*OVS,ay*OVS,(bx-ax)*OVS,(by-ay)*OVS,ax*TS,ay*TS,(bx-ax)*TS,(by-ay)*TS);
+    if(cam.z>=DETAIL){
+      ctx.imageSmoothingEnabled=false;let budget=6;
+      for(let cy=Math.floor(ay/CH);cy<=Math.floor((by-1)/CH);cy++)for(let cx=Math.floor(ax/CH);cx<=Math.floor((bx-1)/CH);cx++){
+        const key=cy*100+cx;let c=cache.get(key);
+        if(c){cache.delete(key);cache.set(key,c)}
+        else if(budget-->0){c=makeChunk(cx,cy);cache.set(key,c);if(cache.size>MAXC)cache.delete(cache.keys().next().value)}
+        else{dirty=true;continue}
+        ctx.drawImage(c,cx*CH*TS,cy*CH*TS);
+      }
+    }
+  }
+  if(showGrid&&cam.z>=8){
+    ctx.beginPath();ctx.strokeStyle='rgba(0,0,0,.3)';ctx.lineWidth=1/s;
+    for(let x=ax;x<=bx;x++){ctx.moveTo(x*TS,ay*TS);ctx.lineTo(x*TS,by*TS)}
+    for(let y=ay;y<=by;y++){ctx.moveTo(ax*TS,y*TS);ctx.lineTo(bx*TS,y*TS)}
+    ctx.stroke();
+  }
+  if(dest){const[dx,dy]=dest;ctx.strokeStyle='#e8312a';ctx.lineWidth=Math.max(3/s,2.5);ctx.beginPath();ctx.moveTo(dx*TS+3,dy*TS+3);ctx.lineTo(dx*TS+13,dy*TS+13);ctx.moveTo(dx*TS+13,dy*TS+3);ctx.lineTo(dx*TS+3,dy*TS+13);ctx.stroke()}
+  if(hover&&cam.z>=6){ctx.strokeStyle='#ffe14a';ctx.lineWidth=2/s;ctx.strokeRect(hover[0]*TS+1/s,hover[1]*TS+1/s,TS-2/s,TS-2/s)}
+
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const dotR=Math.max(2.4,cam.z*.26);
+  for(const n of NPCS){
+    const q=RM?1:Math.min(1,(now-n.start)/NSTEP),[gx,gy]=toScreen(n.fx+(n.x-n.fx)*q+.5,n.fy+(n.y-n.fy)*q+.5);
+    if(gx<-20||gy<-20||gx>cw+20||gy>ch+20)continue;
+    ctx.fillStyle='#ffe14a';ctx.strokeStyle='#111';ctx.lineWidth=Math.max(1,dotR*.28);ctx.beginPath();ctx.arc(gx,gy,dotR,0,7);ctx.fill();ctx.stroke();
+  }
+  const[rx,ry]=playerPos(now),[sx,sy]=toScreen(rx+.5,ry+.5),r=Math.max(3.5,cam.z*.3);
+  ctx.fillStyle='rgba(0,0,0,.4)';ctx.beginPath();ctx.ellipse(sx+1,sy+r*.7,r,r*.45,0,0,7);ctx.fill();
+  ctx.fillStyle='#fff';ctx.strokeStyle='#111';ctx.lineWidth=Math.max(1.5,r*.28);ctx.beginPath();ctx.arc(sx,sy,r,0,7);ctx.fill();ctx.stroke();
+  if(showLabels){
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    for(const a of AREAS){
+      const vis=a.t===0?cam.z<9:a.t===1?cam.z>=6:cam.z>=12;if(!vis)continue;
+      const[lx,ly]=toScreen(a.lx??a.x+a.w/2,a.ly??a.y+a.h/2);if(lx<-160||ly<-20||lx>cw+160||ly>ch+20)continue;
+      let fs,col,wt=600;
+      if(a.t===0){fs=a.kind==='town'?18:15;col=a.kind==='town'?'#ffe14a':'#ff981f'}
+      else if(a.t===1){fs=Math.round(Math.min(16,11+cam.z*.2));col='#ff981f'}
+      else{fs=12;col='#ffffff';wt=400}
+      ctx.font=`${wt} ${fs}px "Pixelify Sans", ui-monospace, monospace`;
+      const txt=a.kind==='region'?a.n.toUpperCase():a.n;
+      ctx.fillStyle='#000';ctx.fillText(txt,lx+1,ly+1);ctx.fillStyle=col;ctx.fillText(txt,lx,ly);
+    }
+  }
+  zt.textContent=`${cam.z<10?cam.z.toFixed(1):Math.round(cam.z)} px/tile`;
+  // minimap
+  mctx.imageSmoothingEnabled=true;mctx.drawImage(miniBase,0,0);
+  mctx.strokeStyle='#ffe14a';mctx.lineWidth=1.5;mctx.strokeRect(x0,y0,x1-x0,y1-y0);
+  mctx.fillStyle='#fff';mctx.strokeStyle='#000';mctx.lineWidth=1;mctx.beginPath();mctx.arc(rx+.5,ry+.5,3,0,7);mctx.fill();mctx.stroke();
+}
+function frame(now){
+  update(now);updateNpcs(now);
+  if(follow&&P.moving){const[rx,ry]=playerPos(now);cam.x+=(rx+.5-cam.x)*.18;cam.y+=(ry+.5-cam.y)*.18;clampCam()}
+  if(dirty||P.moving||now-lastNpc<NSTEP+40){dirty=false;draw(now)}
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+if(document.fonts)document.fonts.ready.then(()=>dirty=true);
+
+/* =========================================================
+   Readout
+   ========================================================= */
+const rc=document.getElementById('rc'),rt=document.getElementById('rt'),rw=document.getElementById('rw'),ra=document.getElementById('ra'),rxEl=document.getElementById('rx'),rsEl=document.getElementById('rs');
+function readout(x,y){
+  const c=gget(x,y),info=TILES[c];rc.textContent=`${x}, ${y}`;rt.textContent=info[0];
+  rw.textContent=info[1]?'Walkable':'Blocked';rw.className='chip '+(info[1]?'ok':'no');ra.textContent=areaAt(x,y);
+  const npc=NPCS.find(n=>n.x===x&&n.y===y);rsEl.textContent='';
+  if(npc){const g=npc.g;
+    rxEl.textContent=g.role?`${g.type} · ${g.role}`:`${g.type} (level ${g.level})`;rxEl.className='extra';
+    if(g.role&&g.stock){rsEl.innerHTML='';const b=document.createElement('b');b.textContent=g.shop+' sells: ';rsEl.append(b,g.stock.join(', '))}
+    else if(g.role&&g.shop)rsEl.textContent=g.shop;}
+  else if(c==='j'){rxEl.textContent=FISH.get(y*W+x)+' fishing spot';rxEl.className='extra'}
+  else if(c==='u'){rxEl.textContent=ALTAR_AT.get(y*W+x)+' shrine · Glyphcraft';rxEl.className='extra'}
+  else if(y<DITCH){rxEl.textContent=`Ashen Waste depth ${Math.floor((DITCH-1-y)/4)+1}`;rxEl.className='extra danger'}
+  else{rxEl.textContent='';rxEl.className='extra'}
+}
+readout(SPAWN.x,SPAWN.y);
+
+/* =========================================================
+   Input
+   ========================================================= */
+const btnFollow=document.getElementById('tFollow');
+const setFollow=v=>{follow=v;btnFollow.setAttribute('aria-pressed',v)};
+const ptrs=new Map();let drag=null,pinch=null,tap=null;
+const pos=e=>{const r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
+function zoomAt(sx,sy,z){const[wx,wy]=toTile(sx,sy);cam.z=Math.min(zmax,Math.max(zmin(),z));cam.x=wx-(sx-cw/2)/cam.z;cam.y=wy-(sy-ch/2)/cam.z;clampCam();dirty=true}
+const startDrag=p=>{drag={x:p.x,y:p.y,cx:cam.x,cy:cam.y}};
+cv.addEventListener('pointerdown',e=>{
+  cv.setPointerCapture(e.pointerId);const p=pos(e);ptrs.set(e.pointerId,p);
+  if(ptrs.size===1){tap={x:p.x,y:p.y,moved:false};startDrag(p)}
+  else if(ptrs.size===2){tap=null;drag=null;const[a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1,z:cam.z,w:toTile((a.x+b.x)/2,(a.y+b.y)/2)}}
+});
+cv.addEventListener('pointermove',e=>{
+  const p=pos(e);
+  if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,p);
+  if(pinch&&ptrs.size>=2){const[a,b]=[...ptrs.values()];const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    cam.z=Math.min(zmax,Math.max(zmin(),pinch.z*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d));cam.x=pinch.w[0]-(mx-cw/2)/cam.z;cam.y=pinch.w[1]-(my-ch/2)/cam.z;clampCam();setFollow(false);dirty=true;return}
+  if(drag&&ptrs.has(e.pointerId)){const dx=p.x-drag.x,dy=p.y-drag.y;if(tap&&Math.hypot(dx,dy)>6)tap.moved=true;
+    if(!tap||tap.moved){cam.x=drag.cx-dx/cam.z;cam.y=drag.cy-dy/cam.z;clampCam();setFollow(false);dirty=true}}
+  if(e.pointerType==='mouse'&&!ptrs.size){const[tx,ty]=toTile(p.x,p.y).map(Math.floor);
+    if(inb(tx,ty)){if(!hover||hover[0]!==tx||hover[1]!==ty){hover=[tx,ty];readout(tx,ty);dirty=true}}else if(hover){hover=null;dirty=true}}
+});
+function end(e){
+  const p=pos(e);
+  if(tap&&!tap.moved&&ptrs.size===1){const[tx,ty]=toTile(p.x,p.y).map(Math.floor);if(inb(tx,ty)){hover=[tx,ty];readout(tx,ty);walkTo(tx,ty);if(follow===false&&btnFollow.getAttribute('aria-pressed')==='true')follow=true;dirty=true}}
+  ptrs.delete(e.pointerId);tap=null;
+  if(ptrs.size<2)pinch=null;
+  if(ptrs.size===1)startDrag([...ptrs.values()][0]);else if(!ptrs.size)drag=null;
+}
+cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);
+cv.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'&&hover&&!ptrs.size){hover=null;dirty=true}});
+cv.addEventListener('wheel',e=>{e.preventDefault();const p=pos(e);zoomAt(p.x,p.y,cam.z*Math.exp(-e.deltaY*.0015))},{passive:false});
+cv.addEventListener('keydown',e=>{
+  const step=Math.max(2,40/cam.z*4);let used=true;
+  if(e.key==='ArrowLeft')cam.x-=step;else if(e.key==='ArrowRight')cam.x+=step;else if(e.key==='ArrowUp')cam.y-=step;else if(e.key==='ArrowDown')cam.y+=step;
+  else if(e.key==='+'||e.key==='=')zoomAt(cw/2,ch/2,cam.z*1.25);else if(e.key==='-')zoomAt(cw/2,ch/2,cam.z/1.25);else used=false;
+  if(used){e.preventDefault();setFollow(false);clampCam();dirty=true}
+});
+function miniJump(e){const r=mini.getBoundingClientRect();cam.x=(e.clientX-r.left)/r.width*W;cam.y=(e.clientY-r.top)/r.height*H;setFollow(false);clampCam();dirty=true}
+mini.addEventListener('pointerdown',e=>{mini.setPointerCapture(e.pointerId);miniJump(e)});
+mini.addEventListener('pointermove',e=>{if(e.buttons)miniJump(e)});
+
+/* Skills */
+function findNear(ch,x0,y0){let best=null,bd=1e9;for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(gget(x,y)===ch){const d=Math.abs(x-x0)+Math.abs(y-y0);if(d<bd){bd=d;best=[x,y]}}return best||[x0,y0]}
+const F0=(a,fb)=>a&&a.length?a[0]:fb;
+const AL=n=>{const a=ALTARS.find(v=>v[0]===n);return[n+' Shrine',a[1],a[2]+2]};
+const MELEE=[['Combat Training Yard (dummies)',117,103],['Goblin Encampment (level 2)',152,153],['Brightwater Pasture cows',170,204],['Old Graveyard skeletons (level 22)',160,52],['Ironcrag Bounty Cave',266,109]];
+const SKILLS=[
+  ['Attack','Melee accuracy. Fight anything; start on goblins and cows.',MELEE],
+  ['Hitpoints','Rises with every combat skill you train.',MELEE],
+  ['Mining','Copper and tin to start, then iron, coal, gold, cobalt, verdite and glacite.',[['Copperback Mine (copper, tin, iron, coal)',220,153],['Greyspine Quarry (iron, coal, gold, cobalt)',40,92],['Sunscar Mine (desert)',346,230],['Glacite Hollow (Ashen Waste)',205,12],['Aether Quarry',145,189]]],
+  ['Strength','Melee max hit. Same targets as Attack.',MELEE],
+  ['Agility','Run laps of the obstacle courses.',[['Brightwater Agility Course',152,220],['Ashen Agility Course',214,52]]],
+  ['Smithing','Smelt ore at a furnace, hammer bars on an anvil.',[['Kelmoor Smithy (furnace, anvils)',170,122],['Falcrest Forge',69,153],['Qadir Smelter',304,197]]],
+  ['Defence','Damage reduction. Same targets as Attack.',MELEE],
+  ['Herbalism','Clean herbs and mix potions; buy vials and secondaries.',[['Apothecary (Falcrest)',48,145],["Witch's Hut (Hallowmere)",100,204],['Herb patch, Brightwater Allotments',199,188]]],
+  ['Fishing','Net minnows in the shallows; bait perch and pike in deep water.',[['Saltcombe beach: minnows (net)',...F0(FISHG.beach,[150,256])],['Saltcombe piers: perch & pike (rod)',...F0(FISHG.pier,[143,262])],['River Vell: perch & pike (rod)',...F0(FISHG.river,[228,190])],['Lake Ostra: perch & pike (rod)',...F0(FISHG.lake,[112,178])],['Kelmoor riverbank: minnows & perch',230,125],['Net & Tackle shop',152,241]]],
+  ['Ranged','Shoot the targets, then real monsters.',[['Archery targets, Combat Training Yard',128,104],['Bow & Arrow shop (Falcrest)',79,165]]],
+  ['Thieving','Steal from stalls and pickpocket townsfolk.',[['Kelmoor Square stalls',190,110],['Qadir Bazaar stalls',312,177],['Falcrest Square guards',62,139]]],
+  ['Cooking','Cook on a range for fewer burns, or on any fire.',[["Cooks' Guild (Falcrest)",92,131],['Blue Gull Inn (Kelmoor)',196,130],['Brightwater Castle kitchen',208,226]]],
+  ['Devotion','Bury bones; pray at altars to recharge.',[['Chapel of the Dawn (Kelmoor)',201,99],['Chapel of St. Elowen (Brightwater)',184,221],['Storm Temple (Ashen Waste)',265,61],['Old Graveyard (bones)',160,52]]],
+  ['Crafting','Spin flax, make pottery, cut gems and tan hides.',[['Crafting Hall (Falcrest)',31,154],['Spinning wheel, Brightwater Castle',214,222],['Qadir Gems',333,196],['Tanner (Qadir)',347,196]]],
+  ['Firemaking','Light logs anywhere on open ground.',[['Bonfire, Combat Training Yard',124,107],['Goblin campfire',152,155]]],
+  ['Magic','Cast spells; glyphs and staves from the glyph shops.',[["Wizards' Spire",131,190],['Glyph & Robe (Kelmoor)',211,121],['Training dummies',117,103]]],
+  ['Fletching','Cut logs into bows and arrows.',[['Bow & Arrow (Falcrest)',79,165],['Lumber Yard (Kelmoor)',221,91]]],
+  ['Woodcutting','Trees, oaks, willows by water, yews in Elderglen, starwood trees.',[['Lumber Yard (Kelmoor)',221,91],['Willows on the River Vell',...findNear('l',228,195)],['Yews in Elderglen',...findNear('e',345,108)],['Starwood Grove',130,201]]],
+  ['Glyphcraft','Mine aether stone at the Wizards\' Spire, then inscribe glyphs at the shrines.',[["Wizards' Spire & Aether Quarry",131,190],...['Wind','Thought','Tide','Root','Ember','Vigour','Star','Storm','Bloom','Oath','Dusk','Crimson'].map(AL)]],
+  ['Bounty','Take bounties from the bounty master.',[['Hrolf, bounty master (Brakk Village)',145,110],['Ironcrag Bounty Cave',266,109]]],
+  ['Farming','Plant allotments, herbs, flowers and trees.',[['Brightwater Allotments',199,186],['Hollin Farm',190,150],['Farmer Gale (supplies)',178,160]]],
+  ['Homesteading','Buy a plot, make planks, build through the gate.',[['Estate Agent (Falcrest)',48,165],['Homestead gate',70,175],['Sawmill (Kelmoor)',219,89]]],
+  ['Hunter','Set snares and traps for birds and lizards.',[['Elderglen Hunting Grounds',345,112],['Sunspire Hunting Grounds',270,210],["Ranger's Lodge (supplies)",333,100]]],
+  ['Sailing','Build and crew ships from the south coast.',[['Shipwright (Saltcombe)',162,242],['Saltcombe Docks',144,coastY(143)+3]]]
+];
+const sgrid=document.getElementById('sgrid'),sinfo=document.getElementById('sinfo');
+function jumpTo(x,y){setFollow(false);cam.x=x+.5;cam.y=y+.5;if(cam.z<12)cam.z=14;clampCam();hover=[x,y];readout(x,y);dirty=true}
+for(const[name,note,sites]of SKILLS){
+  const b=document.createElement('button');b.className='sbtn';b.textContent=name;b.setAttribute('aria-pressed','false');
+  b.addEventListener('click',()=>{
+    for(const o of sgrid.children)o.setAttribute('aria-pressed','false');b.setAttribute('aria-pressed','true');
+    sinfo.innerHTML='';const h=document.createElement('h3');h.textContent=name;const p=document.createElement('p');p.textContent=note;
+    const list=document.createElement('div');list.className='sites';
+    for(const[label,x,y]of sites){const s=document.createElement('button');s.className='site';s.textContent=label;const c=document.createElement('span');c.textContent=`${x}, ${y}`;s.append(c);s.addEventListener('click',()=>jumpTo(x,y));list.append(s)}
+    sinfo.append(h,p,list);jumpTo(sites[0][1],sites[0][2]);
+  });
+  sgrid.append(b);
+}
+
+/* Toolbar */
+const toggle=(id,fn)=>{const b=document.getElementById(id);b.addEventListener('click',()=>{const v=b.getAttribute('aria-pressed')!=='true';b.setAttribute('aria-pressed',v);fn(v);dirty=true})};
+toggle('tLabels',v=>showLabels=v);toggle('tGrid',v=>showGrid=v);toggle('tRun',v=>running=v);
+toggle('tFollow',v=>{follow=v;if(v){const[rx,ry]=playerPos(performance.now());cam.x=rx+.5;cam.y=ry+.5;if(cam.z<9)cam.z=12;clampCam()}});
+document.getElementById('zIn').onclick=()=>zoomAt(cw/2,ch/2,cam.z*1.35);
+document.getElementById('zOut').onclick=()=>zoomAt(cw/2,ch/2,cam.z/1.35);
+document.getElementById('fit').onclick=()=>{setFollow(false);cam.z=zmin()/.9*.98;cam.x=W/2;cam.y=H/2;clampCam();dirty=true};
+
+const toast=document.getElementById('toast');let tt;
+const say=m=>{toast.textContent=m;toast.hidden=false;clearTimeout(tt);tt=setTimeout(()=>toast.hidden=true,2400)};
+const regionJson=()=>{
+  const rows=[];for(let y=0;y<H;y++)rows.push(map.slice(y*W,y*W+W).join(''));
+  const legend={};for(const[k,[n,w]]of Object.entries(TILES))legend[k]={name:n,walkable:!!w};
+  const json=JSON.stringify({name:'The Vell Reaches',width:W,height:H,tileSize:TS,spawn:SPAWN,legend,
+    areas:AREAS.map(a=>({name:a.n,x:a.x,y:a.y,w:a.w,h:a.h,tier:a.t})),
+    npcs:NPCS.map(n=>({name:n.g.type,role:n.g.role||null,level:n.g.level??null,shop:n.g.shop||null,x:n.sx,y:n.sy,wander:{x:n.g.box[0],y:n.g.box[1],w:n.g.box[2],h:n.g.box[3]}})),
+    shops:KEEPERS.filter(k=>k.stock).map(k=>({shop:k.shop,keeper:k.type,role:k.role,stock:k.stock})),
+    skills:SKILLS.map(([name,note,sites])=>({name,note,sites:sites.map(([label,x,y])=>({label,x,y}))})),
+    fishingSpots:[...FISH].map(([i,type])=>({x:i%W,y:(i/W)|0,type})),
+    shrines:ALTARS.map(([name,x,y])=>({name,x,y})),warnings:SITEWARN.map(([x,y,c])=>({x,y,tile:c})),rows});
+  return json;
+};
+document.getElementById('copy').addEventListener('click',()=>{
+  const json=regionJson();
+  const dump=document.getElementById('dump');
+  const fallback=()=>{dump.value=json;dump.hidden=false;dump.focus();dump.select();say('Select the text below and copy it')};
+  try{navigator.clipboard.writeText(json).then(()=>say('Copied region JSON · 384 × 288 tiles'),fallback)}catch(err){fallback()}
+});
+window.__REGION={map,W,H,walk,gget,NPCS,AREAS,TILES,SPAWN,SKILLS,SITEWARN,json:regionJson};
+})();
+</script>
+
+</body></html>

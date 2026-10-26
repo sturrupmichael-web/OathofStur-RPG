@@ -3,7 +3,7 @@ import type { MapData } from '@rpg/shared';
 import type { Building } from './buildings';
 import { CITY_WALL_HEIGHT, WALL_HEIGHT } from './buildings';
 import type { Heightmap } from './heightmap';
-import { hash2, isBridge, shade, type TileInfo } from './palette';
+import { WALL_TONES, hash2, isBridge, isWaterKey, shade, type TileInfo } from './palette';
 
 const SURFACE_BY_KEY: Record<string, 'grass' | 'road' | 'dirt' | 'planks' | 'stone' | 'bed'> = {
   cobblestone: 'road',
@@ -20,8 +20,17 @@ const SURFACE_BY_KEY: Record<string, 'grass' | 'road' | 'dirt' | 'planks' | 'sto
   sand: 'dirt',
   ditch: 'dirt',
   city_wall: 'stone',
+  sandstone_wall: 'stone',
   building_wall: 'stone',
   water: 'bed',
+  deep_sea: 'bed',
+  // Bare rock, baked sand and swamp read from the ground alone.
+  mountain: 'stone',
+  swamp: 'dirt',
+  sandstone_paving: 'road',
+  lava: 'bed',
+  agility_obstacle: 'dirt',
+  farming_patch: 'dirt',
 };
 import { textures } from './textures';
 
@@ -109,6 +118,11 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const size = map.width * map.height;
+  // Instanced pools are sized from the tiles that actually need them: on a
+  // region-sized map one pool per tile would be hundreds of megabytes.
+  const tally = new Map<string, number>();
+  for (let i = 0; i < size; i++) tally.set(info.terrainKey[i], (tally.get(info.terrainKey[i]) ?? 0) + 1);
+  const count = (...keys: string[]) => keys.reduce((n, k) => n + (tally.get(k) ?? 0), 0) + 8;
   const textured = (tex: THREE.Texture, flat = false) => new THREE.MeshLambertMaterial({ color: 0xffffff, map: tex, flatShading: flat });
   const groundMaterial = (tex: THREE.Texture) => new THREE.MeshLambertMaterial({ color: 0xffffff, map: tex, vertexColors: true });
 
@@ -155,7 +169,7 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
       const tint = surface === 'bed' ? shade(0x5a5a46, 0.9 + hash2(x, y, 3) * 0.2) : shade(tileColors[i], Math.max(0.75, Math.min(1.2, 1 + lift)));
       surfaces[surface].quad(pts, nrm, tint, turn);
 
-      if (key === 'water' || bridge) {
+      if (isWaterKey(key) || bridge) {
         const level = hm.waterAt(x, y);
         const flat: [number, number, number][] = cornersXY.map(([cx, cy]) => [cx, level, cy]);
         water.quad(flat, flat.map(() => [0, 1, 0]), bridge ? 0x2f6ba5 : tileColors[i], 0);
@@ -212,20 +226,20 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
 
   // Raised features. Each extends well below its tile so slopes never show a gap.
   const box = new THREE.BoxGeometry(1, 1, 1);
-  const walls = tiledMesh(box, textured(textures.bricks()), size);
+  const walls = tiledMesh(box, textured(textures.bricks()), count('building_wall', 'city_wall', 'sandstone_wall'));
   const postGeo = new THREE.BoxGeometry(0.12, 1.15, 0.12);
   postGeo.translate(0, 0.175, 0);
-  const posts = tiledMesh(postGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), size);
+  const posts = tiledMesh(postGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), count('fence') + count('bridge') * 2);
   const railGeo = new THREE.BoxGeometry(1, 0.06, 0.05);
-  const rails = tiledMesh(railGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), size * 4);
+  const rails = tiledMesh(railGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), count('fence') * 4 + count('bridge') * 2);
   // Palisade: sharpened logs, three to a tile, with a lashing rail.
   const stakeGeo = new THREE.CylinderGeometry(0.13, 0.15, 1.9, 6);
   stakeGeo.translate(0, 0.55, 0);
   const tipGeo = new THREE.ConeGeometry(0.13, 0.32, 6);
   tipGeo.translate(0, 1.66, 0);
-  const stakes = tiledMesh(stakeGeo, textured(textures.planks(), true), size * 3);
-  const tips = tiledMesh(tipGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), size * 3);
-  const grate = tiledMesh(new THREE.BoxGeometry(0.8, 0.06, 0.8), new THREE.MeshLambertMaterial({ color: 0xffffff, map: grateTexture() }), 8);
+  const stakes = tiledMesh(stakeGeo, textured(textures.planks(), true), count('palisade') * 3);
+  const tips = tiledMesh(tipGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), count('palisade') * 3);
+  const grate = tiledMesh(new THREE.BoxGeometry(0.8, 0.06, 0.8), new THREE.MeshLambertMaterial({ color: 0xffffff, map: grateTexture() }), count('sewer_hatch'));
   const inBuilding = (x: number, y: number) => buildings.some((b) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1);
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= map.width || y >= map.height ? '' : info.terrainKey[y * map.width + x]);
 
@@ -250,10 +264,11 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
         }
       }
 
-      if (key === 'building_wall' || key === 'city_wall') {
-        // Buildings are warm sandstone; the city wall and ruins are dark granite.
-        const city = key === 'city_wall';
-        const tone = shade(city ? 0x6e6862 : inBuilding(x, y) ? 0xc4b08e : 0x8a8070, 0.9 + hash2(x, y, 5) * 0.18);
+      const wall = WALL_TONES[key];
+      if (wall) {
+        // Buildings are warm sandstone; town walls and ruins are cut stone.
+        const city = wall.city;
+        const tone = shade(city ? wall.tone : inBuilding(x, y) ? wall.tone : 0x8a8070, 0.9 + hash2(x, y, 5) * 0.18);
         // Freestanding building walls (ash ruins) are broken off at uneven heights.
         const height = city ? CITY_WALL_HEIGHT : inBuilding(x, y) ? WALL_HEIGHT : 0.5 + hash2(x, y, 6) * 0.9;
         const top = base + height;

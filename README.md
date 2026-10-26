@@ -15,7 +15,10 @@ npm run build      # static site in client/dist, deploy anywhere
 
 ## Controls
 
-- Left-click a tile (or the minimap) to walk. Clicking a tree, rock or fishing spot walks over and
+- Left-click a tile (or the minimap) to walk. The minimap shows the ground around you;
+  the Map button, or M, opens the whole region, where you can tap anywhere to walk there
+  and pick a skill to see where it is trained.
+  Clicking a tree, rock or fishing spot walks over and
   starts gathering; clicking the furnace, anvil or range opens what you can make there; clicking a
   bank booth, banker or shopkeeper opens the bank or shop; clicking a ground item picks it up.
 - Right-click for the options menu (Chop down, Mine, Net, Bait, Smelt, Trade, Walk here, Examine).
@@ -28,13 +31,13 @@ npm run build      # static site in client/dist, deploy anywhere
 
 ```
 shared/   simulation, protocol types, map loading, game data (no DOM, no rendering)
-  data/   maps/kelmoor.json (source of truth), skills.json (XP curve), items.json,
+  data/   maps/vell-reaches.json (source of truth), skills.json (XP curve), items.json,
           resources.json (levels, XP, respawns), recipes.json (smelting, smithing, cooking),
           shops.json, examine.json
 client/   Three.js rendering, UI, LocalServer
 server/   Node WebSocket server (phase 6)
 docs/     PLAN.md: phases, message types, map notes
-tools/    kelmoor-viewer.html: the 2D viewer and generator that produced kelmoor.json
+tools/    vell-reaches.html: the 2D viewer and generator that produced vell-reaches.json
 ```
 
 ## Architecture
@@ -45,14 +48,26 @@ tools/    kelmoor-viewer.html: the 2D viewer and generator that produced kelmoor
 - The client talks to a `ServerConnection`. In single-player that is `LocalServer`, which
   runs the simulation in the browser and passes every message through JSON exactly as a
   socket would. Phase 6 swaps in a `NetworkServer` without touching game logic.
-- Maps load through the `MapSource` interface. `JsonMapSource` reads `kelmoor.json`
-  (rows + legend + areas + npcs); a Tiled or LDtk loader can replace it later.
+- Maps load through the `MapSource` interface. `JsonMapSource` reads `vell-reaches.json`
+  (rows + legend + areas + npcs + skills); a Tiled or LDtk loader can replace it later.
+- The world is 384 x 288 tiles, so only what is near a player is sent to them
+  (`VIEW_RADIUS`), and ground cover is built in 32 x 32 chunks that follow the player.
 
 ## Map decisions
 
-`kelmoor.json` is used unchanged. The legend only gives a name and walkable flag, so
-`JsonMapSource` decides by name which tiles are objects (trees, rocks, anvils, bank booths,
-stalls, tents, ...) and gives each the most common walkable ground around it. Buildings
-take their names from the map's `areas`. Open questions about the map (no bridge over the
-River Vell, an unreachable corner of the Ashen Waste, missing skill and NPC data) are in
-the "Kelmoor map: issues and gaps" doc.
+The world is The Vell Reaches: 384 x 288 tiles, with Kelmoor inside it at offset
+(130, 70), six towns, the Ashen Waste to the north, desert, swamp, mountains and a south
+coast. `tools/vell-reaches.html` is both the viewer and the generator: edit it and
+regenerate `shared/data/maps/vell-reaches.json` from its Copy button (or
+`window.__REGION.json()`), never by hand.
+
+The legend only gives a name and walkable flag, so `JsonMapSource` decides by name which
+tiles are objects (trees, rocks, anvils, bank booths, stalls, tents, ...) and gives each
+the most common walkable ground around it. Objects whose skill has not been built yet
+(glyph shrines, farming patches, agility obstacles, the homestead gate) load as props you
+can examine, and start working in the phase that adds their skill. Buildings and regions
+take their names from the map's `areas`; `skills` lists where each skill is trained, which
+feeds the region map's skill finder.
+
+Characters saved before the region existed (save version 1) are moved by the same offset,
+so an old character wakes up where they left off.

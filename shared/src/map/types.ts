@@ -38,7 +38,10 @@ export interface StationDef {
 export interface NpcDef {
   key: string;
   name: string;
+  /** What they are, as the map words it: "Shopkeeper", "Banker", "Priest". */
   role: string;
+  /** The shop they stand in, when the map names one. */
+  shop?: string;
 }
 
 export interface MonsterDef {
@@ -77,6 +80,15 @@ export interface MapArea {
   y: number;
   w: number;
   h: number;
+  /** 0 = town or region, 1 = place, 2 = building. Smaller areas sit inside larger ones. */
+  tier?: number;
+}
+
+/** Where a skill is trained, shown in the skill finder. */
+export interface SkillGuide {
+  name: string;
+  note: string;
+  sites: { label: string; x: number; y: number }[];
 }
 
 /**
@@ -93,6 +105,8 @@ export interface MapData {
   placements: Placement[];
   /** Named regions, in the order the source lists them. */
   areas: MapArea[];
+  /** Training sites per skill, when the map lists them. */
+  skills: SkillGuide[];
   spawn: Point;
   defs: {
     resources: Record<string, ResourceDef>;

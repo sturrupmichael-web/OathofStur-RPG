@@ -5,12 +5,14 @@ import { addItem, countItem, emptyInventory } from '../src/sim/items';
 import { parseSave } from '../src/sim/save';
 import { Simulation } from '../src/sim/Simulation';
 import { xpForLevel } from '../src/sim/skills';
-import { loadWorld } from './helpers';
+import { kx, ky, loadWorld } from './helpers';
 
 const map = loadWorld();
 
-/** A player standing at (x, y) with only the given items. */
-function setup(x: number, y: number, items: [string, number][] = [], seed = 1) {
+/** A player standing at the Kelmoor tile (x, y) with only the given items. */
+function setup(tx: number, ty: number, items: [string, number][] = [], seed = 1) {
+  const x = kx(tx);
+  const y = ky(ty);
   const sim = new Simulation({ map, seed });
   const id = sim.addPlayer('Tester');
   const player = sim.getEntity(id) as PlayerEntity;
@@ -30,8 +32,10 @@ function setup(x: number, y: number, items: [string, number][] = [], seed = 1) {
   return { sim, id, player, messages, run, texts };
 }
 
-function at(sim: Simulation, defKey: string, x: number, y: number): Entity {
-  for (let id = 1; id < 5000; id++) {
+function at(sim: Simulation, defKey: string, tx: number, ty: number): Entity {
+  const x = kx(tx);
+  const y = ky(ty);
+  for (let id = 1; id < 60000; id++) {
     const e = sim.getEntity(id);
     if (e && 'defKey' in e && e.defKey === defKey && e.x === x && e.y === y) return e;
   }
@@ -87,6 +91,70 @@ describe('Mining', () => {
   });
 });
 
+describe('The wider Reaches', () => {
+  /** A player at a region tile, rather than a Kelmoor one. */
+  function atRegion(x: number, y: number, items: [string, number][] = []) {
+    return setup(x - 130, y - 70, items);
+  }
+
+  function regionObject(sim: Simulation, defKey: string, x: number, y: number): Entity {
+    for (let id = 1; id < 60000; id++) {
+      const e = sim.getEntity(id);
+      if (e && 'defKey' in e && e.defKey === defKey && e.x === x && e.y === y) return e;
+    }
+    throw new Error(`no ${defKey} at ${x},${y}`);
+  }
+
+  it('needs Woodcutting 15 for an oak, then gives oak logs', () => {
+    const s = atRegion(185, 86, [['bronze_axe', 1]]);
+    const oak = regionObject(s.sim, 'oak_tree', 186, 86);
+    s.sim.queueIntent(s.id, { type: 'interact', targetId: oak.id, action: 'gather' });
+    s.run(2);
+    expect(s.texts()).toContain('You need a Woodcutting level of 15 to chop this tree.');
+
+    s.player.skills.woodcutting = xpForLevel(15);
+    until(
+      s,
+      () => s.sim.queueIntent(s.id, { type: 'interact', targetId: oak.id, action: 'gather' }),
+      () => countItem(s.player.inventory, 'oak_logs') >= 1,
+    );
+    expect(s.player.skills.woodcutting).toBeGreaterThan(xpForLevel(15));
+  });
+
+  it('mines gold in Greyspine Quarry at Mining 40', () => {
+    const s = atRegion(29, 87, [['steel_pickaxe', 1]]);
+    const rock = regionObject(s.sim, 'gold_rock', 30, 87);
+    s.sim.queueIntent(s.id, { type: 'interact', targetId: rock.id, action: 'gather' });
+    s.run(2);
+    expect(s.texts()).toContain('You need a Mining level of 40 to mine this rock.');
+
+    s.player.skills.mining = xpForLevel(40);
+    until(
+      s,
+      () => s.sim.queueIntent(s.id, { type: 'interact', targetId: rock.id, action: 'gather' }),
+      () => countItem(s.player.inventory, 'gold_ore') === 1,
+    );
+  });
+
+  it('banks in Falcrest and sells fish in Saltcombe', () => {
+    const bank = atRegion(72, 130, [['logs', 2]]);
+    const banker = regionObject(bank.sim, 'banker', 72, 129);
+    bank.sim.queueIntent(bank.id, { type: 'interact', targetId: banker.id, action: 'use' });
+    bank.run(2);
+    expect(bank.player.ui?.kind).toBe('bank');
+
+    const shop = atRegion(153, 241, [['raw_perch', 2]]);
+    const gerrick = regionObject(shop.sim, 'gerrick', 154, 240);
+    shop.sim.queueIntent(shop.id, { type: 'interact', targetId: gerrick.id, action: 'use' });
+    shop.run(2);
+    expect(shop.player.ui?.kind).toBe('shop');
+    const slot = shop.player.inventory.findIndex((x) => x?.itemId === 'raw_perch');
+    shop.sim.queueIntent(shop.id, { type: 'shopSell', slot, qty: 2 });
+    shop.run(1);
+    expect(countItem(shop.player.inventory, 'coins')).toBeGreaterThan(0);
+  });
+});
+
 describe('Fishing', () => {
   it('nets minnows at a shallow spot without using it up', () => {
     const s = setup(99, 55, [['small_net', 1]]);
@@ -129,8 +197,8 @@ describe('Cooking and smithing', () => {
   });
 
   it('smelts bronze, then smiths a dagger with a hammer', () => {
-    const s = setup(42, 51, [['copper_ore', 2], ['tin_ore', 2], ['hammer', 1]]);
-    const furnace = at(s.sim, 'furnace', 43, 51);
+    const s = setup(42, 50, [['copper_ore', 2], ['tin_ore', 2], ['hammer', 1]]);
+    const furnace = at(s.sim, 'furnace', 43, 50);
     s.sim.queueIntent(s.id, { type: 'interact', targetId: furnace.id, action: 'use' });
     s.run(1);
     s.sim.queueIntent(s.id, { type: 'craft', recipeId: 'smelt_bronze', qty: 5 });
@@ -185,8 +253,8 @@ describe('Bank and shops', () => {
   });
 
   it('buys from and sells to the General Store', () => {
-    const s = setup(73, 51, [['coins', 25], ['logs', 3]]);
-    const keeper = at(s.sim, 'shopkeeper', 73, 52);
+    const s = setup(73, 49, [['coins', 25], ['logs', 3]]);
+    const keeper = at(s.sim, 'mara', 73, 50);
     s.sim.queueIntent(s.id, { type: 'interact', targetId: keeper.id, action: 'use' });
     s.run(1);
     expect(s.player.ui?.kind).toBe('shop');
@@ -202,14 +270,14 @@ describe('Bank and shops', () => {
   });
 
   it('will not sell what you cannot afford, and closes when you walk away', () => {
-    const s = setup(73, 51, [['coins', 10]]);
-    const keeper = at(s.sim, 'shopkeeper', 73, 52);
+    const s = setup(73, 49, [['coins', 10]]);
+    const keeper = at(s.sim, 'mara', 73, 50);
     s.sim.queueIntent(s.id, { type: 'interact', targetId: keeper.id, action: 'use' });
     s.run(1);
     s.sim.queueIntent(s.id, { type: 'shopBuy', itemId: 'iron_axe', qty: 1 });
     s.run(1);
     expect(s.texts()).toContain("You don't have enough coins.");
-    s.sim.queueIntent(s.id, { type: 'walk', x: 73, y: 47 });
+    s.sim.queueIntent(s.id, { type: 'walk', x: kx(73), y: ky(47) });
     s.run(1);
     expect(s.player.ui).toBeNull();
   });

@@ -28,9 +28,18 @@
           <button data-cam="out" aria-label="Zoom out">−</button>
           <button data-cam="roofs" aria-label="Toggle roofs">⌂</button>
         </div>
+        <div id="worldmap" role="dialog" aria-labelledby="worldmap-title" hidden>
+          <div class="win-head"><span id="worldmap-title">The Vell Reaches</span><button id="worldmap-close" aria-label="Close">✕</button></div>
+          <div id="worldmap-skills" aria-label="Skills"></div>
+          <canvas id="worldmap-canvas" aria-label="Region map. Tap a tile to walk there."></canvas>
+          <p id="worldmap-note"></p>
+        </div>
       </main>
       <aside id="side">
-        <canvas id="minimap" aria-label="Minimap"></canvas>
+        <div id="minimap-wrap">
+          <canvas id="minimap" aria-label="Minimap"></canvas>
+          <button id="worldmap-open" aria-label="Open the region map">Map</button>
+        </div>
         <div id="player-card">
           <span id="player-name">…</span>
           <span id="region"></span>

@@ -184,7 +184,9 @@ export function buildHeightmap(map: MapData, info: TileInfo, areas: Area[], buil
   const raw = new Float32Array(n);
   for (let cy = 0; cy < ch; cy++) {
     for (let cx = 0; cx < cw; cx++) {
-      let h = 0.9 + noise(cx / 14, cy / 14, 1) * 2.5 + noise(cx / 6, cy / 6, 2) * 0.6 + noise(cx / 2.5, cy / 2.5, 3) * 0.12;
+      // Broad hills and dales across the region, then the smaller rolls on top.
+      const broad = Math.max(0, noise(cx / 38, cy / 38, 4) + 0.15) * 3.2;
+      let h = 0.9 + broad + noise(cx / 14, cy / 14, 1) * 2.5 + noise(cx / 6, cy / 6, 2) * 0.6 + noise(cx / 2.5, cy / 2.5, 3) * 0.12;
       const tiles = around(cx, cy);
       const share = (pred: (i: number) => boolean) => tiles.filter(([x, y]) => pred(tileIndex(x, y))).length / Math.max(1, tiles.length);
       h += tiles.reduce((sum, [x, y]) => sum + lift[tileIndex(x, y)], 0) / Math.max(1, tiles.length);
@@ -260,7 +262,11 @@ export function buildHeightmap(map: MapData, info: TileInfo, areas: Area[], buil
     for (const t of tiles) surface[t] = level;
   }
 
-  // 6. The ditch is a dry trench; water corners drop to the bed.
+  // 6. The ditch is a dry trench; water corners drop to the bed. Along
+  // natural shores the bank dips in and out of the water, so the waterline
+  // wanders instead of tracing tile edges (the water sheet reaches one tile
+  // inland to meet it).
+  const NATURAL_SHORE = new Set(['grass', 'long_grass', 'sand', 'swamp', 'dirt_path', 'trampled_mud', 'scorched_earth', 'mountain']);
   for (let cy = 0; cy < ch; cy++) {
     for (let cx = 0; cx < cw; cx++) {
       const tiles = around(cx, cy);
@@ -269,7 +275,14 @@ export function buildHeightmap(map: MapData, info: TileInfo, areas: Area[], buil
       const wet = tiles.filter(([x, y]) => isWaterTile(x, y));
       if (!wet.length) continue;
       const level = Math.max(...wet.map(([x, y]) => surface[tileIndex(x, y)]));
-      corners[i] = wet.length === tiles.length ? level + (BED_Y - WATER_Y) : level + (BANK_Y - WATER_Y);
+      if (wet.length === tiles.length) {
+        corners[i] = level + (BED_Y - WATER_Y);
+        continue;
+      }
+      const dry = tiles.filter(([x, y]) => !isWaterTile(x, y));
+      const wild = dry.every(([x, y]) => NATURAL_SHORE.has(info.terrainKey[tileIndex(x, y)]) && !bridge[tileIndex(x, y)]);
+      const dip = wild ? Math.max(0, noise(cx / 2.2, cy / 2.2, 8) + 0.1) * 0.45 : 0;
+      corners[i] = level + (BANK_Y - WATER_Y) - dip;
     }
   }
 

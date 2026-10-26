@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { JsonMapSource, areaAt, type JsonMapFile } from '../src/map/JsonMapSource';
-import { kx, ky, loadWorld } from './helpers';
+import { WorldGrid } from '../src/sim/grid';
+import { kx, ky, loadWorld, loadWorldFile } from './helpers';
 
 describe('JsonMapSource', () => {
   const map = loadWorld();
@@ -17,9 +18,10 @@ describe('JsonMapSource', () => {
   });
 
   it('turns trees, rocks, stations and props into placements', () => {
-    expect(count('tree')).toBe(2821);
-    expect(count('dead_tree')).toBe(790);
-    expect(count('oak_tree')).toBe(318);
+    // Fewer than the map's tree tiles: some squares of four became one big tree.
+    expect(count('tree')).toBe(2400);
+    expect(count('dead_tree')).toBe(785);
+    expect(count('oak_tree')).toBe(311);
     expect(count('copper_rock')).toBe(22);
     expect(count('glacite_rock')).toBe(3);
     expect(count('bank_booth')).toBe(31);
@@ -30,6 +32,60 @@ describe('JsonMapSource', () => {
     expect(map.defs.resources.tree.level).toBeUndefined(); // not in the map data
     // Objects whose skill arrives in a later phase are props for now.
     expect(map.defs.scenery.glyph_shrine.name).toBe('Glyph shrine');
+  });
+
+  it('grows some trees to cover 2 x 2 tiles without shutting anything off', () => {
+    const big = map.placements.filter((p) => p.size === 2);
+    expect(big.length).toBeGreaterThan(800);
+    expect(new Set(big.map((p) => p.defKey))).toEqual(new Set(['tree', 'dead_tree', 'oak_tree', 'willow_tree', 'yew_tree', 'starwood_tree']));
+
+    // Reachability from spawn, 8-way without cutting corners, as the pathfinder walks.
+    const W = map.width;
+    const H = map.height;
+    const reach = (walkable: (x: number, y: number) => boolean) => {
+      const seen = new Uint8Array(W * H);
+      const queue = [map.spawn.y * W + map.spawn.x];
+      seen[queue[0]] = 1;
+      while (queue.length) {
+        const i = queue.pop()!;
+        const x = i % W;
+        const y = (i - x) / W;
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const j = (y + dy) * W + x + dx;
+            if (!walkable(x + dx, y + dy) || seen[j]) continue;
+            if (dx && dy && (!walkable(x + dx, y) || !walkable(x, y + dy))) continue;
+            seen[j] = 1;
+            queue.push(j);
+          }
+      }
+      return seen;
+    };
+    const file = loadWorldFile();
+    const inMap = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H;
+    // People stand on their tile and block it, as in the game.
+    const people = new Set(map.placements.filter((p) => p.kind === 'npc').map((p) => p.y * W + p.x));
+    const before = reach((x, y) => inMap(x, y) && file.legend[file.rows[y][x]].walkable && !people.has(y * W + x));
+    const grid = new WorldGrid(map);
+    const after = reach((x, y) => grid.isWalkable(x, y));
+    const touches = (seen: Uint8Array, x0: number, y0: number, size: number) => {
+      for (let y = y0 - 1; y <= y0 + size; y++) for (let x = x0 - 1; x <= x0 + size; x++) if (inMap(x, y) && seen[y * W + x]) return true;
+      return false;
+    };
+    const cover = new Map<number, (typeof map.placements)[number]>();
+    for (const p of map.placements) {
+      if (p.kind === 'monster') continue;
+      for (let dy = 0; dy < (p.size ?? 1); dy++) for (let dx = 0; dx < (p.size ?? 1); dx++) cover.set((p.y + dy) * W + p.x + dx, p);
+    }
+    const lost: string[] = [];
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        if (before[i] && grid.isWalkable(x, y) && !after[i]) lost.push(`ground ${x},${y}`);
+        const p = cover.get(i);
+        if (!file.legend[file.rows[y][x]].walkable && p && touches(before, x, y, 1) && !touches(after, p.x, p.y, p.size ?? 1)) lost.push(`${p.defKey} ${x},${y}`);
+      }
+    expect(lost).toEqual([]);
   });
 
   it('spawns monsters with their level and wander area, and people with their role', () => {

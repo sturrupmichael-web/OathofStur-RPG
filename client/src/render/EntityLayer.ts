@@ -116,7 +116,7 @@ export class EntityLayer {
       if (slot === undefined) return;
       pool.slotOf.set(data.id, slot);
       pool.entityAt[slot] = data.id;
-      this.writeResource(pool, slot, data.x, data.y, 0);
+      this.writeResource(pool, slot, data.x, data.y, 0, data.size);
       for (const { mesh } of pool.parts) mesh.boundingSphere = null; // recomputed on next raycast
       return;
     }
@@ -168,12 +168,17 @@ export class EntityLayer {
     }
   }
 
-  private writeResource(pool: ResourcePool, slot: number, x: number, y: number, t: number): void {
+  private writeResource(pool: ResourcePool, slot: number, x: number, y: number, t: number, tiles = 1): void {
     const rot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), hash2(x, y, 7) * Math.PI * 2);
     const size = 0.88 + hash2(x, y, 8) * 0.24;
+    // Big trees stand in the middle of their square, wider and taller; small
+    // ones lean a little off-centre so a wood doesn't look planted in rows.
+    const [wide, tall] = tiles === 2 ? [1.75, 1.45] : [1, 1];
+    const cx = x + tiles / 2 + (tiles === 1 && !pool.ripple ? (hash2(x, y, 13) - 0.5) * 0.24 : 0);
+    const cz = y + tiles / 2 + (tiles === 1 && !pool.ripple ? (hash2(x, y, 14) - 0.5) * 0.24 : 0);
     // Fishing-spot parts are modelled relative to a water surface at -0.18.
-    const ground = pool.ripple ? this.hm.waterAt(x, y) + 0.18 : this.hm.tileCentre(x, y);
-    const base = new THREE.Matrix4().compose(new THREE.Vector3(x + 0.5, ground, y + 0.5), rot, new THREE.Vector3(size, size, size));
+    const ground = pool.ripple ? this.hm.waterAt(x, y) + 0.18 : this.hm.groundAt(cx, cz);
+    const base = new THREE.Matrix4().compose(new THREE.Vector3(cx, ground, cz), rot, new THREE.Vector3(size * wide, size * tall, size * wide));
     const color = new THREE.Color();
     pool.parts.forEach(({ style, mesh }, k) => {
       const [sx, sy, sz] = style.scale ?? [1, 1, 1];

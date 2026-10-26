@@ -1,0 +1,25 @@
+{
+  "comment": "Examine text for world objects, by their key. Items keep theirs in items.json.",
+  "objects": {
+    "tree": "A tall, healthy tree.",
+    "tree_stump": "Someone's been chopping here. It'll grow back.",
+    "dead_tree": "Grey and leafless. The ash killed it long ago, but the wood is still good.",
+    "dead_tree_stump": "All that's left of a dead tree.",
+    "copper_rock": "A rock streaked with copper.",
+    "tin_rock": "A rock with flecks of tin.",
+    "iron_rock": "Rust-red veins of iron run through this rock.",
+    "coal_rock": "Black, crumbly coal seams.",
+    "rock_depleted": "There's no ore left in this rock right now.",
+    "anvil": "Heavy, scarred iron. Used for smithing.",
+    "bank_booth": "The clerk keeps the town's valuables safe.",
+    "market_stall": "A trader's stall, piled with wares.",
+    "altar": "A quiet altar to the Dawn.",
+    "statue": "A weathered statue of some old hero of Kelmoor.",
+    "standing_stone": "An ancient stone. It hums faintly when you touch it.",
+    "log_pile": "Neatly stacked logs, ready for the yard.",
+    "hide_tent": "A tent of stitched hides. It smells of smoke.",
+    "campfire": "A smoky goblin cookfire.",
+    "goblin_totem": "A crude totem hung with bones and feathers.",
+    "goblin": "An ugly, green-skinned scavenger."
+  }
+}

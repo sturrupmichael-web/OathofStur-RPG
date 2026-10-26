@@ -1,0 +1,14 @@
+{
+  "comment": "Gathering data for each resource on the map. One attempt every attemptTicks; chance = clamp(baseChance + perLevel * (level - required) + tool bonus, 0.05, 0.9). After each success the node is used up with depleteChance and comes back after respawnTicks (0.6 s each). Mining entries are fixed now and used from phase 3.",
+  "attemptTicks": 4,
+  "baseChance": 0.35,
+  "perLevel": 0.015,
+  "resources": {
+    "tree": { "skill": "woodcutting", "level": 1, "xp": 25, "item": "logs", "depleteChance": 0.125, "respawnTicks": 10 },
+    "dead_tree": { "skill": "woodcutting", "level": 15, "xp": 40, "item": "ashwood_logs", "depleteChance": 0.2, "respawnTicks": 25 },
+    "copper_rock": { "skill": "mining", "level": 1, "xp": 17.5, "item": "copper_ore", "depleteChance": 1, "respawnTicks": 4 },
+    "tin_rock": { "skill": "mining", "level": 1, "xp": 17.5, "item": "tin_ore", "depleteChance": 1, "respawnTicks": 4 },
+    "iron_rock": { "skill": "mining", "level": 15, "xp": 35, "item": "iron_ore", "depleteChance": 1, "respawnTicks": 9 },
+    "coal_rock": { "skill": "mining", "level": 30, "xp": 50, "item": "coal", "depleteChance": 1, "respawnTicks": 30 }
+  }
+}

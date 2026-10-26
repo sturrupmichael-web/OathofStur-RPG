@@ -1,4 +1,4 @@
-import type { ClientMessage, ServerMessage } from '@rpg/shared';
+import type { ClientMessage, SaveData, ServerMessage } from '@rpg/shared';
 
 /**
  * The only way the client talks to the game. LocalServer (single-player) and
@@ -6,7 +6,8 @@ import type { ClientMessage, ServerMessage } from '@rpg/shared';
  * layer knows or cares where the simulation runs.
  */
 export interface ServerConnection {
-  connect(name: string): Promise<void>;
+  /** Joins as a new character, or as the saved one when `save` is given. */
+  connect(name: string, save?: SaveData | null): Promise<void>;
   send(msg: ClientMessage): void;
   onMessage(handler: (msg: ServerMessage) => void): void;
   disconnect(): void;

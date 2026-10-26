@@ -1,4 +1,4 @@
-import { JsonMapSource, WorldGrid, areaAt, type JsonMapFile, type MapSource, type Point } from '@rpg/shared';
+import { ITEMS, JsonMapSource, RESOURCE_DATA, WorldGrid, areaAt, type JsonMapFile, type MapSource, type Point, type PublicEntity } from '@rpg/shared';
 import kelmoor from '@rpg/shared/data/maps/kelmoor.json';
 import { LocalServer } from './net/LocalServer';
 import type { ServerConnection } from './net/ServerConnection';
@@ -7,6 +7,7 @@ import { ClientState } from './state/ClientState';
 import { Hud } from './ui/Hud';
 import { Minimap } from './ui/Minimap';
 import { PointerInput } from './ui/PointerInput';
+import { clearLocal, downloadSave, loadLocal, readSaveFile, storeLocal } from './ui/saves';
 import './styles.css';
 
 const WORLD_SEED = 20261025;
@@ -38,9 +39,29 @@ async function start(): Promise<void> {
     walk,
   );
 
-  state.on('self', (self) => hud.renderSelf(self));
+  state.on('self', (self) => {
+    hud.renderSelf(self);
+    hud.renderInventory(self.inventory);
+  });
   state.on('gameMessage', ({ text, kind }) => hud.addMessage(text, kind));
+  state.on('xpDrop', ({ skill, amount }) => hud.showXpDrop(skill, amount));
+  state.on('levelUp', ({ skill, level }) => hud.showLevelUp(skill, level));
   server.onMessage((msg) => state.apply(msg, performance.now()));
+
+  /** Display name, allowing for stumps. */
+  const nameOf = (e: PublicEntity) => {
+    if (e.kind === 'item' && e.qty && e.qty > 1) return `${e.name} (${e.qty})`;
+    return e.depleted ? `${e.name} stump` : e.name;
+  };
+
+  /** The left-click action on an entity, if it has one besides walking. */
+  const primaryAction = (e: PublicEntity | undefined): { label: string; run: () => void } | null => {
+    if (!e) return null;
+    if (e.kind === 'item') return { label: 'Take', run: () => server.send({ type: 'interact', targetId: e.id, action: 'take' }) };
+    const data = e.kind === 'resource' && e.defKey ? RESOURCE_DATA[e.defKey] : undefined;
+    if (data?.skill === 'woodcutting' && !e.depleted) return { label: 'Chop down', run: () => server.send({ type: 'interact', targetId: e.id, action: 'gather' }) };
+    return null;
+  };
 
   /** Human-readable description of whatever is under the cursor. */
   const describe = (pick: PickResult): { action: string; target: string } => {
@@ -48,7 +69,9 @@ async function start(): Promise<void> {
     if (pick.entityId !== null) {
       const e = state.entities.get(pick.entityId)?.data;
       if (e?.kind === 'player') return { action: 'Walk here', target: `${e.name} (level-${e.combatLevel})` };
-      if (e) return { action: 'Walk to', target: e.name };
+      const primary = primaryAction(e);
+      if (e && primary) return { action: primary.label, target: nameOf(e) };
+      if (e) return { action: e.kind === 'item' ? 'Walk here' : 'Walk to', target: nameOf(e) };
     }
     const def = map.terrainDefs[map.terrain[pick.tile.y * map.width + pick.tile.x]];
     const name = def.name.charAt(0).toUpperCase() + def.name.slice(1);
@@ -67,18 +90,26 @@ async function start(): Promise<void> {
     tap: (x, y) => {
       if (hud.consumeMenuDismiss()) return;
       const pick = renderer.pick(x, y);
-      if (pick) walk(pick.tile);
+      if (!pick) return;
+      const primary = pick.entityId !== null ? primaryAction(state.entities.get(pick.entityId)?.data) : null;
+      if (primary) {
+        renderer.showClick(pick.tile);
+        primary.run();
+      } else walk(pick.tile);
     },
     menu: (x, y) => {
       const pick = renderer.pick(x, y);
       if (!pick) return;
       const { target } = describe(pick);
-      const at = local(x, y);
       hud.hideTooltip();
       renderer.setHover(pick.tile);
-      hud.showMenu(at.x, at.y, [
-        { label: 'Walk here', target: pick.entityId !== null || pick.buildingName ? target : undefined, action: () => walk(pick.tile) },
-      ]);
+      const e = pick.entityId !== null ? state.entities.get(pick.entityId)?.data : undefined;
+      const primary = primaryAction(e);
+      const options = [];
+      if (primary) options.push({ label: primary.label, target, action: primary.run });
+      options.push({ label: 'Walk here', target: e?.kind === 'player' || pick.buildingName ? target : undefined, action: () => walk(pick.tile) });
+      if (e && e.id !== state.playerId) options.push({ label: 'Examine', target, action: () => server.send({ type: 'examine', targetId: e.id }) });
+      hud.showMenu(x, y, options);
     },
     menuCancel: () => hud.hideMenu(),
     hover: (x, y) => {
@@ -90,6 +121,83 @@ async function start(): Promise<void> {
     rotate: (r) => renderer.rig.rotate(r),
     tilt: (r) => renderer.rig.tilt(r),
     zoom: (f) => renderer.rig.zoomBy(f),
+  });
+
+  // --- Inventory --------------------------------------------------------------
+  hud.inventoryHandlers = {
+    open: (slot, x, y) => {
+      const stack = state.self?.inventory[slot];
+      if (!stack) return;
+      const name = ITEMS[stack.itemId]?.name ?? stack.itemId;
+      hud.hideTooltip();
+      hud.showMenu(x, y, [
+        { label: 'Drop', target: name, action: () => server.send({ type: 'invDrop', slot }) },
+        { label: 'Examine', target: name, action: () => server.send({ type: 'examineItem', slot }) },
+      ]);
+    },
+    move: (from, to) => server.send({ type: 'invMove', from, to }),
+  };
+
+  // --- Saving ---------------------------------------------------------------------
+  // The browser keeps one character. It saves every 30 seconds, when the tab
+  // is hidden or closed, and on request; export/import move it between devices.
+  const saveStatus = document.getElementById('save-status')!;
+  let savingEnabled = true;
+  let exportNext = false;
+  const requestSave = () => {
+    if (savingEnabled) server.send({ type: 'requestSave' });
+  };
+  state.on('saveData', (save) => {
+    if (!savingEnabled) return;
+    const ok = storeLocal(save);
+    const time = new Date(save.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    saveStatus.textContent = ok
+      ? `Saved in this browser at ${time}. It also saves every 30 seconds and when you close the tab.`
+      : "This browser won't let the game save (private browsing?). Use Export to keep your progress.";
+    if (exportNext) {
+      exportNext = false;
+      downloadSave(save);
+    }
+  });
+  setInterval(requestSave, 30_000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') requestSave();
+  });
+  window.addEventListener('pagehide', requestSave);
+  document.getElementById('save-now')!.addEventListener('click', requestSave);
+  document.getElementById('save-export')!.addEventListener('click', () => {
+    exportNext = true;
+    requestSave();
+  });
+  document.getElementById('save-import')!.addEventListener('change', async (e) => {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const save = await readSaveFile(file);
+    if (!save) {
+      hud.addMessage("That file isn't an Oath of Stur save.", 'warn');
+      saveStatus.textContent = "That file isn't an Oath of Stur save.";
+      return;
+    }
+    savingEnabled = false;
+    storeLocal(save);
+    location.reload();
+  });
+  const reset = document.getElementById('save-reset') as HTMLButtonElement;
+  let resetArmed: ReturnType<typeof setTimeout> | null = null;
+  reset.addEventListener('click', () => {
+    if (!resetArmed) {
+      reset.textContent = 'Click again to delete this character';
+      resetArmed = setTimeout(() => {
+        reset.textContent = 'Start a new character';
+        resetArmed = null;
+      }, 4000);
+      return;
+    }
+    savingEnabled = false;
+    clearLocal();
+    location.reload();
   });
 
   // On-screen camera buttons (shown on touch screens): hold to rotate or zoom.
@@ -172,7 +280,7 @@ async function start(): Promise<void> {
   };
   requestAnimationFrame(frame);
 
-  await server.connect('Wanderer');
+  await server.connect('Wanderer', loadLocal());
 }
 
 start().catch((err) => {

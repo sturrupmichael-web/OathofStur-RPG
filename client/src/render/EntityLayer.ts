@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { EntityId, MapData, WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView } from '../state/ClientState';
 import { animateCharacter, buildCharacter, type CharacterRig } from './character';
-import { FLICKER, RESOURCE_STYLES, buildStation, type PartStyle } from './models';
+import { FLICKER, RESOURCE_STYLES, buildGroundItem, buildStation, type PartStyle } from './models';
 import type { Heightmap } from './heightmap';
 import { hash2, shade, type TileInfo } from './palette';
 
@@ -39,7 +39,8 @@ export class EntityLayer {
     const counts = new Map<string, number>();
     for (const p of map.placements) counts.set(p.defKey, (counts.get(p.defKey) ?? 0) + 1);
     for (const [key, styles] of Object.entries(RESOURCE_STYLES)) {
-      const capacity = (counts.get(key) ?? 0) + 8;
+      // Any tree can become a stump, so stump pools are sized for a busy forest.
+      const capacity = key.endsWith('_stump') ? 64 : (counts.get(key) ?? 0) + 8;
       const pool: ResourcePool = { parts: [], slotOf: new Map(), entityAt: [], free: [], ripple: false };
       for (const style of styles) {
         const material = new THREE.MeshLambertMaterial({
@@ -66,6 +67,12 @@ export class EntityLayer {
 
     state.on('added', (v) => this.add(v));
     state.on('removed', (id) => this.remove(id));
+    state.on('changed', (v) => {
+      // A tree felled or grown back swaps models.
+      if (v.data.kind !== 'resource') return;
+      this.remove(v.data.id);
+      this.add(v);
+    });
   }
 
   /** Objects to raycast; hits resolve to an entity id via entityFromHit. */
@@ -102,8 +109,9 @@ export class EntityLayer {
 
   private add(view: EntityView): void {
     const { data } = view;
-    if (data.kind === 'resource' && data.defKey && this.pools.has(data.defKey)) {
-      const pool = this.pools.get(data.defKey)!;
+    const poolKey = data.depleted ? `${data.defKey}_stump` : data.defKey;
+    if (data.kind === 'resource' && poolKey && this.pools.has(poolKey)) {
+      const pool = this.pools.get(poolKey)!;
       const slot = pool.free.pop();
       if (slot === undefined) return;
       pool.slotOf.set(data.id, slot);
@@ -113,7 +121,10 @@ export class EntityLayer {
       return;
     }
     let obj: THREE.Object3D;
-    if (data.kind === 'station' || data.kind === 'scenery') obj = buildStation(data.defKey ?? '', (dx, dy) => this.objectAt(data.x + dx, data.y + dy), hash2(data.x, data.y, 5));
+    if (data.kind === 'item') {
+      obj = buildGroundItem(data.defKey ?? '');
+      obj.rotation.y = hash2(data.id, 11) * Math.PI * 2;
+    } else if (data.kind === 'station' || data.kind === 'scenery') obj = buildStation(data.defKey ?? '', (dx, dy) => this.objectAt(data.x + dx, data.y + dy), hash2(data.x, data.y, 5));
     else {
       const style = data.kind === 'npc' ? (data.defKey ?? '') : data.id === this.state.playerId ? 'player' : 'other_player';
       const rig = buildCharacter(style, hash2(data.id, 3) * 100);
@@ -200,11 +211,13 @@ export class EntityLayer {
     const dy = view.toY - view.fromY;
     const moving = (dx !== 0 || dy !== 0) && now - view.movedAt < this.state.tickMs;
     if (moving) this.facing.set(id, Math.atan2(dx, dy));
+    const work = view.data.workingOn;
+    if (work && !moving) this.facing.set(id, Math.atan2(work.x - view.toX, work.y - view.toY));
     const targetYaw = this.facing.get(id) ?? obj.rotation.y;
     obj.rotation.y += shortestAngle(obj.rotation.y, targetYaw) * Math.min(1, dt * 12);
     obj.position.set(pos.x + 0.5, this.hm.groundAt(pos.x + 0.5, pos.y + 0.5), pos.y + 0.5);
     const rig = this.rigs.get(id);
-    if (rig) animateCharacter(rig, dt, now, moving, Math.min(1.4, Math.hypot(dx, dy)));
+    if (rig) animateCharacter(rig, dt, now, moving, Math.min(1.4, Math.hypot(dx, dy)), !!work);
   }
 
   private objectAt(x: number, y: number): string | null {

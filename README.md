@@ -15,15 +15,19 @@ npm run build      # static site in client/dist, deploy anywhere
 
 ## Controls
 
-- Left-click a tile (or the minimap) to walk. Clicking a tree, rock, NPC or station walks next to it.
-- Right-click for the options menu.
+- Left-click a tile (or the minimap) to walk. Clicking a tree walks over and chops it; clicking
+  a ground item picks it up. Other objects walk you next to them.
+- Right-click for the options menu (Chop down, Walk here, Examine).
+- Click an inventory item for Drop or Examine; drag items between slots to rearrange them.
+- The ⚙ tab saves, exports and imports your character. It also saves itself every 30 seconds.
 - Q/E, A/D or arrow keys rotate the camera; W/S or up/down tilt; middle-drag rotates; wheel zooms.
 
 ## Layout
 
 ```
 shared/   simulation, protocol types, map loading, game data (no DOM, no rendering)
-  data/   maps/kelmoor.json (source of truth), skills.json, ...
+  data/   maps/kelmoor.json (source of truth), skills.json (XP curve), items.json,
+          resources.json (levels, XP, respawns), examine.json
 client/   Three.js rendering, UI, LocalServer
 server/   Node WebSocket server (phase 6)
 docs/     PLAN.md: phases, message types, map notes

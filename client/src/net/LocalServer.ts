@@ -4,7 +4,9 @@ import {
   TICK_MS,
   type ClientMessage,
   type EntityId,
+  parseSave,
   type MapData,
+  type SaveData,
   type ServerMessage,
 } from '@rpg/shared';
 import type { ServerConnection } from './ServerConnection';
@@ -25,9 +27,9 @@ export class LocalServer implements ServerConnection {
     private readonly seed: number,
   ) {}
 
-  async connect(name: string): Promise<void> {
+  async connect(name: string, save: SaveData | null = null): Promise<void> {
     this.sim = new Simulation({ map: this.map, seed: this.seed });
-    this.receive({ type: 'join', name, protocolVersion: PROTOCOL_VERSION });
+    this.receive({ type: 'join', name, protocolVersion: PROTOCOL_VERSION, save });
     this.timer = setInterval(() => this.tick(), TICK_MS);
   }
 
@@ -54,8 +56,15 @@ export class LocalServer implements ServerConnection {
         this.emit({ type: 'reject', reason: 'Client version mismatch. Please reload.' });
         return;
       }
-      this.playerId = this.sim.addPlayer(msg.name);
+      this.playerId = this.sim.addPlayer(msg.name, msg.save ? parseSave(msg.save) : null, new Date().toISOString());
       this.flush();
+      return;
+    }
+    // Answered straight away rather than on the next tick, so a save made as
+    // the page closes still gets through.
+    if (msg.type === 'requestSave' && this.playerId !== null) {
+      const save = this.sim.saveFor(this.playerId, new Date().toISOString());
+      if (save) this.emit({ type: 'saveData', save });
       return;
     }
     if (this.playerId !== null) this.sim.queueIntent(this.playerId, msg);

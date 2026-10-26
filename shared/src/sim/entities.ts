@@ -1,7 +1,18 @@
 import type { Point } from '../map/types';
+import type { Inventory } from './items';
 import type { SkillXp } from './skills';
 
 export type EntityId = number;
+
+/** What a player is busy with between ticks. Walking somewhere else cancels it. */
+export interface PlayerAction {
+  kind: 'gather';
+  targetId: EntityId;
+  /** Tick of the next gathering attempt. */
+  nextAttempt: number;
+  /** Set once the player has arrived and started, so the start message is sent once. */
+  started: boolean;
+}
 
 export interface PlayerEntity {
   id: EntityId;
@@ -10,12 +21,17 @@ export interface PlayerEntity {
   x: number;
   y: number;
   skills: SkillXp;
+  inventory: Inventory;
+  createdAt: string;
   /** Remaining steps, one taken per tick. */
   path: Point[];
   /** Final tile of the current path, for the client's destination marker. */
   destination: Point | null;
   /** Set when a path was cut short at a locked gate; reported on arrival. */
   gateNotice: Point | null;
+  action: PlayerAction | null;
+  /** Ground item to pick up when the path ends. */
+  pickup: EntityId | null;
 }
 
 /** Static world objects that occupy a tile: resource nodes, stations, props, NPCs. */
@@ -26,6 +42,20 @@ export interface ObjectEntity {
   name: string;
   x: number;
   y: number;
+  /** Resources only: tick at which a used-up node comes back. */
+  depletedUntil?: number;
 }
 
-export type Entity = PlayerEntity | ObjectEntity;
+/** An item lying on the ground. It vanishes at `despawnAt`. */
+export interface GroundItemEntity {
+  id: EntityId;
+  kind: 'item';
+  itemId: string;
+  qty: number;
+  name: string;
+  x: number;
+  y: number;
+  despawnAt: number;
+}
+
+export type Entity = PlayerEntity | ObjectEntity | GroundItemEntity;

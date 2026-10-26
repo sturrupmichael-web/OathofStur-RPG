@@ -60,6 +60,7 @@ export class Minimap {
     ctx.drawImage(this.base, 0, 0);
     for (const view of this.state.entities.values()) {
       if (view.data.kind === 'npc') this.dot(view.data.x + 0.5, view.data.y + 0.5, '#ffe14d', 2);
+      if (view.data.kind === 'item') this.dot(view.data.x + 0.5, view.data.y + 0.5, '#e8322b', 1.6);
     }
     const dest = this.state.self?.destination;
     if (dest) this.dot(dest.x + 0.5, dest.y + 0.5, '#ff3b30', 2);

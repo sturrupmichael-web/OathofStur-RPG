@@ -112,6 +112,17 @@ export const RESOURCE_STYLES: Record<string, PartStyle[]> = {
     { geometry: new THREE.CylinderGeometry(0.02, 0.04, 0.45, 5), color: 0x5a5048, position: [0.02, 1.25, -0.14], rotation: [-0.8, 0, 0.1], vary: 0.12 },
     { geometry: new THREE.CylinderGeometry(0.015, 0.03, 0.3, 4), color: 0x4e463e, position: [0.36, 1.32, 0], rotation: [0, 0, -0.2] },
   ],
+  // Felled trees wait as stumps until they grow back.
+  tree_stump: [
+    { geometry: trunk(0.15, 0.2), color: 0x6b4a2b, position: [0, 0.1, 0], vary: 0.1 },
+    { geometry: new THREE.CylinderGeometry(0.105, 0.105, 0.01, 7), color: 0xd9b47c, position: [0, 0.205, 0] },
+    ...roots(0x5f4126, 0.14),
+  ],
+  dead_tree_stump: [
+    { geometry: trunk(0.15, 0.24), color: 0x5a5048, position: [0, 0.12, 0], vary: 0.12 },
+    { geometry: new THREE.CylinderGeometry(0.105, 0.105, 0.01, 7), color: 0xc9bfae, position: [0, 0.245, 0] },
+    ...roots(0x4e463e, 0.14),
+  ],
   copper_rock: rockParts(0xd07a3a),
   tin_rock: rockParts(0xd4d8e0),
   iron_rock: rockParts(0x9a5238),
@@ -353,5 +364,27 @@ export function buildStation(defKey: string, near: NeighbourLookup = () => null,
     default:
       g.add(mesh(B(0.7, 0.7, 0.7), 0xff00ff, 0, 0.35));
   }
+  return g;
+}
+
+/** Small models for items lying on the ground. */
+export function buildGroundItem(itemId: string): THREE.Group {
+  const g = new THREE.Group();
+  if (itemId.endsWith('logs')) {
+    const bark = itemId === 'ashwood_logs' ? 0x8d857c : 0x6b4a2b;
+    const wood = itemId === 'ashwood_logs' ? 0xece3d2 : 0xd9b47c;
+    const log = new THREE.CylinderGeometry(0.07, 0.07, 0.42, 7).rotateZ(Math.PI / 2);
+    for (const [x, y, z] of [[0, 0.07, -0.07], [0, 0.07, 0.07], [0, 0.19, 0]] as const) {
+      g.add(mesh(log, bark, x, y, z));
+      g.add(mesh(new THREE.CircleGeometry(0.066, 7).rotateY(Math.PI / 2), wood, x + 0.211, y, z));
+    }
+  } else if (itemId.endsWith('axe')) {
+    const head = itemId === 'iron_axe' ? 0x7d7f86 : itemId === 'steel_axe' ? 0xa9b3bd : 0xb8793a;
+    g.add(mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.5, 6).rotateZ(Math.PI / 2), 0x7a5230, 0, 0.03, 0));
+    g.add(mesh(new THREE.BoxGeometry(0.1, 0.03, 0.15), head, 0.2, 0.04, 0.06));
+  } else {
+    g.add(mesh(new THREE.IcosahedronGeometry(0.12, 0), 0xa08454, 0, 0.1, 0));
+  }
+  g.traverse((o) => (o.castShadow = true));
   return g;
 }

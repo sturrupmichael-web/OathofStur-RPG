@@ -91,6 +91,70 @@ describe('Mining', () => {
   });
 });
 
+describe('The wider Reaches', () => {
+  /** A player at a region tile, rather than a Kelmoor one. */
+  function atRegion(x: number, y: number, items: [string, number][] = []) {
+    return setup(x - 130, y - 70, items);
+  }
+
+  function regionObject(sim: Simulation, defKey: string, x: number, y: number): Entity {
+    for (let id = 1; id < 60000; id++) {
+      const e = sim.getEntity(id);
+      if (e && 'defKey' in e && e.defKey === defKey && e.x === x && e.y === y) return e;
+    }
+    throw new Error(`no ${defKey} at ${x},${y}`);
+  }
+
+  it('needs Woodcutting 15 for an oak, then gives oak logs', () => {
+    const s = atRegion(185, 86, [['bronze_axe', 1]]);
+    const oak = regionObject(s.sim, 'oak_tree', 186, 86);
+    s.sim.queueIntent(s.id, { type: 'interact', targetId: oak.id, action: 'gather' });
+    s.run(2);
+    expect(s.texts()).toContain('You need a Woodcutting level of 15 to chop this tree.');
+
+    s.player.skills.woodcutting = xpForLevel(15);
+    until(
+      s,
+      () => s.sim.queueIntent(s.id, { type: 'interact', targetId: oak.id, action: 'gather' }),
+      () => countItem(s.player.inventory, 'oak_logs') >= 1,
+    );
+    expect(s.player.skills.woodcutting).toBeGreaterThan(xpForLevel(15));
+  });
+
+  it('mines gold in Greyspine Quarry at Mining 40', () => {
+    const s = atRegion(29, 87, [['steel_pickaxe', 1]]);
+    const rock = regionObject(s.sim, 'gold_rock', 30, 87);
+    s.sim.queueIntent(s.id, { type: 'interact', targetId: rock.id, action: 'gather' });
+    s.run(2);
+    expect(s.texts()).toContain('You need a Mining level of 40 to mine this rock.');
+
+    s.player.skills.mining = xpForLevel(40);
+    until(
+      s,
+      () => s.sim.queueIntent(s.id, { type: 'interact', targetId: rock.id, action: 'gather' }),
+      () => countItem(s.player.inventory, 'gold_ore') === 1,
+    );
+  });
+
+  it('banks in Falcrest and sells fish in Saltcombe', () => {
+    const bank = atRegion(72, 130, [['logs', 2]]);
+    const banker = regionObject(bank.sim, 'banker', 72, 129);
+    bank.sim.queueIntent(bank.id, { type: 'interact', targetId: banker.id, action: 'use' });
+    bank.run(2);
+    expect(bank.player.ui?.kind).toBe('bank');
+
+    const shop = atRegion(153, 241, [['raw_perch', 2]]);
+    const gerrick = regionObject(shop.sim, 'gerrick', 154, 240);
+    shop.sim.queueIntent(shop.id, { type: 'interact', targetId: gerrick.id, action: 'use' });
+    shop.run(2);
+    expect(shop.player.ui?.kind).toBe('shop');
+    const slot = shop.player.inventory.findIndex((x) => x?.itemId === 'raw_perch');
+    shop.sim.queueIntent(shop.id, { type: 'shopSell', slot, qty: 2 });
+    shop.run(1);
+    expect(countItem(shop.player.inventory, 'coins')).toBeGreaterThan(0);
+  });
+});
+
 describe('Fishing', () => {
   it('nets minnows at a shallow spot without using it up', () => {
     const s = setup(99, 55, [['small_net', 1]]);

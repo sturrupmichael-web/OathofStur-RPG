@@ -18,6 +18,7 @@ export interface SkillInfo {
 
 export const SKILLS: readonly SkillInfo[] = skillData.skills as SkillInfo[];
 export const MAX_LEVEL = skillData.maxLevel;
+export const MAX_XP = 200_000_000;
 
 export type SkillXp = Record<SkillId, number>;
 

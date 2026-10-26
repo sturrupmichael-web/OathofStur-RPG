@@ -10,7 +10,8 @@
       <main id="viewport">
         <div id="labels"></div>
         <div id="tooltip" hidden></div>
-        <div id="context-menu" hidden></div>
+        <div id="xp-drops" aria-hidden="true"></div>
+        <div id="level-up" role="status" hidden></div>
         <div id="controls-hint">
           <span class="hint-mouse">Click to walk · Right-click for options · Q/E or middle-drag to rotate · Wheel to zoom · R toggles roofs</span>
           <span class="hint-touch">Tap to walk · Hold for options · Drag to turn · Pinch to zoom</span>
@@ -35,6 +36,7 @@
           <button class="tab" data-tab="equipment">Equipment</button>
           <button class="tab" data-tab="skills">Skills</button>
           <button class="tab" data-tab="quests">Quests</button>
+          <button class="tab" data-tab="options" aria-label="Options">⚙</button>
         </nav>
         <section class="panel" id="panel-inventory">
           <div id="inventory-grid"></div>
@@ -49,12 +51,23 @@
         <section class="panel" id="panel-quests" hidden>
           <p class="muted">No quests yet. Someone in town might have a task for you.</p>
         </section>
+        <section class="panel" id="panel-options" hidden>
+          <h3>Your save</h3>
+          <p class="muted" id="save-status">Your progress saves in this browser automatically.</p>
+          <div class="option-buttons">
+            <button id="save-now">Save now</button>
+            <button id="save-export">Export save file</button>
+            <label class="file-button">Import save file<input id="save-import" type="file" accept=".json,application/json" /></label>
+            <button id="save-reset" class="danger">Start a new character</button>
+          </div>
+        </section>
       </aside>
       <footer id="chat">
         <div id="chat-log" aria-live="polite"></div>
         <input id="chat-input" placeholder="Player chat arrives with multiplayer" disabled />
       </footer>
     </div>
+    <div id="context-menu" hidden></div>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

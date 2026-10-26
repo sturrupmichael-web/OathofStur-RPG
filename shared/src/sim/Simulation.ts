@@ -8,12 +8,19 @@ import {
   type ServerMessage,
 } from '../protocol/messages';
 import { Rng } from '../rng';
-import type { Entity, EntityId, ObjectEntity, PlayerEntity } from './entities';
+import type { Entity, EntityId, GroundItemEntity, ObjectEntity, PlayerEntity } from './entities';
+import { ATTEMPT_TICKS, EXAMINE, RESOURCE_DATA, gatherChance } from './gathering';
 import { NEIGHBOURS_4, NEIGHBOURS_8, WorldGrid } from './grid';
+import { ITEMS, INVENTORY_SIZE, addItem, bestTool, canAdd, emptyInventory, hasAnyTool } from './items';
 import { findPath } from './pathfinding';
-import { SKILLS, combatLevel, requirementLevel, startingXp } from './skills';
+import { SAVE_VERSION, type SaveData } from './save';
+import { MAX_XP, SKILLS, combatLevel, levelForXp, requirementLevel, startingXp, type SkillId } from './skills';
 
 export const TICK_MS = 600;
+/** Dropped items stay on the ground for two minutes. */
+export const GROUND_ITEM_TICKS = 200;
+/** What a brand-new character carries. */
+const STARTING_ITEMS = ['bronze_axe'];
 
 export interface SimulationOptions {
   map: MapData;
@@ -54,17 +61,29 @@ export class Simulation {
   // Host API
   // -------------------------------------------------------------------------
 
-  addPlayer(name: string): EntityId {
+  /**
+   * Adds a player, from a save when there is one. `save` must already have
+   * been through parseSave; a saved position that is no longer walkable (the
+   * map changed) falls back to the spawn point.
+   */
+  addPlayer(name: string, save: SaveData | null = null, now = ''): EntityId {
+    const inventory = save ? save.inventory.map((s) => (s ? { ...s } : null)) : emptyInventory();
+    if (!save) for (const item of STARTING_ITEMS) addItem(inventory, item);
+    const start = save && this.grid.isWalkable(save.position.x, save.position.y) ? save.position : this.map.spawn;
     const player: PlayerEntity = {
       id: this.allocateId(),
       kind: 'player',
-      name: name.trim().slice(0, 12) || 'Adventurer',
-      x: this.map.spawn.x,
-      y: this.map.spawn.y,
-      skills: startingXp(),
+      name: (save?.name ?? name).trim().slice(0, 12) || 'Adventurer',
+      x: start.x,
+      y: start.y,
+      skills: save ? { ...save.skills } : startingXp(),
+      inventory,
+      createdAt: save?.createdAt ?? now,
       path: [],
       destination: null,
       gateNotice: null,
+      action: null,
+      pickup: null,
     };
     this.entities.set(player.id, player);
     const session: Session = { outbox: [], lastSent: new Map(), lastSelf: '' };
@@ -82,8 +101,29 @@ export class Simulation {
     for (const e of visible) session.lastSent.set(e.id, JSON.stringify(e));
     session.outbox.push({ type: 'snapshot', tick: this.tick, entities: visible });
     this.syncSelf(player, session);
-    this.message(player.id, 'Welcome. Click the ground to walk, right-click for options.');
+    this.message(
+      player.id,
+      save ? `Welcome back, ${player.name}.` : 'Welcome to Kelmoor. Click the ground to walk, right-click for options. Trees can be chopped with your axe.',
+    );
     return player.id;
+  }
+
+  /** The player's current state as a save record. `now` is an ISO time from the host. */
+  saveFor(playerId: EntityId, now: string): SaveData | null {
+    const p = this.entities.get(playerId);
+    if (!p || p.kind !== 'player') return null;
+    return {
+      version: SAVE_VERSION,
+      name: p.name,
+      position: { x: p.x, y: p.y },
+      skills: { ...p.skills },
+      inventory: p.inventory.map((s) => (s ? { ...s } : null)),
+      equipment: {},
+      bank: [],
+      quests: {},
+      createdAt: p.createdAt || now,
+      updatedAt: now,
+    };
   }
 
   removePlayer(id: EntityId): void {
@@ -104,6 +144,15 @@ export class Simulation {
 
     for (const e of this.entities.values()) {
       if (e.kind === 'player') this.movePlayer(e);
+    }
+    for (const e of this.entities.values()) {
+      if (e.kind !== 'player' || e.path.length) continue;
+      if (e.pickup !== null) this.pickUp(e);
+      if (e.action) this.gather(e);
+    }
+    for (const e of [...this.entities.values()]) {
+      if (e.kind === 'resource' && e.depletedUntil !== undefined && this.tick >= e.depletedUntil) delete e.depletedUntil;
+      if (e.kind === 'item' && this.tick >= e.despawnAt) this.entities.delete(e.id);
     }
 
     this.flushDeltas();
@@ -135,14 +184,97 @@ export class Simulation {
           this.reject(playerId, 'Invalid walk target.');
           return;
         }
+        this.stopActions(player);
         this.walkTo(player, { x: msg.x, y: msg.y });
         return;
+      case 'interact':
+        this.interact(player, msg.targetId, msg.action);
+        return;
+      case 'examine':
+        this.examine(player, msg.targetId);
+        return;
+      case 'examineItem': {
+        const stack = this.slot(player, msg.slot);
+        if (stack) this.message(player.id, ITEMS[stack.itemId].examine, 'examine');
+        return;
+      }
+      case 'invDrop': {
+        const stack = this.slot(player, msg.slot);
+        if (!stack) return;
+        player.inventory[msg.slot] = null;
+        this.dropItem(player, stack.itemId, stack.qty);
+        return;
+      }
+      case 'invMove': {
+        if (!this.validSlot(msg.from) || !this.validSlot(msg.to)) return;
+        const inv = player.inventory;
+        [inv[msg.from], inv[msg.to]] = [inv[msg.to], inv[msg.from]];
+        return;
+      }
       case 'join':
-        // Joining is handled by the host, not as an in-world intent.
+      case 'requestSave':
+        // Handled by the host, not as in-world intents.
         return;
       default:
         this.reject(playerId, 'Unknown intent.');
     }
+  }
+
+  private stopActions(player: PlayerEntity): void {
+    player.action = null;
+    player.pickup = null;
+  }
+
+  private interact(player: PlayerEntity, targetId: EntityId, action: 'gather' | 'take'): void {
+    const target = this.entities.get(targetId);
+    this.stopActions(player);
+    if (action === 'take' && target?.kind === 'item') {
+      player.pickup = target.id;
+      this.walkTo(player, target);
+      return;
+    }
+    if (action === 'gather' && target?.kind === 'resource' && RESOURCE_DATA[target.defKey]) {
+      player.action = { kind: 'gather', targetId: target.id, nextAttempt: 0, started: false };
+      this.walkTo(player, target);
+      return;
+    }
+    this.reject(player.id, 'Nothing interesting happens.');
+  }
+
+  private examine(player: PlayerEntity, targetId: EntityId): void {
+    const target = this.entities.get(targetId);
+    if (!target) return;
+    let text: string;
+    if (target.kind === 'player') text = target.id === player.id ? "It's you. Looking sharp." : `A fellow adventurer, ${target.name}.`;
+    else if (target.kind === 'item') text = ITEMS[target.itemId].examine;
+    else {
+      const key = target.depletedUntil !== undefined ? `${target.defKey}_stump` : target.defKey;
+      text = EXAMINE[key] ?? EXAMINE[target.defKey] ?? `It's a ${target.name.toLowerCase()}.`;
+      if (target.depletedUntil !== undefined && target.defKey.endsWith('rock')) text = EXAMINE.rock_depleted;
+    }
+    this.message(player.id, text, 'examine');
+  }
+
+  private validSlot(slot: number): boolean {
+    return Number.isInteger(slot) && slot >= 0 && slot < INVENTORY_SIZE;
+  }
+
+  private slot(player: PlayerEntity, slot: number) {
+    return this.validSlot(slot) ? player.inventory[slot] : null;
+  }
+
+  private dropItem(player: PlayerEntity, itemId: string, qty: number): void {
+    const item: GroundItemEntity = {
+      id: this.allocateId(),
+      kind: 'item',
+      itemId,
+      qty,
+      name: ITEMS[itemId].name,
+      x: player.x,
+      y: player.y,
+      despawnAt: this.tick + GROUND_ITEM_TICKS,
+    };
+    this.entities.set(item.id, item);
   }
 
   private walkTo(player: PlayerEntity, target: Point): void {
@@ -238,6 +370,90 @@ export class Simulation {
     }
   }
 
+  private pickUp(player: PlayerEntity): void {
+    const item = this.entities.get(player.pickup!);
+    player.pickup = null;
+    if (!item || item.kind !== 'item' || item.x !== player.x || item.y !== player.y) return;
+    if (!addItem(player.inventory, item.itemId, item.qty)) {
+      this.message(player.id, "You don't have enough inventory space to hold that item.", 'warn');
+      return;
+    }
+    this.entities.delete(item.id);
+  }
+
+  /** Woodcutting now; mining and fishing reuse this in phase 3. */
+  private gather(player: PlayerEntity): void {
+    const action = player.action!;
+    const node = this.entities.get(action.targetId);
+    const data = node?.kind === 'resource' ? RESOURCE_DATA[node.defKey] : undefined;
+    if (!node || node.kind !== 'resource' || !data) return this.stopGathering(player);
+    if (Math.max(Math.abs(node.x - player.x), Math.abs(node.y - player.y)) > 1) return this.stopGathering(player);
+    if (node.depletedUntil !== undefined) return this.stopGathering(player);
+
+    const skillName = SKILLS.find((s) => s.id === data.skill)!.name;
+    const itemName = ITEMS[data.item]?.name.toLowerCase() ?? data.item;
+    if (data.skill !== 'woodcutting') {
+      this.message(player.id, `${skillName} isn't open yet. It arrives in the next update.`);
+      return this.stopGathering(player);
+    }
+    const level = levelForXp(player.skills[data.skill]);
+    if (level < data.level) {
+      this.message(player.id, `You need a ${skillName} level of ${data.level} to chop this tree.`, 'warn');
+      return this.stopGathering(player);
+    }
+    const tool = bestTool(player.inventory, data.skill, level);
+    if (!tool) {
+      const why = hasAnyTool(player.inventory, data.skill) ? `You need a higher ${skillName} level to use your axe.` : 'You need an axe to chop down this tree.';
+      this.message(player.id, why, 'warn');
+      return this.stopGathering(player);
+    }
+    if (!canAdd(player.inventory, data.item)) {
+      this.message(player.id, `Your inventory is too full to hold any more ${itemName}.`, 'warn');
+      return this.stopGathering(player);
+    }
+
+    if (!action.started) {
+      action.started = true;
+      action.nextAttempt = this.tick + ATTEMPT_TICKS;
+      this.message(player.id, 'You swing your axe at the tree.');
+      return;
+    }
+    if (this.tick < action.nextAttempt) return;
+    action.nextAttempt = this.tick + ATTEMPT_TICKS;
+    if (!this.rng.chance(gatherChance(level, data.level, tool.tool!.bonus))) return;
+
+    addItem(player.inventory, data.item);
+    this.message(player.id, `You get some ${itemName}.`);
+    this.addXp(player, data.skill, data.xp);
+    if (this.rng.chance(data.depleteChance)) {
+      node.depletedUntil = this.tick + data.respawnTicks;
+      for (const e of this.entities.values()) {
+        if (e.kind === 'player' && e.action?.targetId === node.id) this.stopGathering(e);
+      }
+    } else if (!canAdd(player.inventory, data.item)) {
+      this.message(player.id, `Your inventory is too full to hold any more ${itemName}.`, 'warn');
+      this.stopGathering(player);
+    }
+  }
+
+  private stopGathering(player: PlayerEntity): void {
+    player.action = null;
+  }
+
+  private addXp(player: PlayerEntity, skill: SkillId, amount: number): void {
+    const before = levelForXp(player.skills[skill]);
+    player.skills[skill] = Math.min(MAX_XP, Math.round((player.skills[skill] + amount) * 10) / 10);
+    const after = levelForXp(player.skills[skill]);
+    const session = this.sessions.get(player.id);
+    session?.outbox.push({ type: 'xpDrop', skill, amount });
+    if (after > before) {
+      session?.outbox.push({ type: 'levelUp', skill, level: after });
+      const name = SKILLS.find((s) => s.id === skill)!.name;
+      const article = /^[AEIOU]/.test(name) ? 'an' : 'a';
+      this.message(player.id, `Congratulations, you've just advanced ${article} ${name} level. You are now level ${after}.`, 'levelup');
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Output
   // -------------------------------------------------------------------------
@@ -257,9 +473,19 @@ export class Simulation {
 
   private toPublic(e: Entity): PublicEntity {
     if (e.kind === 'player') {
-      return { id: e.id, kind: e.kind, x: e.x, y: e.y, name: e.name, combatLevel: combatLevel(e.skills) };
+      const target = e.action?.started ? this.entities.get(e.action.targetId) : undefined;
+      return {
+        id: e.id,
+        kind: e.kind,
+        x: e.x,
+        y: e.y,
+        name: e.name,
+        combatLevel: combatLevel(e.skills),
+        ...(target && { workingOn: { x: target.x, y: target.y } }),
+      };
     }
-    return { id: e.id, kind: e.kind, x: e.x, y: e.y, name: e.name, defKey: e.defKey };
+    if (e.kind === 'item') return { id: e.id, kind: e.kind, x: e.x, y: e.y, name: e.name, defKey: e.itemId, qty: e.qty };
+    return { id: e.id, kind: e.kind, x: e.x, y: e.y, name: e.name, defKey: e.defKey, ...(e.depletedUntil !== undefined && { depleted: true }) };
   }
 
   private flushDeltas(): void {
@@ -290,6 +516,7 @@ export class Simulation {
       skills: { ...player.skills },
       combatLevel: combatLevel(player.skills),
       destination: player.destination,
+      inventory: player.inventory,
     };
     const json = JSON.stringify(state);
     if (json === session.lastSelf) return;

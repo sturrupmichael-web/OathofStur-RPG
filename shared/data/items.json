@@ -1,0 +1,10 @@
+{
+  "comment": "Every item in the game. Items don't stack unless stackable is true. tool.bonus is added to the chance of success per attempt.",
+  "items": [
+    { "id": "bronze_axe", "name": "Bronze axe", "examine": "A sturdy axe with a bronze head. Good for felling trees.", "tool": { "skill": "woodcutting", "level": 1, "bonus": 0 } },
+    { "id": "iron_axe", "name": "Iron axe", "examine": "An iron-headed axe. It bites deeper than bronze.", "tool": { "skill": "woodcutting", "level": 10, "bonus": 0.08 } },
+    { "id": "steel_axe", "name": "Steel axe", "examine": "A well-balanced steel axe.", "tool": { "skill": "woodcutting", "level": 20, "bonus": 0.16 } },
+    { "id": "logs", "name": "Logs", "examine": "Freshly cut logs, still smelling of sap." },
+    { "id": "ashwood_logs", "name": "Ashwood logs", "examine": "Pale, bone-dry logs from a tree the Ashen Waste killed. They burn hot." }
+  ]
+}

@@ -118,6 +118,10 @@ export interface CharacterRig {
   kneeR: THREE.Group;
   cape: THREE.Group | null;
   robe: THREE.Object3D | null;
+  /** Axe held while chopping; hidden otherwise. Players only. */
+  tool: THREE.Object3D | null;
+  /** 0 = not working, 1 = mid-chop; eased like `walk`. */
+  work: number;
   /** Walk cycle angle in radians. */
   phase: number;
   /** 0 = standing, 1 = full walk; eased so starts and stops blend. */
@@ -359,6 +363,17 @@ export function buildCharacter(styleKey: string, seed: number): CharacterRig {
     grip.add(part(new THREE.SphereGeometry(0.04, 8, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), 0x9a9a9a, 0, -0.26, 0.02));
   }
 
+  // Players get an axe that only shows while they chop.
+  let tool: THREE.Object3D | null = null;
+  if (styleKey === 'player' || styleKey === 'other_player') {
+    tool = new THREE.Group();
+    tool.add(part(new THREE.CylinderGeometry(0.014, 0.017, 0.42, 6), 0x7a5230, 0, -0.04, 0.02));
+    tool.add(part(new THREE.BoxGeometry(0.02, 0.09, 0.12), 0xb8793a, 0, 0.13, 0.08));
+    tool.rotation.x = Math.PI / 2;
+    tool.visible = false;
+    grip.add(tool);
+  }
+
   // Cape hangs from the shoulders and trails when walking.
   let cape: THREE.Group | null = null;
   if (s.cape) {
@@ -394,6 +409,8 @@ export function buildCharacter(styleKey: string, seed: number): CharacterRig {
     kneeR: legs[1].knee,
     cape,
     robe,
+    tool,
+    work: 0,
     phase: 0,
     walk: 0,
     seed,
@@ -407,7 +424,10 @@ const STRIDE_RATE = (Math.PI * 2) / 1.2;
  * Advance a rig. `moving` says whether the entity is between tiles this
  * frame; `speed` scales the stride (diagonal steps cover more ground).
  */
-export function animateCharacter(rig: CharacterRig, dt: number, now: number, moving: boolean, speed = 1): void {
+/** One axe swing per 1.2 s: a slow wind-up, then a fast chop. */
+const CHOP_PERIOD = 1200;
+
+export function animateCharacter(rig: CharacterRig, dt: number, now: number, moving: boolean, speed = 1, working = false): void {
   rig.walk += ((moving ? 1 : 0) - rig.walk) * Math.min(1, dt * 8);
   if (rig.walk > 0.01) rig.phase += dt * STRIDE_RATE * speed;
   else rig.phase = 0;
@@ -440,6 +460,23 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
   rig.torso.scale.y = 1 + Math.sin(t * 1.8) * 0.012 * idle;
   rig.head.rotation.y = s * 0.08 * w + Math.sin(t * 0.45) * 0.35 * idle * Math.max(0, Math.sin(t * 0.13));
   rig.head.rotation.x = -0.05 * w + Math.sin(t * 0.7) * 0.03 * idle;
+
+  // Chopping overrides the right arm and twists the body into the swing.
+  rig.work += ((working && !moving ? 1 : 0) - rig.work) * Math.min(1, dt * 10);
+  if (rig.tool) rig.tool.visible = rig.work > 0.05;
+  if (rig.work > 0.01) {
+    const u = ((now + rig.seed * 1000) % CHOP_PERIOD) / CHOP_PERIOD;
+    const lift = u < 0.65 ? Math.sin((u / 0.65) * Math.PI * 0.5) : 1 - Math.pow((u - 0.65) / 0.35, 0.5);
+    const k = rig.work;
+    const mix = (from: number, to: number) => from + (to - from) * k;
+    rig.shoulderR.rotation.x = mix(rig.shoulderR.rotation.x, -0.5 - 2.1 * lift);
+    rig.shoulderR.rotation.z = mix(rig.shoulderR.rotation.z, 0.25);
+    rig.elbowR.rotation.x = mix(rig.elbowR.rotation.x, -0.25 - 0.6 * lift);
+    rig.shoulderL.rotation.x = mix(rig.shoulderL.rotation.x, -0.6 - 0.8 * lift);
+    rig.elbowL.rotation.x = mix(rig.elbowL.rotation.x, -0.5);
+    rig.torso.rotation.y = mix(rig.torso.rotation.y, -0.25 * lift);
+    rig.torso.rotation.x = mix(rig.torso.rotation.x, 0.15 - 0.15 * lift);
+  }
 
   if (rig.cape) rig.cape.rotation.x = 0.06 + 0.45 * w + Math.sin(rig.phase * 2) * 0.06 * w + Math.sin(t * 1.3) * 0.02;
   if (rig.robe) rig.robe.rotation.z = s * 0.06 * w;

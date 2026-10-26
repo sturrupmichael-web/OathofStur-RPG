@@ -1,4 +1,4 @@
-import type { EntityId, PublicEntity, SelfState, ServerMessage } from '@rpg/shared';
+import type { EntityId, PublicEntity, SaveData, SelfState, ServerMessage, SkillId } from '@rpg/shared';
 
 export interface EntityView {
   data: PublicEntity;
@@ -13,7 +13,12 @@ export interface EntityView {
 type Events = {
   added: EntityView;
   removed: EntityId;
+  /** An entity's data changed in place (a tree became a stump, a player started chopping). */
+  changed: EntityView;
   self: SelfState;
+  xpDrop: { skill: SkillId; amount: number };
+  levelUp: { skill: SkillId; level: number };
+  saveData: SaveData;
   gameMessage: { text: string; kind: string };
   tick: number;
 };
@@ -69,6 +74,15 @@ export class ClientState {
       case 'gameMessage':
         this.emit('gameMessage', { text: msg.text, kind: msg.kind });
         break;
+      case 'xpDrop':
+        this.emit('xpDrop', { skill: msg.skill, amount: msg.amount });
+        break;
+      case 'levelUp':
+        this.emit('levelUp', { skill: msg.skill, level: msg.level });
+        break;
+      case 'saveData':
+        this.emit('saveData', msg.save);
+        break;
       case 'reject':
         this.emit('gameMessage', { text: msg.reason, kind: 'warn' });
         break;
@@ -104,7 +118,9 @@ export class ClientState {
       view.toY = data.y;
       view.movedAt = now;
     }
+    const changed = data.depleted !== view.data.depleted || JSON.stringify(data.workingOn) !== JSON.stringify(view.data.workingOn);
     view.data = data;
+    if (changed) this.emit('changed', view);
   }
 
   private remove(id: EntityId): void {

@@ -18,6 +18,7 @@ import { LocalServer } from './net/LocalServer';
 import type { ServerConnection } from './net/ServerConnection';
 import { Renderer, type PickResult } from './render/Renderer';
 import { ClientState } from './state/ClientState';
+import { CombatOverlay } from './ui/CombatOverlay';
 import { Hud } from './ui/Hud';
 import { Minimap } from './ui/Minimap';
 import { WorldMap } from './ui/WorldMap';
@@ -55,8 +56,10 @@ async function start(): Promise<void> {
   );
 
   const worldMap = new WorldMap(map, minimap.worldImage, state, walk);
+  const combat = new CombatOverlay(document.getElementById('combat-layer')!, state, renderer);
   state.on('self', (self) => {
     hud.renderSelf(self);
+    hud.renderEquipment(self);
     hud.renderInventory(self.inventory);
     hud.renderWindow(self);
   });
@@ -86,6 +89,7 @@ async function start(): Promise<void> {
   /** The left-click action on an entity, if it has one besides walking. */
   const primaryAction = (e: PublicEntity | undefined): { label: string; run: () => void } | null => {
     if (!e) return null;
+    if (e.kind === 'monster') return e.dead ? null : { label: 'Attack', run: () => server.send({ type: 'attack', targetId: e.id }) };
     const use = (action: 'gather' | 'take' | 'use') => () => server.send({ type: 'interact', targetId: e.id, action });
     if (e.kind === 'item') return { label: 'Take', run: use('take') };
     const data = e.kind === 'resource' && e.defKey ? RESOURCE_DATA[e.defKey] : undefined;
@@ -113,6 +117,7 @@ async function start(): Promise<void> {
     if (id !== null) {
       const e = state.entities.get(id)?.data;
       if (e?.kind === 'player') return { action: 'Walk here', target: `${e.name} (level-${e.combatLevel})` };
+      if (e?.kind === 'monster') return { action: e.dead ? 'Walk here' : 'Attack', target: `${e.name} (level-${e.combatLevel})` };
       const primary = primaryAction(e);
       if (e && primary) return { action: primary.label, target: nameOf(e) };
       if (e) return { action: e.kind === 'item' ? 'Walk here' : 'Walk to', target: nameOf(e) };
@@ -197,10 +202,22 @@ async function start(): Promise<void> {
           examine,
         ]);
       } else {
-        hud.showMenu(x, y, [{ label: 'Drop', target: name, action: () => server.send({ type: 'invDrop', slot }) }, examine]);
+        const item = ITEMS[stack.itemId];
+        const use = item?.heals
+          ? [{ label: 'Eat', target: name, action: () => server.send({ type: 'eat', slot }) }]
+          : item?.equip
+            ? [{ label: item.equip.slot === 'weapon' ? 'Wield' : 'Wear', target: name, action: () => server.send({ type: 'equip', slot }) }]
+            : [];
+        hud.showMenu(x, y, [...use, { label: 'Drop', target: name, action: () => server.send({ type: 'invDrop', slot }) }, examine]);
       }
     },
     move: (from, to) => server.send({ type: 'invMove', from, to }),
+  };
+
+  hud.equipmentHandlers = {
+    unequip: (slot) => server.send({ type: 'unequip', slot }),
+    setStyle: (style) => server.send({ type: 'setAttackStyle', style }),
+    examine: (itemId) => hud.addMessage(ITEMS[itemId]?.examine ?? '', 'examine'),
   };
 
   // --- Bank, shop and crafting windows -----------------------------------------
@@ -320,6 +337,7 @@ async function start(): Promise<void> {
     if (held.has('out')) renderer.rig.zoomBy(1 - 1.0 * dt);
 
     renderer.frame(now);
+    combat.update(now);
     minimap.draw(now);
     worldMap.draw();
     const me = state.player?.data;
@@ -350,7 +368,7 @@ async function start(): Promise<void> {
         labels.appendChild(label);
       }
       label.textContent = `${view.data.name} (level-${view.data.combatLevel})`;
-      const pos = renderer.screenPosition(view.data.id, 1.45, now);
+      const pos = renderer.screenPosition(view.data.id, 1.5, now);
       if (pos) label.style.transform = `translate(${pos.x}px, ${pos.y}px) translate(-50%, -100%)`;
     }
     for (const label of [...labels.children] as HTMLElement[]) {

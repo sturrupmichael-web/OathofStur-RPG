@@ -20,10 +20,13 @@ npm run build      # static site in client/dist, deploy anywhere
   and pick a skill to see where it is trained.
   Clicking a tree, rock or fishing spot walks over and
   starts gathering; clicking the furnace, anvil or range opens what you can make there; clicking a
-  bank booth, banker or shopkeeper opens the bank or shop; clicking a ground item picks it up.
-- Right-click for the options menu (Chop down, Mine, Net, Bait, Smelt, Trade, Walk here, Examine).
+  bank booth, banker or shopkeeper opens the bank or shop; clicking a ground item picks it up;
+  clicking a monster attacks it.
+- Right-click for the options menu (Attack, Chop down, Mine, Net, Bait, Smelt, Trade, Walk here, Examine).
 - With the bank or a shop open, click inventory items to deposit or sell them.
-- Click an inventory item for Drop or Examine; drag items between slots to rearrange them.
+- Click an inventory item to Eat, Wield or Wear it, Drop it or Examine it; drag items between slots to rearrange them.
+- The Equipment tab shows what you wear and your bonuses (tap an item to take it off), and sets
+  your fighting style: Accurate trains Attack, Aggressive trains Strength, Defensive trains Defence.
 - The ⚙ tab saves, exports and imports your character. It also saves itself every 30 seconds.
 - Q/E, A/D or arrow keys rotate the camera; W/S or up/down tilt; middle-drag rotates; wheel zooms.
 
@@ -82,3 +85,21 @@ ground shader (`groundBlend.ts`) instead of meeting at tile edges, and shores wa
 
 Characters saved before the region existed (save version 1) are moved by the same offset,
 so an old character wakes up where they left off.
+
+## Combat
+
+Monster stats and drops live in `shared/data/monsters.json`, gear stats in `items.json`
+(`equip`), and the rules in `shared/src/sim/combat.ts`:
+
+- Melee only, from straight beside the target (never diagonally). Every weapon and bare
+  fists swing every 4 ticks. Each side rolls (level + 8) x (bonus + 64) for attack against
+  defence; a hit does 1 to max hit. The chosen style adds 3 to its skill.
+- Each point of damage gives 4 XP to the style's skill and 1.33 to Hitpoints. You regain a
+  hitpoint a minute, or eat cooked food (3 ticks between bites).
+- Monsters roam their area from the map, chase within 8 tiles of it, and fight back.
+  Aggressive ones pick on players whose combat level is at most twice theirs.
+- Loot goes to whoever did the most damage and only they see it for a minute, as with
+  anything you drop. A dead monster comes back at its spawn point after its respawn time.
+- When you die you wake at the spawn point with full health, keeping your three most
+  valuable items (counted one by one, so coins rarely make the cut). The rest waits where
+  you fell for ten minutes, seen only by you.

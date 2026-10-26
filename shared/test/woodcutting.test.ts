@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ServerMessage } from '../src/protocol/messages';
 import type { ObjectEntity, PlayerEntity } from '../src/sim/entities';
 import { ITEMS, INVENTORY_SIZE, addItem, emptyInventory } from '../src/sim/items';
-import { parseSave } from '../src/sim/save';
+import { SAVE_VERSION, parseSave } from '../src/sim/save';
 import { Simulation } from '../src/sim/Simulation';
 import { levelForXp, xpForLevel } from '../src/sim/skills';
 import { kx, ky, loadWorld } from './helpers';
@@ -217,7 +217,7 @@ describe('Saves', () => {
 
   it('moves a Kelmoor-era save into the region', () => {
     const save = parseSave({ version: 1, name: 'Old', position: { x: 60, y: 49 }, skills: { woodcutting: 500 }, inventory: [] })!;
-    expect(save.version).toBe(2);
+    expect(save.version).toBe(SAVE_VERSION);
     expect(save.position).toEqual({ x: kx(60), y: ky(49) });
     const sim = new Simulation({ map, seed: 1 });
     const p = sim.getEntity(sim.addPlayer('x', save)) as PlayerEntity;

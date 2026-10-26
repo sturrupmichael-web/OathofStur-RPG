@@ -8,6 +8,16 @@ export interface EntityView {
   toX: number;
   toY: number;
   movedAt: number;
+  /** When it last took a hit (ms), for showing its health bar. */
+  hitAt: number;
+}
+
+export interface HitEvent {
+  attackerId: EntityId;
+  targetId: EntityId;
+  damage: number;
+  hp: number;
+  maxHp: number;
 }
 
 type Events = {
@@ -21,6 +31,8 @@ type Events = {
   saveData: SaveData;
   gameMessage: { text: string; kind: string };
   tick: number;
+  hit: HitEvent;
+  animation: { entityId: EntityId; kind: string };
 };
 
 /**
@@ -83,6 +95,18 @@ export class ClientState {
       case 'saveData':
         this.emit('saveData', msg.save);
         break;
+      case 'hit': {
+        const target = this.entities.get(msg.targetId);
+        if (target) {
+          target.hitAt = now;
+          target.data = { ...target.data, hp: msg.hp, maxHp: msg.maxHp };
+        }
+        this.emit('hit', { attackerId: msg.attackerId, targetId: msg.targetId, damage: msg.damage, hp: msg.hp, maxHp: msg.maxHp });
+        break;
+      }
+      case 'animation':
+        this.emit('animation', { entityId: msg.entityId, kind: msg.kind });
+        break;
       case 'reject':
         this.emit('gameMessage', { text: msg.reason, kind: 'warn' });
         break;
@@ -100,7 +124,7 @@ export class ClientState {
   }
 
   private add(data: PublicEntity, now: number): void {
-    const view: EntityView = { data, fromX: data.x, fromY: data.y, toX: data.x, toY: data.y, movedAt: now };
+    const view: EntityView = { data, fromX: data.x, fromY: data.y, toX: data.x, toY: data.y, movedAt: now, hitAt: -Infinity };
     this.entities.set(data.id, view);
     this.emit('added', view);
   }
@@ -118,7 +142,11 @@ export class ClientState {
       view.toY = data.y;
       view.movedAt = now;
     }
-    const changed = data.depleted !== view.data.depleted || JSON.stringify(data.workingOn) !== JSON.stringify(view.data.workingOn);
+    const changed =
+      data.depleted !== view.data.depleted ||
+      data.dead !== view.data.dead ||
+      JSON.stringify(data.workingOn) !== JSON.stringify(view.data.workingOn) ||
+      JSON.stringify(data.gear) !== JSON.stringify(view.data.gear);
     view.data = data;
     if (changed) this.emit('changed', view);
   }

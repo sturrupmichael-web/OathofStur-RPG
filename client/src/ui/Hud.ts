@@ -1,4 +1,19 @@
-import { ITEMS, SKILLS, countItem, levelForXp, xpForLevel, MAX_LEVEL, type Inventory, type SelfState, type SkillId, type UiView } from '@rpg/shared';
+import {
+  ATTACK_STYLES,
+  EQUIP_SLOTS,
+  ITEMS,
+  SKILLS,
+  countItem,
+  levelForXp,
+  xpForLevel,
+  MAX_LEVEL,
+  type AttackStyle,
+  type EquipSlot,
+  type Inventory,
+  type SelfState,
+  type SkillId,
+  type UiView,
+} from '@rpg/shared';
 import { itemIcon } from './itemIcons';
 
 export interface MenuOption {
@@ -8,7 +23,6 @@ export interface MenuOption {
   action: () => void;
 }
 
-const EQUIPMENT_SLOTS = ['helmet', 'weapon', 'body', 'shield', 'legs'] as const;
 
 export interface InventoryHandlers {
   /** A filled slot was tapped or right-clicked, at these screen coordinates. */
@@ -26,6 +40,13 @@ export interface WindowHandlers {
   examine: (itemId: string) => void;
 }
 
+/** What the Equipment tab asks the game to do. */
+export interface EquipmentHandlers {
+  unequip: (slot: EquipSlot) => void;
+  setStyle: (style: AttackStyle) => void;
+  examine: (itemId: string) => void;
+}
+
 /** DOM side of the interface: side panel, chat, tooltip and context menu. */
 export class Hud {
   private readonly chatLog = el('chat-log');
@@ -40,6 +61,9 @@ export class Hud {
   windowHandlers: WindowHandlers = { close: () => {}, withdraw: () => {}, depositAll: () => {}, buy: () => {}, craft: () => {}, examine: () => {} };
   private readonly win = el('window');
   private windowKey = '';
+  private equipmentKey = '';
+  private equipment: SelfState['equipment'] = {};
+  equipmentHandlers: EquipmentHandlers = { unequip: () => {}, setStyle: () => {}, examine: () => {} };
 
   constructor() {
     this.buildTabs();
@@ -270,9 +294,43 @@ export class Hud {
     this.menu.hidden = true;
   }
 
+  /** The Equipment tab: what's worn, its bonuses, and the fighting style. */
+  renderEquipment(self: SelfState): void {
+    const key = JSON.stringify([self.equipment, self.attackStyle, self.bonuses, self.maxHit]);
+    if (key === this.equipmentKey) return;
+    this.equipmentKey = key;
+    this.equipment = self.equipment;
+    for (const slot of EQUIP_SLOTS) {
+      const cell = el('equipment-grid').querySelector<HTMLElement>(`.equip-${slot}`)!;
+      const itemId = self.equipment[slot];
+      cell.classList.toggle('filled', !!itemId);
+      cell.title = itemId ? `${ITEMS[itemId]?.name ?? itemId}: tap to take off` : slot;
+      cell.innerHTML = itemId ? itemIcon(itemId) : '';
+      if (!itemId) cell.textContent = slot;
+    }
+    const b = self.bonuses;
+    const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
+    el('equip-stats').replaceChildren(
+      ...[`Attack ${sign(b.attack)}`, `Strength ${sign(b.strength)}`, `Defence ${sign(b.defence)}`, `Max hit ${self.maxHit}`].map((t) => span(t, 'equip-stat')),
+    );
+    const styles = el('attack-styles');
+    styles.replaceChildren();
+    for (const [id, info] of Object.entries(ATTACK_STYLES) as [AttackStyle, (typeof ATTACK_STYLES)[AttackStyle]][]) {
+      const b = document.createElement('button');
+      b.className = `style-button${self.attackStyle === id ? ' active' : ''}`;
+      const skill = SKILLS.find((s) => s.id === info.skill)?.name ?? info.skill;
+      b.append(span(info.label, 'style-name'), span(`${skill} XP, +3 ${skill.toLowerCase()}`, 'style-detail'));
+      b.addEventListener('click', () => this.equipmentHandlers.setStyle(id));
+      styles.appendChild(b);
+    }
+  }
+
   renderSelf(self: SelfState): void {
     el('player-name').textContent = self.name;
     el('combat-level').textContent = `Combat level ${self.combatLevel}`;
+    el('hp-text').textContent = `${self.hp} / ${self.maxHp}`;
+    el('hp-fill').style.width = `${(self.hp / self.maxHp) * 100}%`;
+    el('hp-bar').classList.toggle('low', self.hp <= self.maxHp / 4);
     const grid = el('skills-grid');
     grid.replaceChildren();
     let total = 0;
@@ -385,10 +443,19 @@ export class Hud {
 
   private buildEquipment(): void {
     const grid = el('equipment-grid');
-    for (const name of EQUIPMENT_SLOTS) {
+    for (const name of EQUIP_SLOTS) {
       const slot = document.createElement('div');
       slot.className = `equip-slot equip-${name}`;
       slot.textContent = name;
+      slot.addEventListener('click', (e) => {
+        const itemId = this.equipment[name];
+        if (!itemId) return;
+        const label = ITEMS[itemId]?.name ?? itemId;
+        this.showMenu(e.clientX, e.clientY, [
+          { label: 'Remove', target: label, action: () => this.equipmentHandlers.unequip(name) },
+          { label: 'Examine', target: label, action: () => this.equipmentHandlers.examine(itemId) },
+        ]);
+      });
       grid.appendChild(slot);
     }
   }

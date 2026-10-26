@@ -5,7 +5,7 @@ import { ITEMS, INVENTORY_SIZE, addItem, emptyInventory } from '../src/sim/items
 import { parseSave } from '../src/sim/save';
 import { Simulation } from '../src/sim/Simulation';
 import { levelForXp, xpForLevel } from '../src/sim/skills';
-import { loadWorld } from './helpers';
+import { kx, ky, loadWorld } from './helpers';
 
 const map = loadWorld();
 
@@ -24,8 +24,11 @@ function setup(seed = 1) {
   return { sim, id, player, messages, run };
 }
 
-function find(sim: Simulation, defKey: string, x: number, y: number): ObjectEntity {
-  for (let id = 1; id < 5000; id++) {
+/** x and y are Kelmoor coordinates, as the town map numbered them. */
+function find(sim: Simulation, defKey: string, tx: number, ty: number): ObjectEntity {
+  const x = kx(tx);
+  const y = ky(ty);
+  for (let id = 1; id < 60000; id++) {
     const e = sim.getEntity(id);
     if (e && e.kind !== 'player' && e.kind !== 'item' && e.defKey === defKey && e.x === x && e.y === y) return e;
   }
@@ -43,10 +46,10 @@ describe('Woodcutting', () => {
 
   it('walks to a tree, chops logs and gains XP', () => {
     const { sim, id, player, messages, run } = setup();
-    const tree = find(sim, 'tree', 72, 61);
+    const tree = find(sim, 'tree', 26, 62);
     sim.queueIntent(id, { type: 'interact', targetId: tree.id, action: 'gather' });
     run(150);
-    expect(Math.max(Math.abs(player.x - 72), Math.abs(player.y - 61))).toBe(1);
+    expect(Math.max(Math.abs(player.x - kx(26)), Math.abs(player.y - ky(62)))).toBe(1);
     const logs = player.inventory.filter((s) => s?.itemId === 'logs').length;
     expect(logs).toBeGreaterThan(0);
     expect(player.skills.woodcutting).toBe(logs * 25);
@@ -56,9 +59,9 @@ describe('Woodcutting', () => {
 
   it('turns a tree into a stump that grows back', () => {
     const { sim, id, player, run } = setup(3);
-    const tree = find(sim, 'tree', 72, 61);
-    player.x = 71;
-    player.y = 61;
+    const tree = find(sim, 'tree', 26, 62);
+    player.x = kx(25);
+    player.y = ky(62);
     sim.queueIntent(id, { type: 'interact', targetId: tree.id, action: 'gather' });
     let ticks = 0;
     while (tree.depletedUntil === undefined && ticks < 2000) {
@@ -74,9 +77,9 @@ describe('Woodcutting', () => {
 
   it('needs Woodcutting 15 for dead trees', () => {
     const { sim, id, player, messages, run } = setup();
-    const dead = find(sim, 'dead_tree', 49, 7);
-    player.x = 49;
-    player.y = 8;
+    const dead = find(sim, 'dead_tree', 21, 0);
+    player.x = kx(21);
+    player.y = ky(1);
     sim.queueIntent(id, { type: 'interact', targetId: dead.id, action: 'gather' });
     run(2);
     expect(texts(messages)).toContain('You need a Woodcutting level of 15 to chop this tree.');
@@ -85,9 +88,9 @@ describe('Woodcutting', () => {
 
   it('needs an axe and inventory space', () => {
     const { sim, id, player, messages, run } = setup();
-    const tree = find(sim, 'tree', 72, 61);
-    player.x = 71;
-    player.y = 61;
+    const tree = find(sim, 'tree', 26, 62);
+    player.x = kx(25);
+    player.y = ky(62);
     player.inventory = emptyInventory();
     sim.queueIntent(id, { type: 'interact', targetId: tree.id, action: 'gather' });
     run(2);
@@ -103,9 +106,9 @@ describe('Woodcutting', () => {
   it('sends a level-up when XP crosses a level', () => {
     const { sim, id, player, messages, run } = setup(5);
     player.skills.woodcutting = xpForLevel(2) - 1;
-    const tree = find(sim, 'tree', 72, 61);
-    player.x = 71;
-    player.y = 61;
+    const tree = find(sim, 'tree', 26, 62);
+    player.x = kx(25);
+    player.y = ky(62);
     sim.queueIntent(id, { type: 'interact', targetId: tree.id, action: 'gather' });
     while (player.skills.woodcutting < xpForLevel(2)) {
       run(1);
@@ -116,13 +119,13 @@ describe('Woodcutting', () => {
 
   it('walking away stops chopping', () => {
     const { sim, id, player, run } = setup();
-    const tree = find(sim, 'tree', 72, 61);
-    player.x = 71;
-    player.y = 61;
+    const tree = find(sim, 'tree', 26, 62);
+    player.x = kx(25);
+    player.y = ky(62);
     sim.queueIntent(id, { type: 'interact', targetId: tree.id, action: 'gather' });
     run(2);
     expect(player.action).not.toBeNull();
-    sim.queueIntent(id, { type: 'walk', x: 60, y: 49 });
+    sim.queueIntent(id, { type: 'walk', x: kx(60), y: ky(49) });
     run(1);
     expect(player.action).toBeNull();
   });
@@ -135,7 +138,7 @@ describe('Inventory', () => {
     run(1);
     expect(player.inventory[0]).toBeNull();
     let groundId = -1;
-    for (let i = 1; i < 5000; i++) {
+    for (let i = 1; i < 60000; i++) {
       const e = sim.getEntity(i);
       if (e?.kind === 'item') groundId = i;
     }
@@ -169,15 +172,15 @@ describe('Saves', () => {
     const { sim, id, player } = setup();
     player.skills.woodcutting = 1234;
     addItem(player.inventory, 'logs', 3);
-    player.x = 61;
-    player.y = 50;
+    player.x = kx(61);
+    player.y = ky(50);
     const save = parseSave(JSON.parse(JSON.stringify(sim.saveFor(id, '2026-10-26T00:00:00Z'))))!;
     expect(save).not.toBeNull();
 
     const sim2 = new Simulation({ map, seed: 9 });
     const p2 = sim2.getEntity(sim2.addPlayer('Other', save)) as PlayerEntity;
     expect(p2.name).toBe('Tester');
-    expect([p2.x, p2.y]).toEqual([61, 50]);
+    expect([p2.x, p2.y]).toEqual([kx(61), ky(50)]);
     expect(p2.skills.woodcutting).toBe(1234);
     expect(p2.inventory.filter((s) => s?.itemId === 'logs')).toHaveLength(3);
   });
@@ -187,9 +190,9 @@ describe('Saves', () => {
     expect(parseSave({ hello: 'world' })).toBeNull();
     expect(parseSave({ version: 99, name: 'x', position: { x: 1, y: 1 }, skills: {}, inventory: [] })).toBeNull();
     const save = parseSave({
-      version: 1,
+      version: 2,
       name: 'Cheater',
-      position: { x: 60, y: 49 },
+      position: { x: kx(60), y: ky(49) },
       skills: { woodcutting: -50, mining: 'lots' },
       inventory: [{ itemId: 'golden_crown', qty: 1 }, { itemId: 'logs', qty: 5 }],
     })!;
@@ -198,8 +201,18 @@ describe('Saves', () => {
     expect(save.inventory[1]).toEqual({ itemId: 'logs', qty: 1 });
   });
 
+  it('moves a Kelmoor-era save into the region', () => {
+    const save = parseSave({ version: 1, name: 'Old', position: { x: 60, y: 49 }, skills: { woodcutting: 500 }, inventory: [] })!;
+    expect(save.version).toBe(2);
+    expect(save.position).toEqual({ x: kx(60), y: ky(49) });
+    const sim = new Simulation({ map, seed: 1 });
+    const p = sim.getEntity(sim.addPlayer('x', save)) as PlayerEntity;
+    expect([p.x, p.y]).toEqual([kx(60), ky(49)]);
+  });
+
   it('puts a player saved on a now-blocked tile back at spawn', () => {
-    const save = parseSave({ version: 1, name: 'Lost', position: { x: 72, y: 61 }, skills: {}, inventory: [] })!;
+    // A tile inside the city wall: walkable in no world.
+    const save = parseSave({ version: 2, name: 'Lost', position: { x: kx(34), y: ky(30) }, skills: {}, inventory: [] })!;
     const sim = new Simulation({ map, seed: 1 });
     const p = sim.getEntity(sim.addPlayer('x', save)) as PlayerEntity;
     expect([p.x, p.y]).toEqual([map.spawn.x, map.spawn.y]);

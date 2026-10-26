@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { EntityId, MapData, WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView } from '../state/ClientState';
-import { animateCharacter, buildCharacter, type CharacterRig } from './character';
+import { animateCharacter, buildCharacter, styleForNpc, type CharacterRig } from './character';
 import { FLICKER, RESOURCE_STYLES, buildGroundItem, buildStation, type PartStyle } from './models';
 import type { Heightmap } from './heightmap';
 import { hash2, shade, type TileInfo } from './palette';
@@ -126,7 +126,12 @@ export class EntityLayer {
       obj.rotation.y = hash2(data.id, 11) * Math.PI * 2;
     } else if (data.kind === 'station' || data.kind === 'scenery') obj = buildStation(data.defKey ?? '', (dx, dy) => this.objectAt(data.x + dx, data.y + dy), hash2(data.x, data.y, 5));
     else {
-      const style = data.kind === 'npc' ? (data.defKey ?? '') : data.id === this.state.playerId ? 'player' : 'other_player';
+      const style =
+        data.kind === 'npc'
+          ? styleForNpc(data.defKey ?? '', this.map.defs.npcs[data.defKey ?? '']?.role)
+          : data.id === this.state.playerId
+            ? 'player'
+            : 'other_player';
       const rig = buildCharacter(style, hash2(data.id, 3) * 100);
       this.rigs.set(data.id, rig);
       obj = rig.root;

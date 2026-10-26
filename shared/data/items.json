@@ -16,14 +16,23 @@
 
     { "id": "logs", "name": "Logs", "examine": "Freshly cut logs, still smelling of sap.", "value": 4 },
     { "id": "ashwood_logs", "name": "Ashwood logs", "examine": "Pale, bone-dry logs from a tree the Ashen Waste killed. They burn hot.", "value": 12 },
+    { "id": "oak_logs", "name": "Oak logs", "examine": "Heavy oak. Worth more than ordinary logs.", "value": 20 },
+    { "id": "willow_logs", "name": "Willow logs", "examine": "Springy willow from the riverbank.", "value": 36 },
+    { "id": "yew_logs", "name": "Yew logs", "examine": "Dark, close-grained yew from Elderglen.", "value": 90 },
+    { "id": "starwood_logs", "name": "Starwood logs", "examine": "Pale wood with a faint light in the grain.", "value": 250 },
 
     { "id": "copper_ore", "name": "Copper ore", "examine": "Reddish ore. Smelt it with tin for bronze.", "value": 5 },
     { "id": "tin_ore", "name": "Tin ore", "examine": "Silvery ore. Smelt it with copper for bronze.", "value": 5 },
     { "id": "iron_ore", "name": "Iron ore", "examine": "Heavy, rust-coloured ore.", "value": 17 },
     { "id": "coal", "name": "Coal", "examine": "Black and dusty. Needed to make steel.", "value": 45 },
+    { "id": "gold_ore", "name": "Gold ore", "examine": "Heavy ore, bright where it catches the light.", "value": 150 },
+    { "id": "cobalt_ore", "name": "Cobalt ore", "examine": "Deep blue ore. Nobody in the Reaches can work it yet.", "value": 320 },
+    { "id": "verdite_ore", "name": "Verdite ore", "examine": "Green-black ore, harder than steel.", "value": 640 },
+    { "id": "glacite_ore", "name": "Glacite ore", "examine": "Pale blue ore, cold to hold.", "value": 1600 },
     { "id": "bronze_bar", "name": "Bronze bar", "examine": "A bar of bronze, ready for the anvil.", "value": 12 },
     { "id": "iron_bar", "name": "Iron bar", "examine": "A bar of iron, ready for the anvil.", "value": 28 },
     { "id": "steel_bar", "name": "Steel bar", "examine": "A bar of steel, ready for the anvil.", "value": 100 },
+    { "id": "gold_bar", "name": "Gold bar", "examine": "A bar of soft, bright gold.", "value": 380 },
 
     { "id": "bronze_dagger", "name": "Bronze dagger", "examine": "Short, sharp, and bronze.", "value": 10 },
     { "id": "bronze_sword", "name": "Bronze sword", "examine": "A plain bronze sword.", "value": 26 },

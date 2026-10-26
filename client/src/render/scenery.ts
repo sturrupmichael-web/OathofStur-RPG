@@ -2,14 +2,31 @@ import * as THREE from 'three';
 import type { MapData, WorldGrid } from '@rpg/shared';
 import { Batcher, lambert } from './batch';
 import type { Heightmap } from './heightmap';
-import { hash2, shade, type Area, type TileInfo } from './palette';
+import { hash2, isWaterKey, shade, type Area, type TileInfo } from './palette';
+
+/** A rectangle of tiles, x0..x1 and y0..y1 inclusive. */
+export interface TileRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
 
 /**
  * Purely decorative ground cover: grass tufts, flowers, mushrooms, pebbles,
  * reeds, lily pads and straw. Kept low and small so it never reads as
- * something that blocks a tile.
+ * something that blocks a tile. Built per patch of map, so a region-sized
+ * world only pays for the ground near the player (see SceneryChunks).
  */
-export function buildScenery(map: MapData, grid: WorldGrid, info: TileInfo, areas: Area[], tileColors: number[], hm: Heightmap): THREE.Group {
+export function buildScenery(
+  map: MapData,
+  grid: WorldGrid,
+  info: TileInfo,
+  areas: Area[],
+  tileColors: number[],
+  hm: Heightmap,
+  rect: TileRect = { x0: 0, y0: 0, x1: map.width - 1, y1: map.height - 1 },
+): THREE.Group {
   const batch = new Batcher((x, z) => hm.groundAt(x, z));
   const blade = new THREE.ConeGeometry(0.035, 0.2, 3);
   blade.translate(0, 0.1, 0);
@@ -26,7 +43,7 @@ export function buildScenery(map: MapData, grid: WorldGrid, info: TileInfo, area
   const plain = lambert();
   const noShadow = { cast: false, receive: true };
 
-  const isWater = (x: number, y: number) => x >= 0 && y >= 0 && x < map.width && y < map.height && info.terrainKey[y * map.width + x] === 'water';
+  const isWater = (x: number, y: number) => x >= 0 && y >= 0 && x < map.width && y < map.height && isWaterKey(info.terrainKey[y * map.width + x]);
   const flowerColors = [0xffffff, 0xffe14d, 0xb57edc, 0xe8505b, 0x7ab8ff];
   const bedColors = [0xe8505b, 0xffe14d, 0xb57edc, 0xff9a40, 0xffffff];
   const wheat = new THREE.CylinderGeometry(0.01, 0.012, 0.42, 3);
@@ -37,8 +54,8 @@ export function buildScenery(map: MapData, grid: WorldGrid, info: TileInfo, area
   const skull = new THREE.SphereGeometry(0.06, 7, 5);
   const puddle = new THREE.CircleGeometry(0.2, 10).rotateX(-Math.PI / 2);
 
-  for (let y = 0; y < map.height; y++) {
-    for (let x = 0; x < map.width; x++) {
+  for (let y = rect.y0; y <= rect.y1; y++) {
+    for (let x = rect.x0; x <= rect.x1; x++) {
       const i = y * map.width + x;
       const key = info.terrainKey[i];
       const h = (salt: number) => hash2(x, y, salt);
@@ -67,6 +84,21 @@ export function buildScenery(map: MapData, grid: WorldGrid, info: TileInfo, area
           continue;
         case 'sand':
           pebbles(2, 0.15, 0xb8a888);
+          continue;
+        case 'sandstone_paving':
+          pebbles(1, 0.05, 0xb8a06e);
+          continue;
+        case 'swamp':
+          // Rushes and muddy puddles.
+          if (h(150) < 0.3) batch.add('puddle', puddle, plain, { position: at((h(151) - 0.5) * 0.6, (h(152) - 0.5) * 0.6), scale: [0.8 + h(153), 1, 0.6 + h(154) * 0.7] }, 0x2f3a24, noShadow);
+          for (let k = 0; k < 3; k++) {
+            if (h(155 + k) > 0.55) continue;
+            batch.add('reed', reed, plain, { position: at((h(158 + k) - 0.5) * 0.8, (h(161 + k) - 0.5) * 0.8), scale: [1, 0.7 + h(164 + k) * 0.6, 1], rotation: [(h(167 + k) - 0.5) * 0.3, 0, (h(170 + k) - 0.5) * 0.3] }, 0x6a7a3a, noShadow);
+          }
+          continue;
+        case 'lava':
+          // Cooling crust: a few dark clinkers on the glow.
+          for (let k = 0; k < 2; k++) if (h(180 + k) < 0.4) batch.add('clinker', pebble, plain, { position: at((h(183 + k) - 0.5) * 0.7, (h(186 + k) - 0.5) * 0.7), scale: 1 + h(189 + k) }, 0x2a1a16, noShadow);
           continue;
         case 'scorched_earth':
           pebbles(2, 0.3, 0x3e3a36);

@@ -838,3 +838,84 @@ body {
     bottom: calc(52px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* --- Region map ---------------------------------------------------------- */
+#minimap-wrap {
+  position: relative;
+}
+
+#worldmap-open {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  color: var(--gold);
+  background: rgba(26, 21, 16, 0.85);
+  border: 2px solid var(--edge);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#worldmap[hidden] {
+  display: none;
+}
+
+#worldmap {
+  position: absolute;
+  inset: 8px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 6px;
+  background: var(--panel);
+  border: 3px solid var(--edge);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+}
+
+#worldmap-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 8px;
+  max-height: 22%;
+  overflow-y: auto;
+}
+
+#worldmap-skills button {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 7px;
+  color: #e8dcc0;
+  background: var(--panel-dark);
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+#worldmap-skills button.on {
+  color: #1d1812;
+  background: var(--gold);
+}
+
+#worldmap-canvas {
+  flex: 1;
+  min-height: 0;
+  width: calc(100% - 16px);
+  margin: 0 8px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: #0c0a07;
+  border: 2px solid var(--edge);
+  border-radius: 4px;
+  cursor: crosshair;
+}
+
+#worldmap-note {
+  margin: 0 8px;
+  font-size: 12px;
+  color: #cbbd9c;
+}

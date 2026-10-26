@@ -20,10 +20,23 @@ export interface JsonMapFile {
   tileSize?: number;
   spawn: { x: number; y: number };
   legend: Record<string, { name: string; walkable: boolean }>;
-  areas?: MapArea[];
-  npcs?: { type: string; level?: number; x: number; y: number; wander?: { cx: number; cy: number; radius: number } }[];
-  /** Townsfolk standing at their posts: shopkeepers, bankers. */
-  townsfolk?: { type: string; role: string; x: number; y: number }[];
+  areas?: (MapArea & { tier?: number })[];
+  /**
+   * Everyone on the map. An entry with a `role` is a person (shopkeeper,
+   * banker, trainer); one with a level and no role is a monster. `wander` is
+   * the box they keep to.
+   */
+  npcs?: {
+    name: string;
+    role?: string | null;
+    level?: number | null;
+    shop?: string | null;
+    x: number;
+    y: number;
+    wander?: { x: number; y: number; w: number; h: number } | null;
+  }[];
+  /** Where each skill is trained, for the skill finder. */
+  skills?: { name: string; note: string; sites: { label: string; x: number; y: number }[] }[];
   /** rows[y][x] is the tile code at (x, y). */
   rows: string[];
 }
@@ -43,10 +56,18 @@ export function slug(name: string): string {
 const OBJECT_KINDS: Record<string, Exclude<PlacementKind, 'npc' | 'monster'>> = {
   tree: 'resource',
   dead_tree: 'resource',
+  oak_tree: 'resource',
+  willow_tree: 'resource',
+  yew_tree: 'resource',
+  starwood_tree: 'resource',
   copper_rock: 'resource',
   tin_rock: 'resource',
   iron_rock: 'resource',
   coal_rock: 'resource',
+  gold_rock: 'resource',
+  cobalt_rock: 'resource',
+  verdite_rock: 'resource',
+  glacite_rock: 'resource',
   shallow_fishing_spot: 'resource',
   deep_fishing_spot: 'resource',
   anvil: 'station',
@@ -61,6 +82,18 @@ const OBJECT_KINDS: Record<string, Exclude<PlacementKind, 'npc' | 'monster'>> = 
   hide_tent: 'scenery',
   campfire: 'scenery',
   goblin_totem: 'scenery',
+  gravestone: 'scenery',
+  cactus: 'scenery',
+  palm_tree: 'scenery',
+  // Waiting for the phase that adds their skill, so they are props for now.
+  aether_stone: 'scenery',
+  glyph_shrine: 'scenery',
+  spinning_wheel: 'scenery',
+  farming_patch: 'scenery',
+  homestead_gate: 'scenery',
+  cave_entrance: 'scenery',
+  training_dummy: 'scenery',
+  archery_target: 'scenery',
 };
 
 /** The skill a resource belongs to is clear from its name; levels and yields are not in the map. */
@@ -165,19 +198,20 @@ export class JsonMapSource implements MapSource {
       x >= 0 && y >= 0 && x < width && y < height && !objectByChar.has(rows[y][x]) && terrainDefs[terrain[y * width + x]].walkable;
 
     const monsters: Record<string, MonsterDef> = {};
-    for (const n of file.npcs ?? []) {
-      const key = slug(n.type);
-      if (!walkableAt(n.x, n.y)) throw new Error(`Map ${id}: ${n.type} at ${n.x},${n.y} is not on a walkable tile`);
-      monsters[key] ??= { key, name: n.type.charAt(0).toUpperCase() + n.type.slice(1), combatLevel: n.level ?? 1 };
-      placements.push({ kind: 'monster', defKey: key, x: n.x, y: n.y, level: n.level, wander: n.wander && { ...n.wander } });
-    }
-
     const npcs: Record<string, NpcDef> = {};
-    for (const n of file.townsfolk ?? []) {
-      const key = slug(n.type);
-      if (!walkableAt(n.x, n.y)) throw new Error(`Map ${id}: ${n.type} at ${n.x},${n.y} is not on a walkable tile`);
-      npcs[key] ??= { key, name: n.type, role: n.role };
-      placements.push({ kind: 'npc', defKey: key, x: n.x, y: n.y });
+    for (const n of file.npcs ?? []) {
+      const key = slug(n.name);
+      if (!walkableAt(n.x, n.y)) throw new Error(`Map ${id}: ${n.name} at ${n.x},${n.y} is not on a walkable tile`);
+      const wander = n.wander
+        ? { cx: n.wander.x + (n.wander.w - 1) / 2, cy: n.wander.y + (n.wander.h - 1) / 2, radius: Math.max(n.wander.w, n.wander.h) / 2 }
+        : undefined;
+      if (n.role) {
+        npcs[key] ??= { key, name: n.name, role: n.role, shop: n.shop ?? undefined };
+        placements.push({ kind: 'npc', defKey: key, x: n.x, y: n.y, wander });
+        continue;
+      }
+      monsters[key] ??= { key, name: n.name, combatLevel: n.level ?? 1 };
+      placements.push({ kind: 'monster', defKey: key, x: n.x, y: n.y, level: n.level ?? undefined, wander });
     }
 
     const spawn = { x: file.spawn.x, y: file.spawn.y };
@@ -195,6 +229,7 @@ export class JsonMapSource implements MapSource {
       terrainDefs,
       placements,
       areas: (file.areas ?? []).map((a) => ({ ...a })),
+      skills: (file.skills ?? []).map((s) => ({ ...s, sites: s.sites.map((p) => ({ ...p })) })),
       spawn,
       defs: { resources, stations, scenery, npcs, monsters },
     };

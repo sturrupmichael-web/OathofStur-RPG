@@ -6,10 +6,18 @@
   "resources": {
     "tree": { "skill": "woodcutting", "verb": "chop", "yields": [{ "item": "logs", "level": 1, "xp": 25 }], "depleteChance": 0.125, "respawnTicks": 10 },
     "dead_tree": { "skill": "woodcutting", "verb": "chop", "yields": [{ "item": "ashwood_logs", "level": 15, "xp": 40 }], "depleteChance": 0.2, "respawnTicks": 25 },
+    "oak_tree": { "skill": "woodcutting", "verb": "chop", "yields": [{ "item": "oak_logs", "level": 15, "xp": 37.5 }], "depleteChance": 0.125, "respawnTicks": 15 },
+    "willow_tree": { "skill": "woodcutting", "verb": "chop", "yields": [{ "item": "willow_logs", "level": 30, "xp": 67.5 }], "depleteChance": 0.125, "respawnTicks": 20 },
+    "yew_tree": { "skill": "woodcutting", "verb": "chop", "yields": [{ "item": "yew_logs", "level": 60, "xp": 175 }], "depleteChance": 0.25, "respawnTicks": 50 },
+    "starwood_tree": { "skill": "woodcutting", "verb": "chop", "yields": [{ "item": "starwood_logs", "level": 75, "xp": 250 }], "depleteChance": 0.5, "respawnTicks": 100 },
     "copper_rock": { "skill": "mining", "verb": "mine", "yields": [{ "item": "copper_ore", "level": 1, "xp": 17.5 }], "depleteChance": 1, "respawnTicks": 4 },
     "tin_rock": { "skill": "mining", "verb": "mine", "yields": [{ "item": "tin_ore", "level": 1, "xp": 17.5 }], "depleteChance": 1, "respawnTicks": 4 },
     "iron_rock": { "skill": "mining", "verb": "mine", "yields": [{ "item": "iron_ore", "level": 15, "xp": 35 }], "depleteChance": 1, "respawnTicks": 9 },
     "coal_rock": { "skill": "mining", "verb": "mine", "yields": [{ "item": "coal", "level": 30, "xp": 50 }], "depleteChance": 1, "respawnTicks": 30 },
+    "gold_rock": { "skill": "mining", "verb": "mine", "yields": [{ "item": "gold_ore", "level": 40, "xp": 65 }], "depleteChance": 1, "respawnTicks": 50 },
+    "cobalt_rock": { "skill": "mining", "verb": "mine", "yields": [{ "item": "cobalt_ore", "level": 55, "xp": 80 }], "depleteChance": 1, "respawnTicks": 100 },
+    "verdite_rock": { "skill": "mining", "verb": "mine", "yields": [{ "item": "verdite_ore", "level": 70, "xp": 95 }], "depleteChance": 1, "respawnTicks": 200 },
+    "glacite_rock": { "skill": "mining", "verb": "mine", "yields": [{ "item": "glacite_ore", "level": 85, "xp": 125 }], "depleteChance": 1, "respawnTicks": 400 },
     "shallow_fishing_spot": { "skill": "fishing", "verb": "net", "toolItem": "small_net", "yields": [{ "item": "raw_minnows", "level": 1, "xp": 10 }], "depleteChance": 0, "respawnTicks": 0 },
     "deep_fishing_spot": { "skill": "fishing", "verb": "rod", "toolItem": "fishing_rod", "bait": "fishing_bait", "yields": [{ "item": "raw_pike", "level": 35, "xp": 80 }, { "item": "raw_perch", "level": 15, "xp": 50 }], "depleteChance": 0, "respawnTicks": 0 }
   }

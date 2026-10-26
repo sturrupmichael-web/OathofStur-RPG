@@ -5,7 +5,7 @@ import { CameraRig } from './CameraRig';
 import { BuildingLayer, detectBuildings } from './buildings';
 import { EntityLayer } from './EntityLayer';
 import { buildTileColors, classifyAreas, tileInfo, type TileInfo } from './palette';
-import { buildScenery } from './scenery';
+import { SceneryChunks } from './sceneryChunks';
 import { buildHeightmap, type Heightmap } from './heightmap';
 import { buildTerrain, type TerrainLayer } from './terrain';
 
@@ -27,6 +27,7 @@ export class Renderer {
   private readonly webgl: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly entities: EntityLayer;
+  private readonly scenery: SceneryChunks;
   private readonly sun: THREE.DirectionalLight;
   private readonly raycaster = new THREE.Raycaster();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -67,7 +68,9 @@ export class Renderer {
     this.scene.add(this.terrain.group);
     this.buildings = new BuildingLayer(map, grid, this.info, buildings, this.heightmap);
     this.scene.add(this.buildings.group);
-    this.scene.add(buildScenery(map, grid, this.info, areas, this.tileColors, this.heightmap));
+    this.scenery = new SceneryChunks(map, grid, this.info, areas, this.tileColors, this.heightmap);
+    this.scenery.update(map.spawn);
+    this.scene.add(this.scenery.group);
     this.entities = new EntityLayer(state, map, grid, this.heightmap, this.info);
     this.scene.add(this.entities.group);
 
@@ -96,6 +99,11 @@ export class Renderer {
 
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
+  }
+
+  /** Draw calls and triangles for the last frame, for performance checks. */
+  get stats(): { calls: number; triangles: number } {
+    return { calls: this.webgl.info.render.calls, triangles: this.webgl.info.render.triangles };
   }
 
   get canvas(): HTMLCanvasElement {
@@ -190,6 +198,8 @@ export class Renderer {
     }
 
     const self = this.state.player;
+    // A zoomed-out camera sees past the usual ring of chunks.
+    if (self) this.scenery.update({ x: self.data.x, y: self.data.y }, this.rig.zoom < 0.8);
     this.buildings.update(now, self ? { x: self.data.x, y: self.data.y } : null);
     this.terrain.waterTexture.offset.set((now / 9000) % 1, (now / 14000) % 1);
     this.entities.update(now);

@@ -4,7 +4,7 @@ import type { ServerMessage } from '../src/protocol/messages';
 import type { PlayerEntity } from '../src/sim/entities';
 import { Simulation } from '../src/sim/Simulation';
 import { combatLevel, levelForXp, startingXp, xpForLevel } from '../src/sim/skills';
-import { loadWorld } from './helpers';
+import { kx, ky, loadWorld } from './helpers';
 
 const map = loadWorld();
 
@@ -16,24 +16,24 @@ describe('Simulation', () => {
   it('moves one tile per tick toward a clicked tile', () => {
     const sim = new Simulation({ map, seed: 1 });
     const id = sim.addPlayer('Tester');
-    sim.queueIntent(id, { type: 'walk', x: 60, y: 53 });
+    sim.queueIntent(id, { type: 'walk', x: kx(60), y: ky(53) });
     sim.step();
     const p = sim.getEntity(id) as PlayerEntity;
-    expect(p.y).toBe(50);
+    expect(p.y).toBe(ky(50));
     run(sim, 3);
-    expect([p.x, p.y]).toEqual([60, 53]);
+    expect([p.x, p.y]).toEqual([kx(60), ky(53)]);
   });
 
   it('walks next to a blocked object instead of onto it', () => {
     const sim = new Simulation({ map, seed: 1 });
     const id = sim.addPlayer('Tester');
-    sim.queueIntent(id, { type: 'walk', x: 39, y: 52 }); // smithy anvil
+    sim.queueIntent(id, { type: 'walk', x: kx(39), y: ky(52) }); // smithy anvil
     run(sim, 60);
     const p = sim.getEntity(id) as PlayerEntity;
-    expect(Math.abs(p.x - 39) + Math.abs(p.y - 52)).toBe(1);
+    expect(Math.abs(p.x - kx(39)) + Math.abs(p.y - ky(52))).toBe(1);
   });
 
-  // Kelmoor has no requirement gates yet, so the gate rule runs on a small hand-made map.
+  // The Reaches have no requirement gates yet, so the gate rule runs on a small hand-made map.
   const gated: MapData = {
     id: 'gated',
     width: 7,
@@ -49,6 +49,7 @@ describe('Simulation', () => {
     ],
     placements: [],
     areas: [],
+    skills: [],
     spawn: { x: 0, y: 1 },
     defs: { resources: {}, stations: {}, scenery: {}, npcs: {}, monsters: {} },
   };
@@ -93,9 +94,9 @@ describe('Simulation', () => {
       const sim = new Simulation({ map, seed: 42 });
       const id = sim.addPlayer('Tester');
       const log: ServerMessage[] = [];
-      sim.queueIntent(id, { type: 'walk', x: 10, y: 45 });
+      sim.queueIntent(id, { type: 'walk', x: kx(10), y: ky(45) });
       for (let i = 0; i < 40; i++) {
-        if (i === 15) sim.queueIntent(id, { type: 'walk', x: 109, y: 40 });
+        if (i === 15) sim.queueIntent(id, { type: 'walk', x: kx(109), y: ky(40) });
         sim.step();
         log.push(...sim.drain(id));
       }
@@ -108,7 +109,7 @@ describe('Simulation', () => {
     const sim = new Simulation({ map, seed: 1 });
     const id = sim.addPlayer('Tester');
     sim.drain(id);
-    sim.queueIntent(id, { type: 'walk', x: 60, y: 51 });
+    sim.queueIntent(id, { type: 'walk', x: kx(60), y: ky(51) });
     sim.step();
     const tick = sim.drain(id).find((m) => m.type === 'tick');
     expect(tick && tick.type === 'tick' && tick.updated.map((e) => e.id)).toEqual([id]);

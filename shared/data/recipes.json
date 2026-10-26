@@ -4,6 +4,7 @@
     { "id": "smelt_bronze", "station": "furnace", "skill": "smithing", "level": 1, "xp": 6, "ticks": 4, "inputs": [{ "itemId": "copper_ore", "qty": 1 }, { "itemId": "tin_ore", "qty": 1 }], "output": "bronze_bar" },
     { "id": "smelt_iron", "station": "furnace", "skill": "smithing", "level": 15, "xp": 12.5, "ticks": 4, "inputs": [{ "itemId": "iron_ore", "qty": 1 }], "output": "iron_bar" },
     { "id": "smelt_steel", "station": "furnace", "skill": "smithing", "level": 30, "xp": 17.5, "ticks": 4, "inputs": [{ "itemId": "iron_ore", "qty": 1 }, { "itemId": "coal", "qty": 2 }], "output": "steel_bar" },
+    { "id": "smelt_gold", "station": "furnace", "skill": "smithing", "level": 40, "xp": 22.5, "ticks": 4, "inputs": [{ "itemId": "gold_ore", "qty": 1 }], "output": "gold_bar" },
 
     { "id": "smith_bronze_dagger", "station": "anvil", "skill": "smithing", "level": 1, "xp": 12.5, "ticks": 5, "inputs": [{ "itemId": "bronze_bar", "qty": 1 }], "output": "bronze_dagger" },
     { "id": "smith_bronze_axe", "station": "anvil", "skill": "smithing", "level": 2, "xp": 12.5, "ticks": 5, "inputs": [{ "itemId": "bronze_bar", "qty": 1 }], "output": "bronze_axe" },

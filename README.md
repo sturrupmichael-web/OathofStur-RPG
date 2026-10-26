@@ -1,4 +1,4 @@
-# Tile RPG
+# Oath of Stur
 
 A browser RPG with a tile-based world, click-to-move, slow skilling and tick-based
 combat. All names, art and lore are original. Art is procedural placeholder geometry.

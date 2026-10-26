@@ -23,9 +23,10 @@ import {
   monsterFighter,
   playerFighter,
   playerMaxHit,
+  rangedFighter,
   rollQty,
 } from './combat';
-import { RECIPES, RECIPE_BY_ID, SELL_RATE, SHOPS, STATION_TITLES, burnChance, isBanker, shopBuys, shopForNpc, type StationKind } from './crafting';
+import { RECIPES, RECIPE_BY_ID, SELL_RATE, SHOPS, STATION_TITLES, burnChance, isBanker, opensFletching, shopBuys, shopForNpc, type StationKind } from './crafting';
 import type { Entity, EntityId, GroundItemEntity, MonsterEntity, ObjectEntity, PlayerEntity } from './entities';
 import { ATTEMPT_TICKS, EXAMINE, RESOURCE_DATA, gatherChance, requiredLevel } from './gathering';
 import { WorldGrid } from './grid';
@@ -33,12 +34,14 @@ import {
   ITEMS,
   INVENTORY_SIZE,
   addItem,
+  bestArrows,
   bestTool,
   canAdd,
   countItem,
   emptyInventory,
   hasAnyTool,
   hasItem,
+  isBow,
   removeItem,
   roomFor,
   type EquipSlot,
@@ -71,6 +74,8 @@ const MONSTER_DEATH_TICKS = 2;
 const MAX_CHASE = 16;
 /** Monsters give up a chase this many tiles beyond the edge of where they roam. */
 const LEASH = 8;
+/** Chance a fired arrow lands where it can be picked up again. */
+const ARROW_SAVE_CHANCE = 0.7;
 /** What a new character carries. */
 const STARTING_ITEMS: ItemStack[] = [
   { itemId: 'bronze_axe', qty: 1 },
@@ -334,6 +339,9 @@ export class Simulation {
         return;
       case 'attack':
         this.startAttack(player, msg.targetId);
+        return;
+      case 'useItem':
+        this.useItem(player, msg.slot);
         return;
       case 'eat':
         this.eat(player, msg.slot);
@@ -646,6 +654,13 @@ export class Simulation {
     return Math.max(Math.abs(near.x - player.x), Math.abs(near.y - player.y)) <= 1;
   }
 
+  /** How many a recipe makes this time: its full batch, or fewer when every input is one-for-one and runs short. */
+  private batchSize(player: PlayerEntity, recipe: (typeof RECIPES)[number]): number {
+    const full = recipe.outputQty ?? 1;
+    if (full === 1 || !recipe.inputs.every((i) => i.qty === full)) return full;
+    return Math.min(full, ...recipe.inputs.map((i) => countItem(player.inventory, i.itemId)));
+  }
+
   private skillName(skill: SkillId): string {
     return SKILLS.find((s) => s.id === skill)!.name;
   }
@@ -673,7 +688,7 @@ export class Simulation {
       player.action = null;
       return;
     }
-    if (inReach(player, target)) {
+    if (this.canHit(player, target)) {
       player.path = [];
       player.destination = null;
       if (this.tick >= player.nextAttack) this.playerAttack(player, target);
@@ -689,20 +704,91 @@ export class Simulation {
     }
   }
 
+  /** Whether a player can hit a monster from where they stand: beside it, or within a bow's range with a clear shot. */
+  private canHit(player: PlayerEntity, target: MonsterEntity): boolean {
+    const weapon = player.equipment.weapon;
+    if (!isBow(weapon)) return inReach(player, target);
+    const range = ITEMS[weapon!].equip!.range! + (player.attackStyle === 'defensive' ? 2 : 0);
+    const d = distance(player, target);
+    return d > 0 && d <= range && this.clearShot(player, target);
+  }
+
+  /** Nothing solid (walls, trees, rocks) on the tiles between; water doesn't count. */
+  private clearShot(from: Point, to: Point): boolean {
+    const steps = distance(from, to);
+    for (let i = 1; i < steps; i++) {
+      const x = Math.round(from.x + ((to.x - from.x) * i) / steps);
+      const y = Math.round(from.y + ((to.y - from.y) * i) / steps);
+      if (this.grid.blocked[this.grid.index(x, y)] && !this.isWater(x, y)) return false;
+    }
+    return true;
+  }
+
+  /** Arrows fly over water; they don't fly through walls or trees. */
+  private isWater(x: number, y: number): boolean {
+    const def = this.map.terrainDefs[this.map.terrain[this.grid.index(x, y)]];
+    return !!def && /water/i.test(def.key);
+  }
+
   private playerAttack(player: PlayerEntity, monster: MonsterEntity): void {
+    if (isBow(player.equipment.weapon)) return this.playerShoot(player, monster);
     const stats = MONSTERS[monster.defKey];
     const attacker = playerFighter(player.skills, player.equipment, player.attackStyle);
     const landed = this.rng.chance(hitChance(attacker, monsterFighter(stats)));
     const damage = landed ? Math.min(monster.hp, this.rng.int(1, playerMaxHit(attacker))) : 0;
-    player.nextAttack = this.tick + WEAPON_SPEED;
     const weapon = player.equipment.weapon ? ITEMS[player.equipment.weapon]?.equip : undefined;
+    player.nextAttack = this.tick + (weapon?.speed ?? WEAPON_SPEED);
     this.animate(player, weapon?.style ?? 'punch');
+    this.landPlayerHit(player, monster, damage, [[ATTACK_STYLES[player.attackStyle].skill, 1]]);
+  }
 
+  /** A bow: fire the best arrow carried. Most can be picked up again where they fell. */
+  private playerShoot(player: PlayerEntity, monster: MonsterEntity): void {
+    const bow = ITEMS[player.equipment.weapon!].equip!;
+    const arrow = bestArrows(player.inventory, levelForXp(player.skills.ranged));
+    if (!arrow) {
+      const any = player.inventory.some((s) => s && ITEMS[s.itemId]?.ammo);
+      this.message(player.id, any ? 'You need a higher Ranged level to fire the arrows you carry.' : 'You have no arrows left to fire.', 'warn');
+      player.action = null;
+      return;
+    }
+    removeItem(player.inventory, arrow.id, 1);
+    const attacker = rangedFighter(player.skills, player.equipment, player.attackStyle, arrow.ammo!.strength);
+    const landed = this.rng.chance(hitChance(attacker, monsterFighter(MONSTERS[monster.defKey])));
+    const damage = landed ? Math.min(monster.hp, this.rng.int(1, playerMaxHit(attacker))) : 0;
+    player.nextAttack = this.tick + (bow.speed ?? WEAPON_SPEED) - (player.attackStyle === 'aggressive' ? 1 : 0);
+    this.animate(player, 'shoot');
+    if (this.rng.chance(ARROW_SAVE_CHANCE)) this.dropArrow(arrow.id, monster, player.id);
+    this.landPlayerHit(player, monster, damage, player.attackStyle === 'defensive' ? [['ranged', 0.5], ['defence', 0.5]] : [['ranged', 1]]);
+  }
+
+  /** How a player fights right now: with a bow and their best arrows, or hand to hand. */
+  private fighterFor(player: PlayerEntity) {
+    if (!isBow(player.equipment.weapon)) return playerFighter(player.skills, player.equipment, player.attackStyle);
+    const arrow = bestArrows(player.inventory, levelForXp(player.skills.ranged));
+    return rangedFighter(player.skills, player.equipment, player.attackStyle, arrow?.ammo?.strength ?? 0);
+  }
+
+  /** Arrows that fall on the same tile pile up rather than lying about one by one. */
+  private dropArrow(itemId: string, at: Point, owner: EntityId): void {
+    for (const e of this.entities.values()) {
+      if (e.kind === 'item' && e.itemId === itemId && e.x === at.x && e.y === at.y && e.owner === owner) {
+        e.qty++;
+        e.despawnAt = this.tick + GROUND_ITEM_TICKS;
+        return;
+      }
+    }
+    this.spawnItem(itemId, 1, at, owner, PRIVATE_TICKS, GROUND_ITEM_TICKS);
+  }
+
+  /** A player's blow or arrow lands (or misses): XP split between `skills`, and the monster turns on them. */
+  private landPlayerHit(player: PlayerEntity, monster: MonsterEntity, damage: number, skills: [SkillId, number][]): void {
+    const stats = MONSTERS[monster.defKey];
     monster.hp -= damage;
     monster.damageBy.set(player.id, (monster.damageBy.get(player.id) ?? 0) + damage);
     this.broadcastHit(player, monster, damage, monster.hp, monster.maxHp);
     if (damage > 0) {
-      this.addXp(player, ATTACK_STYLES[player.attackStyle].skill, damage * XP_PER_DAMAGE);
+      for (const [skill, share] of skills) this.addXp(player, skill, damage * XP_PER_DAMAGE * share);
       this.addXp(player, 'hitpoints', Math.round((damage * XP_PER_DAMAGE * 10) / 3) / 10);
     }
     // Monsters always fight back; a fresh fight gives them a moment to turn.
@@ -865,15 +951,26 @@ export class Simulation {
     const stack = this.slot(player, slot);
     const equip = stack ? ITEMS[stack.itemId].equip : undefined;
     if (!stack || !equip) return;
-    const skill = equip.slot === 'weapon' ? 'attack' : 'defence';
+    const skill = equip.style === 'shoot' ? 'ranged' : equip.slot === 'weapon' ? 'attack' : 'defence';
     const need = equip.level ?? 1;
     if (levelForXp(player.skills[skill]) < need) {
-      this.message(player.id, `You need a${skill === 'attack' ? 'n Attack' : ' Defence'} level of ${need} to ${equip.slot === 'weapon' ? 'wield' : 'wear'} this.`, 'warn');
+      this.message(player.id, `You need ${aOrSome(this.skillName(skill))} level of ${need} to ${equip.slot === 'weapon' ? 'wield' : 'wear'} this.`, 'warn');
       return;
     }
+    // Bows take both hands: a bow and a shield push each other off.
+    const clash = equip.style === 'shoot' ? 'shield' : equip.slot === 'shield' && isBow(player.equipment.weapon) ? 'weapon' : null;
+    const other = clash ? player.equipment[clash] : undefined;
     const old = player.equipment[equip.slot];
+    if (other && old && !player.inventory.some((s, i) => !s && i !== slot)) {
+      this.message(player.id, "You don't have enough inventory space.", 'warn');
+      return;
+    }
     player.equipment[equip.slot] = stack.itemId;
     player.inventory[slot] = old ? { itemId: old, qty: 1 } : null;
+    if (other) {
+      delete player.equipment[clash!];
+      addItem(player.inventory, other);
+    }
   }
 
   private unequip(player: PlayerEntity, slot: EquipSlot): void {
@@ -1039,6 +1136,21 @@ export class Simulation {
     player.ui = { kind: 'craft', station, at: target.id };
   }
 
+  /** Using an item on its own: knives, logs, feathers and the like open the fletching window, anywhere. */
+  private useItem(player: PlayerEntity, slot: number): void {
+    const stack = this.slot(player, slot);
+    if (!stack) return;
+    if (!opensFletching(stack.itemId)) {
+      this.message(player.id, 'Nothing interesting happens.');
+      return;
+    }
+    this.stopActions(player);
+    player.path = [];
+    player.destination = null;
+    // Fletching needs no station: the window is "at" the player.
+    player.ui = { kind: 'craft', station: 'fletching', at: player.id };
+  }
+
   private startCraft(player: PlayerEntity, recipeId: string, qty: number): void {
     const recipe = RECIPE_BY_ID[recipeId];
     if (player.ui?.kind !== 'craft' || !recipe || recipe.station !== player.ui.station) return;
@@ -1064,21 +1176,37 @@ export class Simulation {
       this.message(player.id, 'You need a hammer to work the metal with.', 'warn');
       return void (player.action = null);
     }
-    const missing = recipe.inputs.find((i) => !hasItem(player.inventory, i.itemId, i.qty));
-    if (missing) {
-      if (!action.started) this.message(player.id, `You don't have enough ${ITEMS[missing.itemId].name.toLowerCase()} to make that.`, 'warn');
+    if (recipe.tool && !hasItem(player.inventory, recipe.tool)) {
+      this.message(player.id, `You need ${aOrSome(ITEMS[recipe.tool].name.toLowerCase())} to fletch that.`, 'warn');
+      return void (player.action = null);
+    }
+    // Batches of one-for-one parts (15 shafts and 15 feathers) can be made short with whatever is carried.
+    const made = this.batchSize(player, recipe);
+    const scale = made / (recipe.outputQty ?? 1);
+    const missing = recipe.inputs.find((i) => !hasItem(player.inventory, i.itemId, Math.max(1, i.qty * scale)));
+    if (missing || made < 1) {
+      const item = missing ?? recipe.inputs[0];
+      if (!action.started) this.message(player.id, `You don't have enough ${ITEMS[item.itemId].name.toLowerCase()} to make that.`, 'warn');
+      return void (player.action = null);
+    }
+
+    // Check the result will fit once the inputs are used, before using them.
+    const after = player.inventory.map((s) => s && { ...s });
+    for (const input of recipe.inputs) removeItem(after, input.itemId, input.qty * scale);
+    if (!canAdd(after, recipe.output, made)) {
+      this.message(player.id, "You don't have enough inventory space.", 'warn');
       return void (player.action = null);
     }
 
     action.started = true;
-    for (const input of recipe.inputs) removeItem(player.inventory, input.itemId, input.qty);
+    for (const input of recipe.inputs) removeItem(player.inventory, input.itemId, input.qty * scale);
     if (recipe.burnt && this.rng.chance(burnChance(recipe, level))) {
       addItem(player.inventory, recipe.burnt);
       this.message(player.id, `You accidentally burn the ${output.toLowerCase()}.`);
     } else {
-      addItem(player.inventory, recipe.output);
-      this.message(player.id, CRAFT_TEXT[recipe.station](output.toLowerCase()));
-      this.addXp(player, recipe.skill, recipe.xp);
+      addItem(player.inventory, recipe.output, made);
+      this.message(player.id, CRAFT_TEXT[recipe.station](made > 1 ? `${made} ${output.toLowerCase()}` : output.toLowerCase()));
+      this.addXp(player, recipe.skill, Math.round(recipe.xp * scale * 10) / 10);
     }
     action.remaining--;
     action.nextAttempt = this.tick + recipe.ticks;
@@ -1189,6 +1317,8 @@ export class Simulation {
       recipes: RECIPES.filter((r) => r.station === ui.station).map((r) => ({
         id: r.id,
         output: r.output,
+        outputQty: r.outputQty ?? 1,
+        ...(r.tool ? { tool: r.tool } : {}),
         level: r.level,
         skill: r.skill,
         xp: r.xp,
@@ -1209,7 +1339,8 @@ export class Simulation {
       const target = this.entities.get(a.stationId);
       const recipe = RECIPE_BY_ID[a.recipeId];
       if (!target || !recipe) return null;
-      return { target, activity: recipe.station === 'furnace' ? 'smelt' : recipe.station === 'anvil' ? 'smith' : 'cook' };
+      const activity = ({ furnace: 'smelt', anvil: 'smith', range: 'cook', fletching: 'fletch' } as const)[recipe.station];
+      return { target, activity };
     }
     return null;
   }
@@ -1454,7 +1585,7 @@ export class Simulation {
       equipment: player.equipment,
       attackStyle: player.attackStyle,
       bonuses: equipmentBonuses(player.equipment),
-      maxHit: playerMaxHit(playerFighter(player.skills, player.equipment, player.attackStyle)),
+      maxHit: playerMaxHit(this.fighterFor(player)),
       ui: this.uiView(player),
       quests: QUEST_IDS.map((id) => questView(id, player.quests[id] ?? 0)),
       questPoints: this.questPoints(player),
@@ -1536,6 +1667,7 @@ const CRAFT_TEXT: Record<StationKind, (item: string) => string> = {
   furnace: (item) => `You retrieve ${aOrSome(item)}.`,
   anvil: (item) => `You hammer the metal and make ${aOrSome(item)}.`,
   range: (item) => `You cook the ${item}.`,
+  fletching: (item) => (/^\d/.test(item) ? `You make ${item}.` : `You carefully make ${aOrSome(item)}.`),
 };
 
 function aOrSome(name: string): string {

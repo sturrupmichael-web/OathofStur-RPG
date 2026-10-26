@@ -39,6 +39,8 @@ export type ClientMessage =
   | { type: 'shopSell'; slot: number; qty: number }
   | { type: 'attack'; targetId: EntityId }
   | { type: 'eat'; slot: number }
+  /** Use an item from the pack on its own: a knife or logs open the fletching window. */
+  | { type: 'useItem'; slot: number }
   | { type: 'equip'; slot: number }
   | { type: 'unequip'; slot: EquipSlot }
   | { type: 'setAttackStyle'; style: AttackStyle };
@@ -77,7 +79,7 @@ export interface PublicEntity {
   dead?: boolean;
 }
 
-export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith';
+export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith' | 'fletch';
 
 /**
  * One-off animations, sent as they happen. Players: punch, stab, slash, block, eat, death.
@@ -92,7 +94,7 @@ export type UiView =
   | {
       kind: 'craft';
       title: string;
-      recipes: { id: string; output: string; level: number; skill: SkillId; xp: number; inputs: { itemId: string; qty: number }[] }[];
+      recipes: { id: string; output: string; outputQty: number; tool?: string; level: number; skill: SkillId; xp: number; inputs: { itemId: string; qty: number }[] }[];
     }
   /** One page of a conversation. `npcId` is who you are talking to; `speaker` says whose words these are. */
   | { kind: 'dialogue'; npcId: EntityId; speaker: 'npc' | 'player'; name: string; text: string; options?: string[] };

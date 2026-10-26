@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import type { EntityId, MapData, WorldGrid } from '@rpg/shared';
+import { isBow, type EntityId, type MapData, type WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView } from '../state/ClientState';
-import { CHARACTER_STYLES, activityPhase, animateCharacter, buildCharacter, characterBusy, playCharacter, styleForNpc, withGear, type CharacterRig } from './character';
+import { CHARACTER_STYLES, SHOOT_MS, SHOOT_RELEASE, activityPhase, animateCharacter, buildCharacter, characterBusy, playCharacter, styleForNpc, withGear, type CharacterRig } from './character';
 import { animateCreature, buildCreature, creatureBusy, isCreature, playCreature, shotMs, type CreatureRig } from './creatures';
 import { disposeModel } from './dispose';
 import { Effects } from './effects';
@@ -87,12 +87,19 @@ export class EntityLayer {
     });
     state.on('animation', ({ entityId, kind }) => this.play(entityId, kind, performance.now()));
     // Whoever is hit flinches as the blow lands, unless busy with a move of their own.
-    state.on('hit', ({ targetId }) => {
+    // An archer's arrow flies first, and the flinch waits for it to land.
+    state.on('hit', ({ attackerId, targetId }) => {
       const now = performance.now();
+      let lands = now + 220;
+      const flight = arrowFlight(state, attackerId, targetId);
+      if (flight) {
+        this.effects.shoot(() => this.chestOf(attackerId), () => this.chestOf(targetId), now + flight.loose, flight.ms);
+        lands = now + flight.loose + flight.ms;
+      }
       const rig = this.rigs.get(targetId);
-      if (rig && !characterBusy(rig, now)) rig.oneShot = { kind: 'block', start: now + 220 };
+      if (rig && !characterBusy(rig, now)) rig.oneShot = { kind: 'block', start: lands };
       const creature = this.creatures.get(targetId);
-      if (creature && !creatureBusy(creature, now)) creature.oneShot = { kind: 'block', start: now + 220 };
+      if (creature && !creatureBusy(creature, now)) creature.oneShot = { kind: 'block', start: lands };
     });
   }
 
@@ -262,7 +269,8 @@ export class EntityLayer {
     const moving = (dx !== 0 || dy !== 0) && now - view.movedAt < this.state.tickMs * 1.2;
     if (moving) this.facing.set(id, Math.atan2(dx, dy));
     const work = view.data.workingOn;
-    if (work && !moving) this.facing.set(id, Math.atan2(work.x - view.toX, work.y - view.toY));
+    // Work in hand (fletching) is on your own tile: keep facing whichever way you were.
+    if (work && !moving && (work.x !== view.toX || work.y !== view.toY)) this.facing.set(id, Math.atan2(work.x - view.toX, work.y - view.toY));
     // Fighters turn to face their opponent.
     const foe = view.data.interacting !== undefined ? this.state.entities.get(view.data.interacting) : undefined;
     const fighting = !!foe && !view.data.dead;
@@ -278,7 +286,7 @@ export class EntityLayer {
     const speed = Math.min(1.4, Math.hypot(dx, dy));
     const dead = !!view.data.dead;
     const rig = this.rigs.get(id);
-    if (rig) animateCharacter(rig, dt, now, moving, speed, work ? (view.data.activity ?? 'chop') : fighting ? 'fight' : null, dead, turn);
+    if (rig) animateCharacter(rig, dt, now, moving, speed, work ? (view.data.activity ?? 'chop') : fighting ? (rig.archer ? 'aim' : 'fight') : null, dead, turn);
     if (rig && work && !moving && view.data.activity) {
       const u = activityPhase(rig, view.data.activity, now);
       const was = this.workPhase.get(id);
@@ -331,6 +339,18 @@ export class EntityLayer {
   }
 }
 
+/**
+ * When an archer's arrow leaves the string and how long it flies (ms), or
+ * null if the attacker has no bow. Splats and sounds wait for it to land.
+ */
+export function arrowFlight(state: ClientState, attackerId: EntityId, targetId: EntityId): { loose: number; ms: number } | null {
+  const from = state.entities.get(attackerId);
+  if (!isBow(from?.data.gear?.weapon)) return null;
+  const to = state.entities.get(targetId);
+  const tiles = to ? Math.hypot(to.toX - from!.toX, to.toY - from!.toY) : 4;
+  return { loose: SHOOT_MS * SHOOT_RELEASE, ms: 120 + tiles * 45 };
+}
+
 /** Points in each work cycle where the tool meets its target. */
 const IMPACT: Record<string, number[]> = {
   chop: [0.8],
@@ -340,6 +360,7 @@ const IMPACT: Record<string, number[]> = {
   rod: [0.9],
   cook: [0.1],
   smelt: [0.25],
+  fletch: [0.65],
 };
 
 function shortestAngle(from: number, to: number): number {

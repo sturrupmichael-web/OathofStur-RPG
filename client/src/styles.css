@@ -578,6 +578,8 @@ body {
 .skill-fishing { background: #5bc0de; }
 .skill-cooking { background: #e8a33d; }
 .skill-smithing { background: #9e9e9e; }
+.skill-ranged { background: #4caf7a; }
+.skill-fletching { background: #3fa59a; }
 
 .skill-info {
   display: flex;

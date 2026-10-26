@@ -5,7 +5,10 @@
       "hitpoints": 3, "attack": 1, "strength": 1, "defence": 1, "maxHit": 1, "attackSpeed": 4,
       "respawnTicks": 20, "attackAnim": "peck",
       "examine": "A little red bird that never seems to land.",
-      "drops": [{ "item": "crimson_feathers", "qty": [2, 8], "chance": 1 }]
+      "drops": [
+        { "item": "feathers", "qty": [5, 15], "chance": 1 },
+        { "item": "crimson_feathers", "qty": [2, 8], "chance": 0.5 }
+      ]
     },
     "goblin": {
       "hitpoints": 5, "attack": 1, "strength": 1, "defence": 1, "maxHit": 1, "attackSpeed": 4,
@@ -14,6 +17,7 @@
       "drops": [
         { "item": "coins", "qty": [1, 10], "chance": 0.5 },
         { "item": "bronze_dagger", "qty": 1, "chance": 0.05 },
+        { "item": "bronze_arrow", "qty": [3, 8], "chance": 0.15 },
         { "item": "bronze_helm", "qty": 1, "chance": 0.03 }
       ]
     },

@@ -7,7 +7,7 @@
   },
   "startingLevels": { "hitpoints": 10 },
   "combatLevel": {
-    "comment": "combat = floor(meleeWeight * (attack + strength + defence) / 3 + hitpointsWeight * hitpoints)",
+    "comment": "combat = floor(meleeWeight * max(attack + strength + defence, 2 * ranged + defence) / 3 + hitpointsWeight * hitpoints): an archer counts as much as a fighter.",
     "meleeWeight": 0.75,
     "hitpointsWeight": 0.25
   },
@@ -15,11 +15,13 @@
     { "id": "attack", "name": "Attack" },
     { "id": "strength", "name": "Strength" },
     { "id": "defence", "name": "Defence" },
+    { "id": "ranged", "name": "Ranged" },
     { "id": "hitpoints", "name": "Hitpoints" },
     { "id": "woodcutting", "name": "Woodcutting" },
     { "id": "mining", "name": "Mining" },
     { "id": "fishing", "name": "Fishing" },
     { "id": "cooking", "name": "Cooking" },
-    { "id": "smithing", "name": "Smithing" }
+    { "id": "smithing", "name": "Smithing" },
+    { "id": "fletching", "name": "Fletching" }
   ]
 }

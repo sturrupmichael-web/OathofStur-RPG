@@ -42,6 +42,8 @@ const GEAR = [
   { weapon: 'iron_dagger', shield: 'iron_shield', helmet: 'iron_helm' },
   { weapon: 'steel_sword', shield: 'steel_shield', helmet: 'steel_helm', body: 'steel_chainbody', legs: 'steel_platelegs' },
   { weapon: 'cinder_blade', shield: 'drakescale_shield' },
+  { weapon: 'shortbow' },
+  { weapon: 'yew_longbow', helmet: 'iron_helm' },
 ];
 if (set === 'monsters') {
   for (const kind of ['goblin', 'skeleton', 'cow', 'desert_lizard', 'scorpion', 'cave_creeper', 'crimson_swift', 'wailing_spirit', 'cinder_drake']) {
@@ -92,7 +94,7 @@ addEventListener('resize', resize);
 resize();
 
 const bar = document.getElementById('bar')!;
-for (const name of ['idle', 'walk', 'fight', 'chop', 'mine', 'smith', 'net', 'rod', 'cook', 'smelt', 'dead']) {
+for (const name of ['idle', 'walk', 'fight', 'aim', 'chop', 'mine', 'smith', 'net', 'rod', 'cook', 'smelt', 'fletch', 'dead']) {
   const b = document.createElement('button');
   b.textContent = name;
   b.className = name === anim ? 'on' : '';
@@ -102,7 +104,7 @@ for (const name of ['idle', 'walk', 'fight', 'chop', 'mine', 'smith', 'net', 'ro
   };
   bar.appendChild(b);
 }
-for (const shot of ['punch', 'stab', 'slash', 'swing', 'block', 'talk', 'eat', 'bite', 'breath', 'sting', 'butt', 'peck', 'wail']) {
+for (const shot of ['punch', 'stab', 'slash', 'shoot', 'swing', 'block', 'talk', 'eat', 'bite', 'breath', 'sting', 'butt', 'peck', 'wail']) {
   const b = document.createElement('button');
   b.textContent = `▶ ${shot}`;
   b.onclick = () => play(shot);
@@ -126,7 +128,7 @@ function frame(now: number) {
   const moving = anim === 'walk';
   for (const e of entries) {
     e.root.rotation.y = yaw0 + spin;
-    const activity = ['chop', 'mine', 'smith', 'net', 'rod', 'cook', 'smelt', 'fight'].includes(anim) ? anim : null;
+    const activity = ['chop', 'mine', 'smith', 'net', 'rod', 'cook', 'smelt', 'fletch', 'fight', 'aim'].includes(anim) ? anim : null;
     if (e.human) animateCharacter(e.human, dt, now, moving, 1, activity, anim === 'dead');
     if (e.creature) animateCreature(e.creature, dt, now, moving, 1, anim === 'fight', anim === 'dead');
   }

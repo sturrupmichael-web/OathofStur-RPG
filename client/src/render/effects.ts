@@ -19,6 +19,15 @@ interface Breath {
   owed: number;
 }
 
+/** An arrow in flight between two points that may move (both ends follow their entities). */
+interface Arrow {
+  mesh: THREE.Object3D;
+  from: () => THREE.Vector3 | null;
+  to: () => THREE.Vector3 | null;
+  start: number;
+  ms: number;
+}
+
 const FLAME_LIFE = 0.55;
 const FLAMES_PER_SECOND = 110;
 const SPEED = 6.5;
@@ -52,6 +61,8 @@ function texture(): THREE.Texture {
 export class Effects {
   readonly group = new THREE.Group();
   private readonly breaths: Breath[] = [];
+  private readonly arrows: Arrow[] = [];
+  private readonly spareArrows: THREE.Object3D[] = [];
   private readonly flames: Flame[] = [];
   private readonly spare: THREE.Sprite[] = [];
   private readonly light = new THREE.PointLight(0xff7a2a, 0, 6, 1.6);
@@ -67,8 +78,34 @@ export class Effects {
     if (rig.mouth) this.breaths.push({ rig, target, start: now, ms, owed: 0 });
   }
 
+  /** Looses an arrow at `start` that lands `ms` later. */
+  shoot(from: () => THREE.Vector3 | null, to: () => THREE.Vector3 | null, start: number, ms: number): void {
+    const mesh = this.spareArrows.pop() ?? this.group.add(arrowModel()).children.at(-1)!;
+    mesh.visible = false;
+    this.arrows.push({ mesh, from, to, start, ms });
+  }
+
   update(now: number, dt: number): void {
     const t = now / 1000;
+    for (let i = this.arrows.length - 1; i >= 0; i--) {
+      const a = this.arrows[i];
+      const u = (now - a.start) / a.ms;
+      const from = a.from();
+      const to = a.to();
+      if (u >= 1 || !from || !to) {
+        a.mesh.visible = false;
+        this.spareArrows.push(a.mesh);
+        this.arrows.splice(i, 1);
+        continue;
+      }
+      if (u < 0) continue;
+      // A shallow arc: higher for longer shots.
+      const lift = from.distanceTo(to) * 0.08;
+      const at = (k: number) => from.clone().lerp(to, k).add(new THREE.Vector3(0, Math.sin(k * Math.PI) * lift, 0));
+      a.mesh.position.copy(at(u));
+      a.mesh.lookAt(at(Math.min(1, u + 0.02)));
+      a.mesh.visible = true;
+    }
     let glow = 0;
     for (let i = this.breaths.length - 1; i >= 0; i--) {
       const b = this.breaths[i];
@@ -135,4 +172,19 @@ export class Effects {
       .multiplyScalar(SPEED * (0.8 + Math.random() * 0.4));
     this.flames.push({ sprite, velocity, born: t, life: FLAME_LIFE * (0.75 + Math.random() * 0.5) });
   }
+}
+
+/** Shaft, head and fletching, pointing along +z (so lookAt aims it). */
+function arrowModel(): THREE.Group {
+  const g = new THREE.Group();
+  const lambert = (color: number) => new THREE.MeshLambertMaterial({ color });
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.5, 4).rotateX(Math.PI / 2), lambert(0xb08a5a)));
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.06, 4).rotateX(Math.PI / 2).translate(0, 0, 0.27), lambert(0x8a8c92));
+  g.add(head);
+  for (const r of [0, Math.PI / 2]) {
+    const vane = new THREE.Mesh(new THREE.PlaneGeometry(0.035, 0.09).rotateY(Math.PI / 2).rotateZ(r).translate(0, 0, -0.21), new THREE.MeshLambertMaterial({ color: 0xe8e2d4, side: THREE.DoubleSide }));
+    g.add(vane);
+  }
+  g.visible = false;
+  return g;
 }

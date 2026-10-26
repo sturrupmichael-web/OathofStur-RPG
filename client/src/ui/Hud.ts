@@ -2,7 +2,9 @@ import {
   ATTACK_STYLES,
   EQUIP_SLOTS,
   ITEMS,
+  RANGED_STYLES,
   SKILLS,
+  isBow,
   countItem,
   levelForXp,
   xpForLevel,
@@ -271,8 +273,11 @@ export class Hud {
     el('win-title').textContent = ui.title;
     for (const r of ui.recipes) {
       const level = levelForXp(self.skills[r.skill]);
-      const canMake = Math.min(...r.inputs.map((i) => Math.floor(countItem(self.inventory, i.itemId) / i.qty)));
-      const ok = level >= r.level && canMake > 0;
+      // A batch of one-for-one parts (shafts and feathers) can be made short.
+      const partial = r.outputQty > 1 && r.inputs.every((i) => i.qty === r.outputQty);
+      const canMake = Math.min(...r.inputs.map((i) => Math.floor(countItem(self.inventory, i.itemId) / (partial ? 1 : i.qty))));
+      const hasTool = !r.tool || countItem(self.inventory, r.tool) > 0;
+      const ok = level >= r.level && canMake > 0 && hasTool;
       const row = document.createElement('div');
       row.className = `recipe${ok ? '' : ' unavailable'}`;
       const icon = document.createElement('div');
@@ -281,12 +286,13 @@ export class Hud {
       const info = document.createElement('div');
       const name = document.createElement('div');
       name.className = 'recipe-name';
-      name.textContent = ITEMS[r.output]?.name ?? r.output;
+      name.textContent = `${r.outputQty > 1 ? `${r.outputQty} × ` : ''}${ITEMS[r.output]?.name ?? r.output}`;
       const detail = document.createElement('div');
       detail.className = 'recipe-detail';
       const skill = SKILLS.find((s) => s.id === r.skill)?.name ?? r.skill;
       const needs = r.inputs.map((i) => `${i.qty} × ${ITEMS[i.itemId]?.name ?? i.itemId}`).join(', ');
-      detail.textContent = `${skill} ${r.level} · ${needs} · ${r.xp} XP`;
+      const tool = r.tool ? ` · needs ${ITEMS[r.tool]?.name.toLowerCase() ?? r.tool}` : '';
+      detail.textContent = `${skill} ${r.level} · ${needs}${tool} · ${r.xp} XP`;
       info.append(name, detail);
       const buttons = document.createElement('div');
       buttons.className = 'recipe-buttons';
@@ -424,9 +430,13 @@ export class Hud {
       if (!itemId) cell.textContent = slot;
     }
     const b = self.bonuses;
+    const bow = isBow(self.equipment.weapon);
     const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
     el('equip-stats').replaceChildren(
-      ...[`Attack ${sign(b.attack)}`, `Strength ${sign(b.strength)}`, `Defence ${sign(b.defence)}`, `Max hit ${self.maxHit}`].map((t) => span(t, 'equip-stat')),
+      ...(bow
+        ? [`Ranged ${sign(ITEMS[self.equipment.weapon!].equip!.attack ?? 0)}`, `Range ${ITEMS[self.equipment.weapon!].equip!.range} tiles`, `Defence ${sign(b.defence)}`, `Max hit ${self.maxHit}`]
+        : [`Attack ${sign(b.attack)}`, `Strength ${sign(b.strength)}`, `Defence ${sign(b.defence)}`, `Max hit ${self.maxHit}`]
+      ).map((t) => span(t, 'equip-stat')),
     );
     const styles = el('attack-styles');
     styles.replaceChildren();
@@ -434,7 +444,8 @@ export class Hud {
       const b = document.createElement('button');
       b.className = `style-button${self.attackStyle === id ? ' active' : ''}`;
       const skill = SKILLS.find((s) => s.id === info.skill)?.name ?? info.skill;
-      b.append(span(info.label, 'style-name'), span(`${skill} XP, +3 ${skill.toLowerCase()}`, 'style-detail'));
+      if (bow) b.append(span(RANGED_STYLES[id].label, 'style-name'), span(RANGED_STYLES[id].detail, 'style-detail'));
+      else b.append(span(info.label, 'style-name'), span(`${skill} XP, +3 ${skill.toLowerCase()}`, 'style-detail'));
       b.addEventListener('click', () => this.equipmentHandlers.setStyle(id));
       styles.appendChild(b);
     }

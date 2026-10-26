@@ -37,7 +37,7 @@ GitHub Actions runs the typecheck, tests and build on every push to main and eve
 ```
 shared/   simulation, protocol types, map loading, game data (no DOM, no rendering)
   data/   maps/vell-reaches.json (source of truth), skills.json (XP curve), items.json,
-          resources.json (levels, XP, respawns), recipes.json (smelting, smithing, cooking),
+          resources.json (levels, XP, respawns), recipes.json (smelting, smithing, cooking, fletching),
           shops.json, examine.json
 client/   Three.js rendering, UI, LocalServer
 server/   Node WebSocket server (phase 6)

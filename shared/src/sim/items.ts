@@ -14,6 +14,8 @@ export interface ItemDef {
   fireward?: boolean;
   /** Set on things that can be worn or wielded. */
   equip?: EquipStats;
+  /** Arrows: their strength bonus, and the Ranged level needed to fire them. */
+  ammo?: { strength: number; level: number };
   /** Set on tools: the skill it is used for, the level needed, and its success bonus. */
   tool?: { skill: SkillId; level: number; bonus: number };
 }
@@ -26,10 +28,14 @@ export interface EquipStats {
   attack?: number;
   strength?: number;
   defence?: number;
-  /** Attack level to wield a weapon, Defence level to wear armour. */
+  /** Attack level to wield a weapon (Ranged for a bow), Defence level to wear armour. */
   level?: number;
-  /** Weapons: how it is swung, which picks the animation. */
-  style?: 'stab' | 'slash';
+  /** Weapons: how it is swung (or shot), which picks the animation. */
+  style?: 'stab' | 'slash' | 'shoot';
+  /** Bows: how many tiles away they can hit from. */
+  range?: number;
+  /** Ticks between attacks, when not the usual 4. */
+  speed?: number;
 }
 
 /** What a player is wearing, item id per slot. */
@@ -85,6 +91,22 @@ export function bestTool(inv: Inventory, skill: SkillId, level: number): ItemDef
 /** Whether the player carries any tool for a skill, whatever its level. */
 export function hasAnyTool(inv: Inventory, skill: SkillId): boolean {
   return inv.some((s) => s !== null && ITEMS[s.itemId]?.tool?.skill === skill);
+}
+
+/** Whether an item is a bow (fights from range with arrows). */
+export function isBow(itemId: string | undefined): boolean {
+  return !!itemId && ITEMS[itemId]?.equip?.style === 'shoot';
+}
+
+/** The strongest arrows in the pack that a Ranged level can fire, or null. */
+export function bestArrows(inv: Inventory, rangedLevel: number): ItemDef | null {
+  let best: ItemDef | null = null;
+  for (const s of inv) {
+    const ammo = s && ITEMS[s.itemId]?.ammo;
+    if (!ammo || ammo.level > rangedLevel) continue;
+    if (!best || ammo.strength > best.ammo!.strength) best = ITEMS[s!.itemId];
+  }
+  return best;
 }
 
 /** How many of an item the inventory holds. */

@@ -71,7 +71,56 @@ const meat = (outer: string, inner: string) => `
   <path d="M11 19 Q12 13 18 13 Q24 14 23 19 Q21 24 16 24 Q12 23 11 19 Z" fill="${inner}"/>
   <path d="M26 24 L32 31" stroke="#e8e0d0" stroke-width="3" stroke-linecap="round"/>`;
 
+/** A bow drawn on the diagonal; unstrung ones have no string and a plain grip. */
+const bow = (wood: string, dark: string, long: boolean, strung: boolean) => {
+  const [a, b] = long ? [3, 33] : [7, 29];
+  return `
+  <path d="M${a} ${a + 2} Q${long ? 26 : 24} ${long ? 10 : 12} ${b - 2} ${b}" fill="none" stroke="${dark}" stroke-width="${long ? 4.2 : 4.6}" stroke-linecap="round"/>
+  <path d="M${a} ${a + 2} Q${long ? 26 : 24} ${long ? 10 : 12} ${b - 2} ${b}" fill="none" stroke="${wood}" stroke-width="${long ? 2.6 : 3}" stroke-linecap="round"/>
+  ${strung ? `<path d="M${a} ${a + 2} L${b - 2} ${b}" stroke="#ece6d2" stroke-width="0.9"/>` : ''}
+  <path d="M${long ? 18.6 : 18} ${long ? 13.4 : 15} l3 3" stroke="#4a3020" stroke-width="${strung ? 4 : 0}" stroke-linecap="round"/>`;
+};
+
+/** A stack of arrows; `head` is the tip colour, or none for headless ones. */
+const arrows = (head: string | null, fletch = '#e8e2d4') => [0, 4, 8]
+  .map((o) => `
+  <path d="M${5 + o} ${29 - o * 0.2} L${27 + o * 0.2} ${7 + o}" stroke="#b08a5a" stroke-width="1.6"/>
+  <path d="M${5 + o} ${29 - o * 0.2} l1 -6 l2.5 2.5 Z M${5 + o} ${29 - o * 0.2} l6 -1 l-2.5 -2.5 Z" fill="${fletch}" stroke="#6a6458" stroke-width="0.5"/>
+  ${head ? `<path d="M${27 + o * 0.2} ${7 + o} l-1.5 4.5 l-3 -3 Z" fill="${head}" stroke="#222" stroke-width="0.7"/>` : ''}`)
+  .join('');
+
+const arrowheads = (metal: string) => [[9, 22], [19, 14], [22, 25]]
+  .map(([x, y]) => `<path d="M${x} ${y - 6} L${x + 4} ${y + 3} L${x} ${y + 1} L${x - 4} ${y + 3} Z" fill="${metal}" stroke="#222" stroke-width="0.9"/>`)
+  .join('');
+
 const ICONS: Record<string, string> = {
+  shortbow_u: bow('#a8743e', '#5a3a1e', false, false),
+  shortbow: bow('#a8743e', '#5a3a1e', false, true),
+  longbow_u: bow('#a8743e', '#5a3a1e', true, false),
+  longbow: bow('#a8743e', '#5a3a1e', true, true),
+  oak_shortbow_u: bow('#c89452', '#6a4422', false, false),
+  oak_shortbow: bow('#c89452', '#6a4422', false, true),
+  oak_longbow_u: bow('#c89452', '#6a4422', true, false),
+  oak_longbow: bow('#c89452', '#6a4422', true, true),
+  willow_shortbow_u: bow('#d8b878', '#7a5c30', false, false),
+  willow_shortbow: bow('#d8b878', '#7a5c30', false, true),
+  willow_longbow_u: bow('#d8b878', '#7a5c30', true, false),
+  willow_longbow: bow('#d8b878', '#7a5c30', true, true),
+  yew_shortbow_u: bow('#8a4626', '#3a1a0c', false, false),
+  yew_shortbow: bow('#8a4626', '#3a1a0c', false, true),
+  yew_longbow_u: bow('#8a4626', '#3a1a0c', true, false),
+  yew_longbow: bow('#8a4626', '#3a1a0c', true, true),
+  bronze_arrow: arrows('#c88a4a'),
+  bronze_arrowheads: arrowheads('#c88a4a'),
+  iron_arrow: arrows('#9a9ca4'),
+  iron_arrowheads: arrowheads('#9a9ca4'),
+  steel_arrow: arrows('#c9d3dd'),
+  steel_arrowheads: arrowheads('#c9d3dd'),
+  headless_arrow: arrows(null),
+  arrow_shaft: `<g stroke="#8a6a3e" stroke-width="1.8" stroke-linecap="round"><path d="M6 28 L28 8"/><path d="M9 31 L31 11"/><path d="M5 23 L24 5"/></g>`,
+  feathers: `<g stroke="#6a6458" stroke-width="0.9"><path d="M8 30 Q10 12 24 5 Q20 18 8 30 Z" fill="#d8d4cc"/><path d="M14 31 Q18 15 31 10 Q25 23 14 31 Z" fill="#ecebe6"/></g><path d="M8 30 L22 8 M14 31 L29 12" stroke="#9a948a" stroke-width="0.7"/>`,
+  bowstring: `<path d="M18 6 C30 6 30 16 18 16 C6 16 6 26 18 26 C28 26 28 32 20 32" fill="none" stroke="#ece6d2" stroke-width="1.6"/><path d="M18 6 C30 6 30 16 18 16 C6 16 6 26 18 26" fill="none" stroke="#8a8270" stroke-width="0.5" transform="translate(.6 .6)"/>`,
+  knife: `<path d="M8 28 L22 10 Q26 7 27 9 L13 30 Z" fill="#c9d3dd" stroke="#222" stroke-width="1"/><path d="M13 30 L8 35 L5 32 L10 27 Z" fill="#5a3a20" stroke="#222" stroke-width="0.9"/>`,
   bronze_helm: helm('#c88a4a', '#8a5a2a'),
   iron_helm: helm('#9a9ca4', '#5f6168'),
   steel_helm: helm('#c9d3dd', '#8a96a2'),

@@ -124,6 +124,11 @@ export const RESOURCE_STYLES: Record<string, PartStyle[]> = {
     ...roots(0x4e463e, 0.14),
   ],
   copper_rock: rockParts(0xd07a3a),
+  // Mined-out rocks: the same stone with the ore gone.
+  copper_rock_stump: rockParts(0x6f6a62).slice(0, 3),
+  tin_rock_stump: rockParts(0x6f6a62).slice(0, 3),
+  iron_rock_stump: rockParts(0x6f6a62).slice(0, 3),
+  coal_rock_stump: rockParts(0x6f6a62).slice(0, 3),
   tin_rock: rockParts(0xd4d8e0),
   iron_rock: rockParts(0x9a5238),
   coal_rock: rockParts(0x1c1c1c),
@@ -382,6 +387,25 @@ export function buildGroundItem(itemId: string): THREE.Group {
     const head = itemId === 'iron_axe' ? 0x7d7f86 : itemId === 'steel_axe' ? 0xa9b3bd : 0xb8793a;
     g.add(mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.5, 6).rotateZ(Math.PI / 2), 0x7a5230, 0, 0.03, 0));
     g.add(mesh(new THREE.BoxGeometry(0.1, 0.03, 0.15), head, 0.2, 0.04, 0.06));
+  } else if (itemId.endsWith('_ore') || itemId === 'coal') {
+    const fleck = { copper_ore: 0xd07a3a, tin_ore: 0xd4d8e0, iron_ore: 0x9a5238 }[itemId] ?? 0x1c1c1c;
+    g.add(mesh(new THREE.DodecahedronGeometry(0.1, 0), itemId === 'coal' ? 0x222222 : 0x7d776e, 0, 0.08, 0));
+    g.add(mesh(new THREE.OctahedronGeometry(0.04, 0), fleck, 0.05, 0.14, 0.03));
+  } else if (itemId.endsWith('_bar')) {
+    const color = itemId === 'bronze_bar' ? 0xc88a4a : itemId === 'iron_bar' ? 0x8a8c92 : 0xc9d3dd;
+    g.add(mesh(new THREE.BoxGeometry(0.26, 0.07, 0.1), color, 0, 0.035, 0));
+  } else if (/minnows|perch|pike|fish/.test(itemId)) {
+    const color = itemId === 'burnt_fish' ? 0x2a2420 : itemId.startsWith('raw') ? 0x8fa9b8 : 0xc99a52;
+    g.add(mesh(new THREE.SphereGeometry(0.07, 8, 6).scale(2.2, 0.6, 1), color, 0, 0.04, 0));
+    g.add(mesh(new THREE.ConeGeometry(0.05, 0.08, 4).rotateZ(Math.PI / 2), color, -0.18, 0.04, 0));
+  } else if (itemId.endsWith('dagger') || itemId.endsWith('sword')) {
+    const color = itemId.startsWith('bronze') ? 0xc88a4a : itemId.startsWith('iron') ? 0x9a9ca4 : 0xc9d3dd;
+    const len = itemId.endsWith('sword') ? 0.42 : 0.22;
+    g.add(mesh(new THREE.BoxGeometry(len, 0.012, 0.04), color, len / 2, 0.02, 0));
+    g.add(mesh(new THREE.BoxGeometry(0.03, 0.02, 0.12), 0x6b5a3a, 0, 0.02, 0));
+    g.add(mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.1, 6).rotateZ(Math.PI / 2), 0x5a3a20, -0.06, 0.02, 0));
+  } else if (itemId === 'coins') {
+    for (const [x, z] of [[0, 0], [0.06, 0.04], [-0.04, 0.05]]) g.add(mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.012, 10), 0xf0c840, x, 0.01, z));
   } else {
     g.add(mesh(new THREE.IcosahedronGeometry(0.12, 0), 0xa08454, 0, 0.1, 0));
   }

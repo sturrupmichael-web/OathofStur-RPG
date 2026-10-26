@@ -1,4 +1,4 @@
-import { ITEMS, SKILLS, levelForXp, xpForLevel, MAX_LEVEL, type Inventory, type SelfState, type SkillId } from '@rpg/shared';
+import { ITEMS, SKILLS, countItem, levelForXp, xpForLevel, MAX_LEVEL, type Inventory, type SelfState, type SkillId, type UiView } from '@rpg/shared';
 import { itemIcon } from './itemIcons';
 
 export interface MenuOption {
@@ -16,6 +16,16 @@ export interface InventoryHandlers {
   move: (from: number, to: number) => void;
 }
 
+/** What the bank, shop and crafting windows ask the game to do. */
+export interface WindowHandlers {
+  close: () => void;
+  withdraw: (index: number, qty: number) => void;
+  depositAll: () => void;
+  buy: (itemId: string, qty: number) => void;
+  craft: (recipeId: string, qty: number) => void;
+  examine: (itemId: string) => void;
+}
+
 /** DOM side of the interface: side panel, chat, tooltip and context menu. */
 export class Hud {
   private readonly chatLog = el('chat-log');
@@ -27,6 +37,9 @@ export class Hud {
   private closedByOutsidePress = false;
   private inventory: Inventory = [];
   inventoryHandlers: InventoryHandlers = { open: () => {}, move: () => {} };
+  windowHandlers: WindowHandlers = { close: () => {}, withdraw: () => {}, depositAll: () => {}, buy: () => {}, craft: () => {}, examine: () => {} };
+  private readonly win = el('window');
+  private windowKey = '';
 
   constructor() {
     this.buildTabs();
@@ -44,6 +57,110 @@ export class Hud {
     );
     window.addEventListener('blur', () => this.hideMenu());
     this.levelUpBox.addEventListener('click', () => (this.levelUpBox.hidden = true));
+    el('win-close').addEventListener('click', () => this.windowHandlers.close());
+  }
+
+  /** Draws the open bank, shop or crafting window, or hides it. */
+  renderWindow(self: SelfState): void {
+    const ui = self.ui;
+    // Redraw only when what it shows changes; crafting also depends on the inventory and levels.
+    const key = JSON.stringify(ui?.kind === 'craft' ? [ui, self.inventory, self.skills] : ui);
+    if (key === this.windowKey) return;
+    this.windowKey = key;
+    if (!ui) {
+      this.win.hidden = true;
+      return;
+    }
+    this.win.hidden = false;
+    const body = el('win-body');
+    const foot = el('win-foot');
+    body.replaceChildren();
+    foot.replaceChildren();
+    if (ui.kind === 'bank') this.drawBank(ui, body, foot);
+    else if (ui.kind === 'shop') this.drawShop(ui, body, foot);
+    else this.drawCraft(ui, self, body);
+  }
+
+  private drawBank(ui: Extract<UiView, { kind: 'bank' }>, body: HTMLElement, foot: HTMLElement): void {
+    el('win-title').textContent = 'Bank of Kelmoor';
+    const grid = document.createElement('div');
+    grid.className = 'win-grid';
+    ui.items.forEach((stack, index) => {
+      const name = ITEMS[stack.itemId]?.name ?? stack.itemId;
+      const slot = itemSlot(stack.itemId, stack.qty, name);
+      slot.addEventListener('click', (e) =>
+        this.showMenu(e.clientX, e.clientY, [
+          { label: 'Withdraw-1', target: name, action: () => this.windowHandlers.withdraw(index, 1) },
+          { label: 'Withdraw-5', target: name, action: () => this.windowHandlers.withdraw(index, 5) },
+          { label: 'Withdraw-All', target: name, action: () => this.windowHandlers.withdraw(index, stack.qty) },
+          { label: 'Examine', target: name, action: () => this.windowHandlers.examine(stack.itemId) },
+        ]),
+      );
+      grid.appendChild(slot);
+    });
+    if (!ui.items.length) body.append(span('Your bank is empty. Click items in your inventory to deposit them.', 'muted'));
+    else body.appendChild(grid);
+    const all = document.createElement('button');
+    all.textContent = 'Deposit inventory';
+    all.addEventListener('click', () => this.windowHandlers.depositAll());
+    foot.append(all);
+  }
+
+  private drawShop(ui: Extract<UiView, { kind: 'shop' }>, body: HTMLElement, foot: HTMLElement): void {
+    el('win-title').textContent = ui.name;
+    const grid = document.createElement('div');
+    grid.className = 'win-grid';
+    for (const { itemId, price } of ui.stock) {
+      const name = ITEMS[itemId]?.name ?? itemId;
+      const slot = itemSlot(itemId, 1, `${name}: ${price} coins`);
+      slot.appendChild(span(`${price}`, 'win-price'));
+      slot.addEventListener('click', (e) =>
+        this.showMenu(e.clientX, e.clientY, [
+          { label: 'Buy 1', target: name, action: () => this.windowHandlers.buy(itemId, 1) },
+          { label: 'Buy 5', target: name, action: () => this.windowHandlers.buy(itemId, 5) },
+          { label: 'Buy 10', target: name, action: () => this.windowHandlers.buy(itemId, 10) },
+          { label: 'Examine', target: name, action: () => this.windowHandlers.examine(itemId) },
+        ]),
+      );
+      grid.appendChild(slot);
+    }
+    body.appendChild(grid);
+    foot.textContent = 'Prices are in coins. Click an item in your inventory to sell it.';
+  }
+
+  private drawCraft(ui: Extract<UiView, { kind: 'craft' }>, self: SelfState, body: HTMLElement): void {
+    el('win-title').textContent = ui.title;
+    for (const r of ui.recipes) {
+      const level = levelForXp(self.skills[r.skill]);
+      const canMake = Math.min(...r.inputs.map((i) => Math.floor(countItem(self.inventory, i.itemId) / i.qty)));
+      const ok = level >= r.level && canMake > 0;
+      const row = document.createElement('div');
+      row.className = `recipe${ok ? '' : ' unavailable'}`;
+      const icon = document.createElement('div');
+      icon.className = 'recipe-icon';
+      icon.innerHTML = itemIcon(r.output);
+      const info = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'recipe-name';
+      name.textContent = ITEMS[r.output]?.name ?? r.output;
+      const detail = document.createElement('div');
+      detail.className = 'recipe-detail';
+      const skill = SKILLS.find((s) => s.id === r.skill)?.name ?? r.skill;
+      const needs = r.inputs.map((i) => `${i.qty} × ${ITEMS[i.itemId]?.name ?? i.itemId}`).join(', ');
+      detail.textContent = `${skill} ${r.level} · ${needs} · ${r.xp} XP`;
+      info.append(name, detail);
+      const buttons = document.createElement('div');
+      buttons.className = 'recipe-buttons';
+      for (const [label, qty] of [['1', 1], ['5', 5], ['All', 1000]] as const) {
+        const b = document.createElement('button');
+        b.textContent = label;
+        b.disabled = !ok;
+        b.addEventListener('click', () => this.windowHandlers.craft(r.id, qty));
+        buttons.appendChild(b);
+      }
+      row.append(icon, info, buttons);
+      body.appendChild(row);
+    }
   }
 
   /** Floating "+25" next to the skill's icon in the corner of the view. */
@@ -275,6 +392,16 @@ export class Hud {
       grid.appendChild(slot);
     }
   }
+}
+
+/** An item square like an inventory slot, for the bank and shop windows. */
+function itemSlot(itemId: string, qty: number, title: string): HTMLElement {
+  const slot = document.createElement('div');
+  slot.className = 'inv-slot filled';
+  slot.title = title;
+  slot.innerHTML = itemIcon(itemId);
+  if (qty > 1) slot.appendChild(span(qty.toLocaleString(), 'inv-qty'));
+  return slot;
 }
 
 function el(id: string): HTMLElement {

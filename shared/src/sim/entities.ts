@@ -1,18 +1,30 @@
 import type { Point } from '../map/types';
-import type { Inventory } from './items';
+import type { StationKind } from './crafting';
+import type { Inventory, ItemStack } from './items';
 import type { SkillXp } from './skills';
 
 export type EntityId = number;
 
 /** What a player is busy with between ticks. Walking somewhere else cancels it. */
-export interface PlayerAction {
-  kind: 'gather';
-  targetId: EntityId;
-  /** Tick of the next gathering attempt. */
-  nextAttempt: number;
-  /** Set once the player has arrived and started, so the start message is sent once. */
-  started: boolean;
-}
+export type PlayerAction =
+  | {
+      kind: 'gather';
+      targetId: EntityId;
+      /** Tick of the next gathering attempt. */
+      nextAttempt: number;
+      /** Set once the player has arrived and started, so the start message is sent once. */
+      started: boolean;
+    }
+  /** Walking to a station, banker or shopkeeper; its window opens on arrival. */
+  | { kind: 'use'; targetId: EntityId }
+  /** Making things at a station, one every recipe.ticks. */
+  | { kind: 'craft'; stationId: EntityId; recipeId: string; remaining: number; nextAttempt: number; started?: boolean };
+
+/** The window a player has open. Walking away closes it. */
+export type OpenUi =
+  | { kind: 'bank'; at: EntityId }
+  | { kind: 'shop'; shopId: string; at: EntityId }
+  | { kind: 'craft'; station: StationKind; at: EntityId };
 
 export interface PlayerEntity {
   id: EntityId;
@@ -22,6 +34,8 @@ export interface PlayerEntity {
   y: number;
   skills: SkillXp;
   inventory: Inventory;
+  bank: ItemStack[];
+  ui: OpenUi | null;
   createdAt: string;
   /** Remaining steps, one taken per tick. */
   path: Point[];

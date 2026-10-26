@@ -217,7 +217,7 @@ export class EntityLayer {
     obj.rotation.y += shortestAngle(obj.rotation.y, targetYaw) * Math.min(1, dt * 12);
     obj.position.set(pos.x + 0.5, this.hm.groundAt(pos.x + 0.5, pos.y + 0.5), pos.y + 0.5);
     const rig = this.rigs.get(id);
-    if (rig) animateCharacter(rig, dt, now, moving, Math.min(1.4, Math.hypot(dx, dy)), !!work);
+    if (rig) animateCharacter(rig, dt, now, moving, Math.min(1.4, Math.hypot(dx, dy)), work ? (view.data.activity ?? 'chop') : null);
   }
 
   private objectAt(x: number, y: number): string | null {

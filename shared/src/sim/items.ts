@@ -6,6 +6,10 @@ export interface ItemDef {
   name: string;
   examine: string;
   stackable?: boolean;
+  /** Shop price in coins. */
+  value: number;
+  /** Hitpoints restored when eaten (phase 4). */
+  heals?: number;
   /** Set on tools: the skill it is used for, the level needed, and its success bonus. */
   tool?: { skill: SkillId; level: number; bonus: number };
 }
@@ -60,4 +64,33 @@ export function bestTool(inv: Inventory, skill: SkillId, level: number): ItemDef
 /** Whether the player carries any tool for a skill, whatever its level. */
 export function hasAnyTool(inv: Inventory, skill: SkillId): boolean {
   return inv.some((s) => s !== null && ITEMS[s.itemId]?.tool?.skill === skill);
+}
+
+/** How many of an item the inventory holds. */
+export function countItem(inv: Inventory, itemId: string): number {
+  return inv.reduce((n, s) => n + (s?.itemId === itemId ? s.qty : 0), 0);
+}
+
+export function hasItem(inv: Inventory, itemId: string, qty = 1): boolean {
+  return countItem(inv, itemId) >= qty;
+}
+
+/** Removes up to `qty` of an item, last slots first; returns how many were removed. */
+export function removeItem(inv: Inventory, itemId: string, qty = 1): number {
+  let left = qty;
+  for (let i = inv.length - 1; i >= 0 && left > 0; i--) {
+    const s = inv[i];
+    if (s?.itemId !== itemId) continue;
+    const take = Math.min(s.qty, left);
+    s.qty -= take;
+    left -= take;
+    if (s.qty === 0) inv[i] = null;
+  }
+  return qty - left;
+}
+
+/** How many of an item could be added: unlimited-ish for a stack, else the free slots. */
+export function roomFor(inv: Inventory, itemId: string): number {
+  if (ITEMS[itemId]?.stackable) return canAdd(inv, itemId) ? Number.MAX_SAFE_INTEGER : 0;
+  return inv.filter((s) => s === null).length;
 }

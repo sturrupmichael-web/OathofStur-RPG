@@ -211,7 +211,17 @@ building(70,49,7,6,'w',[[3,0]]);set(73,48,'c');
 building(78,49,7,6,'w',[[3,0]]);set(81,48,'c');
 building(37,59,6,5,'w',[[2,0]]);building(45,59,6,5,'w',[[2,0]]);building(53,59,5,6,'w',[[2,0]]);building(37,65,8,5,'w',[[3,0]]);
 building(63,57,7,7,'w',[[0,3]]);set(62,60,'c');
+// Phase 3 stations: a furnace in the Smithy and a range in the Blue Gull Inn kitchen
+set(43,51,'U');set(68,58,'R');
 rect(77,62,4,3,'~');rect(73,58,3,2,'g');rect(82,66,3,2,'g');
+
+// Fishing spots on the west bank of the River Vell, east of the city:
+// two net spots (shallow) and two rod spots (deep) further south.
+const FISH=[];
+for(const[y,c]of[[55,'N'],[58,'N'],[66,'Q'],[69,'Q']]){
+  let x=0;while(x<W&&get(x,y)!=='~')x++;
+  if(x<W&&get(x-1,y)!=='~'){set(x,y,c);FISH.push([x,y])}
+}
 
 /* ---------- vegetation ---------- */
 const inR=(x,y,r)=>x>=r[0]&&y>=r[1]&&x<r[0]+r[2]&&y<r[1]+r[3];
@@ -235,8 +245,15 @@ const TILES={
   'W':['City wall',0],'B':['Building wall',0],'~':['Water',0],'D':['Ditch',0],'F':['Fence',0],'T':['Tree',0],'t':['Dead tree',0],
   '1':['Copper rock',0],'2':['Tin rock',0],'3':['Iron rock',0],'4':['Coal rock',0],'Z':['Standing stone',0],
   'A':['Anvil',0],'K':['Bank booth',0],'M':['Market stall',0],'O':['Statue',0],'x':['Altar',0],'L':['Log pile',0],
-  'm':['Trampled mud',1],'k':['Bone scatter',1],'P':['Palisade',0],'E':['Hide tent',0],'C':['Campfire',0],'J':['Goblin totem',0]
+  'm':['Trampled mud',1],'k':['Bone scatter',1],'P':['Palisade',0],'E':['Hide tent',0],'C':['Campfire',0],'J':['Goblin totem',0],
+  'U':['Furnace',0],'R':['Range',0],'N':['Shallow fishing spot',0],'Q':['Deep fishing spot',0]
 };
+// Townsfolk who stand at their posts (shops and banks). Monsters are in npcs.
+const TOWNSFOLK=[
+  {type:'Shopkeeper',role:'shop',x:73,y:52},{type:'Aldric',role:'shop',x:48,y:52},{type:'Cook Tobin',role:'shop',x:67,y:59},
+  {type:'Banker',role:'bank',x:40,y:40},{type:'Banker',role:'bank',x:42,y:40},
+  {type:'Banker',role:'bank',x:76,y:40},{type:'Banker',role:'bank',x:78,y:40},{type:'Banker',role:'bank',x:80,y:40}
+];
 const walk=(x,y)=>inb(x,y)&&TILES[get(x,y)][1]===1;
 
 const AREAS=[
@@ -311,6 +328,9 @@ function paint(g,c,x,y,px,py,N=get){
     case 'E':{box([116,108,58],j(1)*10,0,0,S,S);box([92,86,44],0,0,7,S,2);for(const i of[3,11])box([150,140,86],0,i,1,1,S-2);
       const E=[48,42,22];if(N(x,y-1)!=='E')box(E,0,0,0,S,1);if(N(x,y+1)!=='E'){box(E,0,0,S-1,S,1);g.fillStyle='rgba(0,0,0,.3)';g.fillRect(px,py+S-3,S,2)}if(N(x-1,y)!=='E')box(E,0,0,0,1,S);if(N(x+1,y)!=='E')box(E,0,S-1,0,1,S);break}
     case 'C':for(let k=0;k<8;k++){const a=k/8*6.28;dot(8+Math.cos(a)*6,8+Math.sin(a)*6,1.7,[128,124,116],0)}box([70,44,22],0,4,7,8,2);box([70,44,22],0,7,4,2,8);dot(8,8,3.4,[232,104,28],0);dot(8,7.5,1.8,[255,214,74],0);break;
+    case 'U':box([92,86,80],0,2,2,12,12);box([60,56,52],0,4,4,8,6);dot(8,8,2.6,[240,120,30],0);box([46,42,40],0,6,0,4,3);break;
+    case 'R':box([58,54,50],0,1,3,14,10);for(const a of[5,11])dot(a,7,2.2,[30,28,26],0);box([200,80,30],0,3,11,10,1);break;
+    case 'N':case 'Q':{box(WATER,0,0,0,S,S);g.strokeStyle=c==='N'?'rgba(255,255,255,.8)':'rgba(200,230,255,.9)';g.lineWidth=1;for(const r of[2.5,5])g.strokeRect(px+8-r,py+8-r,r*2,r*2);break}
     case 'J':shade(9,13,3,.3);box([84,56,28],0,7,4,2,11);box([170,38,30],0,6,8,4,1);dot(8,4,2.6,[236,230,210],0);box([30,24,20],0,7,3,1,1);box([30,24,20],0,9,3,1,1);break;
   }
 }
@@ -493,7 +513,7 @@ document.getElementById('copy').addEventListener('click',()=>{
   const rows=[];for(let y=0;y<H;y++)rows.push(map.slice(y*W,y*W+W).join(''));
   const legend={};for(const[k,[n,w]]of Object.entries(TILES))legend[k]={name:n,walkable:!!w};
   const json=JSON.stringify({name:'Kelmoor',width:W,height:H,tileSize:TS,spawn:SPAWN_PT,legend,areas:AREAS.map(({n,x,y,w,h})=>({name:n,x,y,w,h})),
-    npcs:GOB_SPAWNS.map(([x,y])=>({type:'goblin',level:2,x,y,wander:{cx:GC[0],cy:GC[1],radius:6}})),rows},null,1);
+    npcs:GOB_SPAWNS.map(([x,y])=>({type:'goblin',level:2,x,y,wander:{cx:GC[0],cy:GC[1],radius:6}})),townsfolk:TOWNSFOLK,rows},null,1);
   const dump=document.getElementById('dump');
   const fallback=()=>{dump.value=json;dump.hidden=false;dump.focus();dump.select();say('Select the text below and copy it')};
   try{navigator.clipboard.writeText(json).then(()=>say('Copied map JSON · 120 × 96 tiles'),fallback)}catch(err){fallback()}

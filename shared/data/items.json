@@ -1,10 +1,43 @@
 {
-  "comment": "Every item in the game. Items don't stack unless stackable is true. tool.bonus is added to the chance of success per attempt.",
+  "comment": "Every item in the game. value is the shop price in coins; shops buy back at 40%. Items don't stack unless stackable is true. tool.bonus is added to the chance of success per attempt. heals is used from phase 4.",
   "items": [
-    { "id": "bronze_axe", "name": "Bronze axe", "examine": "A sturdy axe with a bronze head. Good for felling trees.", "tool": { "skill": "woodcutting", "level": 1, "bonus": 0 } },
-    { "id": "iron_axe", "name": "Iron axe", "examine": "An iron-headed axe. It bites deeper than bronze.", "tool": { "skill": "woodcutting", "level": 10, "bonus": 0.08 } },
-    { "id": "steel_axe", "name": "Steel axe", "examine": "A well-balanced steel axe.", "tool": { "skill": "woodcutting", "level": 20, "bonus": 0.16 } },
-    { "id": "logs", "name": "Logs", "examine": "Freshly cut logs, still smelling of sap." },
-    { "id": "ashwood_logs", "name": "Ashwood logs", "examine": "Pale, bone-dry logs from a tree the Ashen Waste killed. They burn hot." }
+    { "id": "coins", "name": "Coins", "examine": "Kelmoor crowns. Lovely money.", "stackable": true, "value": 1 },
+
+    { "id": "bronze_axe", "name": "Bronze axe", "examine": "A sturdy axe with a bronze head. Good for felling trees.", "value": 16, "tool": { "skill": "woodcutting", "level": 1, "bonus": 0 } },
+    { "id": "iron_axe", "name": "Iron axe", "examine": "An iron-headed axe. It bites deeper than bronze.", "value": 56, "tool": { "skill": "woodcutting", "level": 10, "bonus": 0.08 } },
+    { "id": "steel_axe", "name": "Steel axe", "examine": "A well-balanced steel axe.", "value": 200, "tool": { "skill": "woodcutting", "level": 20, "bonus": 0.16 } },
+    { "id": "bronze_pickaxe", "name": "Bronze pickaxe", "examine": "Used for mining. The point is a little blunt.", "value": 16, "tool": { "skill": "mining", "level": 1, "bonus": 0 } },
+    { "id": "iron_pickaxe", "name": "Iron pickaxe", "examine": "An iron pickaxe. Rocks don't stand a chance.", "value": 56, "tool": { "skill": "mining", "level": 10, "bonus": 0.08 } },
+    { "id": "steel_pickaxe", "name": "Steel pickaxe", "examine": "A heavy steel pickaxe.", "value": 200, "tool": { "skill": "mining", "level": 20, "bonus": 0.16 } },
+    { "id": "small_net", "name": "Small fishing net", "examine": "Good for scooping up little fish in the shallows.", "value": 5 },
+    { "id": "fishing_rod", "name": "Fishing rod", "examine": "A rod for deep-water fishing. It needs bait.", "value": 5 },
+    { "id": "fishing_bait", "name": "Fishing bait", "examine": "Wriggly worms in a pot. Fish love them.", "stackable": true, "value": 3 },
+    { "id": "hammer", "name": "Hammer", "examine": "A smith's hammer, for working metal on an anvil.", "value": 2 },
+
+    { "id": "logs", "name": "Logs", "examine": "Freshly cut logs, still smelling of sap.", "value": 4 },
+    { "id": "ashwood_logs", "name": "Ashwood logs", "examine": "Pale, bone-dry logs from a tree the Ashen Waste killed. They burn hot.", "value": 12 },
+
+    { "id": "copper_ore", "name": "Copper ore", "examine": "Reddish ore. Smelt it with tin for bronze.", "value": 5 },
+    { "id": "tin_ore", "name": "Tin ore", "examine": "Silvery ore. Smelt it with copper for bronze.", "value": 5 },
+    { "id": "iron_ore", "name": "Iron ore", "examine": "Heavy, rust-coloured ore.", "value": 17 },
+    { "id": "coal", "name": "Coal", "examine": "Black and dusty. Needed to make steel.", "value": 45 },
+    { "id": "bronze_bar", "name": "Bronze bar", "examine": "A bar of bronze, ready for the anvil.", "value": 12 },
+    { "id": "iron_bar", "name": "Iron bar", "examine": "A bar of iron, ready for the anvil.", "value": 28 },
+    { "id": "steel_bar", "name": "Steel bar", "examine": "A bar of steel, ready for the anvil.", "value": 100 },
+
+    { "id": "bronze_dagger", "name": "Bronze dagger", "examine": "Short, sharp, and bronze.", "value": 10 },
+    { "id": "bronze_sword", "name": "Bronze sword", "examine": "A plain bronze sword.", "value": 26 },
+    { "id": "iron_dagger", "name": "Iron dagger", "examine": "A short iron blade.", "value": 35 },
+    { "id": "iron_sword", "name": "Iron sword", "examine": "A solid iron sword.", "value": 91 },
+    { "id": "steel_dagger", "name": "Steel dagger", "examine": "A keen steel blade.", "value": 125 },
+    { "id": "steel_sword", "name": "Steel sword", "examine": "A fine steel sword.", "value": 325 },
+
+    { "id": "raw_minnows", "name": "Raw minnows", "examine": "A handful of tiny fish. Cook them first.", "value": 5 },
+    { "id": "minnows", "name": "Minnows", "examine": "Crispy little fried fish.", "value": 8, "heals": 3 },
+    { "id": "raw_perch", "name": "Raw perch", "examine": "A striped river perch. Cook it first.", "value": 15 },
+    { "id": "perch", "name": "Perch", "examine": "A nicely grilled perch.", "value": 25, "heals": 6 },
+    { "id": "raw_pike", "name": "Raw pike", "examine": "A long, toothy pike. Cook it first.", "value": 30 },
+    { "id": "pike", "name": "Pike", "examine": "A hearty baked pike.", "value": 50, "heals": 9 },
+    { "id": "burnt_fish", "name": "Burnt fish", "examine": "Oops.", "value": 1 }
   ]
 }

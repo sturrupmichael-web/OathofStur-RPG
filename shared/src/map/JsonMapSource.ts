@@ -3,6 +3,7 @@ import type {
   MapData,
   MapSource,
   MonsterDef,
+  NpcDef,
   Placement,
   PlacementKind,
   ResourceDef,
@@ -21,6 +22,8 @@ export interface JsonMapFile {
   legend: Record<string, { name: string; walkable: boolean }>;
   areas?: MapArea[];
   npcs?: { type: string; level?: number; x: number; y: number; wander?: { cx: number; cy: number; radius: number } }[];
+  /** Townsfolk standing at their posts: shopkeepers, bankers. */
+  townsfolk?: { type: string; role: string; x: number; y: number }[];
   /** rows[y][x] is the tile code at (x, y). */
   rows: string[];
 }
@@ -44,7 +47,11 @@ const OBJECT_KINDS: Record<string, Exclude<PlacementKind, 'npc' | 'monster'>> = 
   tin_rock: 'resource',
   iron_rock: 'resource',
   coal_rock: 'resource',
+  shallow_fishing_spot: 'resource',
+  deep_fishing_spot: 'resource',
   anvil: 'station',
+  furnace: 'station',
+  range: 'station',
   bank_booth: 'station',
   market_stall: 'station',
   altar: 'station',
@@ -60,6 +67,7 @@ const OBJECT_KINDS: Record<string, Exclude<PlacementKind, 'npc' | 'monster'>> = 
 function resourceSkill(key: string): string {
   if (key.endsWith('tree')) return 'woodcutting';
   if (key.endsWith('rock')) return 'mining';
+  if (key.endsWith('fishing_spot')) return 'fishing';
   return 'unknown';
 }
 
@@ -164,6 +172,14 @@ export class JsonMapSource implements MapSource {
       placements.push({ kind: 'monster', defKey: key, x: n.x, y: n.y, level: n.level, wander: n.wander && { ...n.wander } });
     }
 
+    const npcs: Record<string, NpcDef> = {};
+    for (const n of file.townsfolk ?? []) {
+      const key = slug(n.type);
+      if (!walkableAt(n.x, n.y)) throw new Error(`Map ${id}: ${n.type} at ${n.x},${n.y} is not on a walkable tile`);
+      npcs[key] ??= { key, name: n.type, role: n.role };
+      placements.push({ kind: 'npc', defKey: key, x: n.x, y: n.y });
+    }
+
     const spawn = { x: file.spawn.x, y: file.spawn.y };
     if (!walkableAt(spawn.x, spawn.y)) throw new Error(`Map ${id}: spawn ${spawn.x},${spawn.y} is not walkable`);
 
@@ -180,7 +196,7 @@ export class JsonMapSource implements MapSource {
       placements,
       areas: (file.areas ?? []).map((a) => ({ ...a })),
       spawn,
-      defs: { resources, stations, scenery, npcs: {}, monsters },
+      defs: { resources, stations, scenery, npcs, monsters },
     };
   }
 }

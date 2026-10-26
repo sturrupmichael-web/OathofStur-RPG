@@ -15,9 +15,11 @@ npm run build      # static site in client/dist, deploy anywhere
 
 ## Controls
 
-- Left-click a tile (or the minimap) to walk. Clicking a tree walks over and chops it; clicking
-  a ground item picks it up. Other objects walk you next to them.
-- Right-click for the options menu (Chop down, Walk here, Examine).
+- Left-click a tile (or the minimap) to walk. Clicking a tree, rock or fishing spot walks over and
+  starts gathering; clicking the furnace, anvil or range opens what you can make there; clicking a
+  bank booth, banker or shopkeeper opens the bank or shop; clicking a ground item picks it up.
+- Right-click for the options menu (Chop down, Mine, Net, Bait, Smelt, Trade, Walk here, Examine).
+- With the bank or a shop open, click inventory items to deposit or sell them.
 - Click an inventory item for Drop or Examine; drag items between slots to rearrange them.
 - The ⚙ tab saves, exports and imports your character. It also saves itself every 30 seconds.
 - Q/E, A/D or arrow keys rotate the camera; W/S or up/down tilt; middle-drag rotates; wheel zooms.
@@ -27,7 +29,8 @@ npm run build      # static site in client/dist, deploy anywhere
 ```
 shared/   simulation, protocol types, map loading, game data (no DOM, no rendering)
   data/   maps/kelmoor.json (source of truth), skills.json (XP curve), items.json,
-          resources.json (levels, XP, respawns), examine.json
+          resources.json (levels, XP, respawns), recipes.json (smelting, smithing, cooking),
+          shops.json, examine.json
 client/   Three.js rendering, UI, LocalServer
 server/   Node WebSocket server (phase 6)
 docs/     PLAN.md: phases, message types, map notes

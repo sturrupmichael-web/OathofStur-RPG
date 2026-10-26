@@ -18,12 +18,68 @@ const logs = (bark: string, wood: string, ring: string) => `
   <ellipse cx="8.5" cy="22.5" rx="1.4" ry="1.8" fill="none" stroke="${ring}" stroke-width="0.8"/>
   <ellipse cx="12.5" cy="13.5" rx="1.4" ry="1.8" fill="none" stroke="${ring}" stroke-width="0.8"/>`;
 
+const pickaxe = (head: string) => `
+  <rect x="16" y="6" width="4" height="27" rx="1.5" fill="#7a5230" stroke="#3d2814" stroke-width="1" transform="rotate(25 18 19)"/>
+  <path d="M4 12 Q18 1 32 10 L30 13 Q18 6 6 15 Z" fill="${head}" stroke="#2a2a2a" stroke-width="1.2"/>`;
+
+const ore = (fleck: string) => `
+  <path d="M6 24 L9 12 L19 7 L29 12 L31 23 L22 30 L11 29 Z" fill="#7d776e" stroke="#2f2b26" stroke-width="1.2"/>
+  <path d="M9 12 L19 7 L29 12 L19 15 Z" fill="#958e84"/>
+  <circle cx="14" cy="19" r="2.6" fill="${fleck}"/><circle cx="22" cy="22" r="2.2" fill="${fleck}"/><circle cx="21" cy="13" r="1.8" fill="${fleck}"/>`;
+
+const bar = (top: string, side: string) => `
+  <path d="M6 22 L11 13 L30 13 L30 22 Z" fill="${side}" stroke="#222" stroke-width="1.1"/>
+  <path d="M11 13 L15 9 L33 9 L30 13 Z" fill="${top}" stroke="#222" stroke-width="1.1"/>
+  <path d="M30 13 L33 9 L33 18 L30 22 Z" fill="${side}" stroke="#222" stroke-width="1.1"/>
+  <rect x="9" y="15" width="16" height="2" fill="rgba(255,255,255,.35)"/>`;
+
+const fish = (body: string, belly: string, stripes = '') => `
+  <path d="M5 18 Q14 8 25 14 L32 9 L31 18 L32 27 L25 22 Q14 28 5 18 Z" fill="${body}" stroke="#1d1d1d" stroke-width="1.1"/>
+  <path d="M8 19 Q15 25 24 21" fill="none" stroke="${belly}" stroke-width="2"/>${stripes}
+  <circle cx="10" cy="16" r="1.4" fill="#111"/>`;
+
+const blade = (metal: string, length: number) => `
+  <path d="M18 ${32 - length} L21 ${34 - length} L20 26 L16 26 L15 ${34 - length} Z" fill="${metal}" stroke="#222" stroke-width="1"/>
+  <rect x="11" y="26" width="14" height="3" rx="1" fill="#6b5a3a" stroke="#222" stroke-width="0.8"/>
+  <rect x="16.5" y="29" width="3" height="5" fill="#5a3a20"/>`;
+
 const ICONS: Record<string, string> = {
   bronze_axe: axe('#b8793a', '#f0c48a'),
   iron_axe: axe('#7d7f86', '#d8dbe2'),
   steel_axe: axe('#a9b3bd', '#f2f6fa'),
+  bronze_pickaxe: pickaxe('#b8793a'),
+  iron_pickaxe: pickaxe('#7d7f86'),
+  steel_pickaxe: pickaxe('#a9b3bd'),
   logs: logs('#6b4a2b', '#d9b47c', '#9a7646'),
   ashwood_logs: logs('#8d857c', '#ece3d2', '#b9ad98'),
+  copper_ore: ore('#d07a3a'),
+  tin_ore: ore('#d4d8e0'),
+  iron_ore: ore('#9a5238'),
+  coal: `<path d="M6 24 L9 12 L19 7 L29 12 L31 23 L22 30 L11 29 Z" fill="#232323" stroke="#000" stroke-width="1.2"/><path d="M9 12 L19 7 L29 12 L19 15 Z" fill="#3a3a3a"/>`,
+  bronze_bar: bar('#e0a060', '#b8793a'),
+  iron_bar: bar('#a8aab2', '#7d7f86'),
+  steel_bar: bar('#dfe6ee', '#a9b3bd'),
+  bronze_dagger: blade('#c88a4a', 14),
+  iron_dagger: blade('#9a9ca4', 14),
+  steel_dagger: blade('#c9d3dd', 14),
+  bronze_sword: blade('#c88a4a', 26),
+  iron_sword: blade('#9a9ca4', 26),
+  steel_sword: blade('#c9d3dd', 26),
+  small_net: `<rect x="16" y="20" width="3" height="14" fill="#7a5230"/><ellipse cx="17.5" cy="12" rx="11" ry="9" fill="rgba(240,230,200,.15)" stroke="#d8cfb4" stroke-width="1.6"/>
+    <path d="M9 7 L26 17 M9 17 L26 7 M17.5 3 L17.5 21 M7 12 L28 12" stroke="#d8cfb4" stroke-width="0.8"/>`,
+  fishing_rod: `<path d="M6 32 L30 4" stroke="#7a5230" stroke-width="2.4" stroke-linecap="round"/><path d="M30 4 Q33 16 27 26" fill="none" stroke="#e8e8e8" stroke-width="0.8"/>
+    <circle cx="10" cy="27" r="2.6" fill="#555" stroke="#222"/><circle cx="27" cy="27" r="1.6" fill="#d33"/>`,
+  fishing_bait: `<path d="M9 14 L27 14 L25 31 L11 31 Z" fill="#8a6a46" stroke="#3d2c14" stroke-width="1.2"/><ellipse cx="18" cy="14" rx="9" ry="3" fill="#5a3e22"/>
+    <path d="M13 13 Q16 6 19 12 Q22 5 24 12" fill="none" stroke="#d98a8a" stroke-width="2" stroke-linecap="round"/>`,
+  hammer: `<rect x="16" y="12" width="4" height="22" rx="1.5" fill="#7a5230" stroke="#3d2814"/><rect x="8" y="5" width="20" height="8" rx="1.5" fill="#6c6e74" stroke="#222" stroke-width="1.2"/>`,
+  raw_minnows: fish('#8fa9b8', '#dfe8ee') + `<g transform="translate(4 -6) scale(.8)">${fish('#7f98a6', '#dfe8ee')}</g>`,
+  minnows: fish('#c99a52', '#f0d6a0') + `<g transform="translate(4 -6) scale(.8)">${fish('#b8873e', '#f0d6a0')}</g>`,
+  raw_perch: fish('#8aa04a', '#e8e0a0', '<path d="M13 12 L13 23 M17 11 L17 24 M21 12 L21 23" stroke="#3d4a20" stroke-width="1.4"/>'),
+  perch: fish('#b88442', '#f0d0a0', '<path d="M13 12 L13 23 M17 11 L17 24 M21 12 L21 23" stroke="#6a4a20" stroke-width="1.4"/>'),
+  raw_pike: fish('#5f7f52', '#d8e0b8', '<circle cx="15" cy="15" r="1" fill="#e8f0c8"/><circle cx="20" cy="18" r="1" fill="#e8f0c8"/>'),
+  pike: fish('#a8743a', '#ecc890'),
+  burnt_fish: fish('#2a2420', '#3d3530'),
+  coins: `<g stroke="#7a5a10" stroke-width="1"><ellipse cx="14" cy="24" rx="8" ry="4" fill="#e8b830"/><ellipse cx="22" cy="20" rx="8" ry="4" fill="#f0c840"/><ellipse cx="16" cy="15" rx="8" ry="4" fill="#ffd84d"/></g>`,
 };
 
 const SACK = `<path d="M10 12 Q6 30 18 31 Q30 30 26 12 Z" fill="#a08454" stroke="#3d2c14" stroke-width="1.2"/>

@@ -1,0 +1,14 @@
+{
+  "comment": "Shops, keyed by id. npc is the townsfolk key that runs it. Stock never runs out. Shops pay sellRate x value for anything in `buys` (\"all\" = any item except coins).",
+  "sellRate": 0.4,
+  "shops": {
+    "general_store": { "name": "Kelmoor General Store", "npc": "shopkeeper", "buys": "all",
+      "stock": ["bronze_axe", "iron_axe", "bronze_pickaxe", "iron_pickaxe", "small_net", "fishing_rod", "fishing_bait", "hammer"] },
+    "aldrics_blades": { "name": "Aldric's Blades", "npc": "aldric",
+      "buys": ["bronze_dagger", "bronze_sword", "iron_dagger", "iron_sword", "steel_dagger", "steel_sword", "bronze_bar", "iron_bar", "steel_bar"],
+      "stock": ["bronze_dagger", "bronze_sword", "iron_dagger", "iron_sword"] },
+    "blue_gull_kitchen": { "name": "Blue Gull Kitchen", "npc": "cook_tobin",
+      "buys": ["raw_minnows", "raw_perch", "raw_pike", "minnows", "perch", "pike"],
+      "stock": ["minnows", "perch"] }
+  }
+}

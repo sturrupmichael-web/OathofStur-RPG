@@ -1,11 +1,11 @@
 import type { Point } from '../map/types';
 import type { EntityId } from '../sim/entities';
-import type { Inventory } from '../sim/items';
+import type { Inventory, ItemStack } from '../sim/items';
 import type { SaveData } from '../sim/save';
 import type { SkillId, SkillXp } from '../sim/skills';
 
 /** Bumped whenever a message shape changes, so client and server can refuse a mismatch. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 // ---------------------------------------------------------------------------
 // Client -> server. Intents only: the simulation validates and decides outcomes.
@@ -14,13 +14,24 @@ export const PROTOCOL_VERSION = 2;
 export type ClientMessage =
   | { type: 'join'; name: string; protocolVersion: number; save?: SaveData | null }
   | { type: 'walk'; x: number; y: number }
-  /** Use a world object: chop a tree, take a ground item. */
-  | { type: 'interact'; targetId: EntityId; action: 'gather' | 'take' }
+  /**
+   * Use a world object: gather from a tree, rock or fishing spot, take a
+   * ground item, or use a station, bank or shopkeeper (opens its window).
+   */
+  | { type: 'interact'; targetId: EntityId; action: 'gather' | 'take' | 'use' }
   | { type: 'examine'; targetId: EntityId }
   | { type: 'examineItem'; slot: number }
   | { type: 'invDrop'; slot: number }
   | { type: 'invMove'; from: number; to: number }
-  | { type: 'requestSave' };
+  | { type: 'requestSave' }
+  | { type: 'closeInterface' }
+  /** Make `qty` of a recipe at the open station window. */
+  | { type: 'craft'; recipeId: string; qty: number }
+  | { type: 'bankDeposit'; slot: number; qty: number }
+  | { type: 'bankDepositAll' }
+  | { type: 'bankWithdraw'; index: number; qty: number }
+  | { type: 'shopBuy'; itemId: string; qty: number }
+  | { type: 'shopSell'; slot: number; qty: number };
 
 // ---------------------------------------------------------------------------
 // Server -> client.
@@ -37,11 +48,25 @@ export interface PublicEntity {
   combatLevel?: number;
   /** Resources: used up and waiting to grow back (a stump). */
   depleted?: boolean;
-  /** Players: the tile they are working on (chopping), so others see the swing. */
+  /** Players: the tile they are working on, so others see them face it. */
   workingOn?: Point;
+  /** Players: what they are doing there, which picks the animation and tool. */
+  activity?: Activity;
   /** Ground items: how many. */
   qty?: number;
 }
+
+export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith';
+
+/** The window the player has open, with what it needs to draw. */
+export type UiView =
+  | { kind: 'bank'; items: ItemStack[] }
+  | { kind: 'shop'; shopId: string; name: string; stock: { itemId: string; price: number }[]; buys: 'all' | string[]; sellRate: number }
+  | {
+      kind: 'craft';
+      title: string;
+      recipes: { id: string; output: string; level: number; skill: SkillId; xp: number; inputs: { itemId: string; qty: number }[] }[];
+    };
 
 /** State only the owning player sees. */
 export interface SelfState {
@@ -51,6 +76,7 @@ export interface SelfState {
   combatLevel: number;
   destination: Point | null;
   inventory: Inventory;
+  ui: UiView | null;
 }
 
 export type GameMessageKind = 'info' | 'warn' | 'examine' | 'quest' | 'levelup';

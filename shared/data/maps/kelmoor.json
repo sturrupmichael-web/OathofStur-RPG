@@ -155,6 +155,22 @@
   "J": {
    "name": "Goblin totem",
    "walkable": false
+  },
+  "U": {
+   "name": "Furnace",
+   "walkable": false
+  },
+  "R": {
+   "name": "Range",
+   "walkable": false
+  },
+  "N": {
+   "name": "Shallow fishing spot",
+   "walkable": false
+  },
+  "Q": {
+   "name": "Deep fishing spot",
+   "walkable": false
   }
  },
  "areas": [
@@ -459,6 +475,56 @@
    }
   }
  ],
+ "townsfolk": [
+  {
+   "type": "Shopkeeper",
+   "role": "shop",
+   "x": 73,
+   "y": 52
+  },
+  {
+   "type": "Aldric",
+   "role": "shop",
+   "x": 48,
+   "y": 52
+  },
+  {
+   "type": "Cook Tobin",
+   "role": "shop",
+   "x": 67,
+   "y": 59
+  },
+  {
+   "type": "Banker",
+   "role": "bank",
+   "x": 40,
+   "y": 40
+  },
+  {
+   "type": "Banker",
+   "role": "bank",
+   "x": 42,
+   "y": 40
+  },
+  {
+   "type": "Banker",
+   "role": "bank",
+   "x": 76,
+   "y": 40
+  },
+  {
+   "type": "Banker",
+   "role": "bank",
+   "x": 78,
+   "y": 40
+  },
+  {
+   "type": "Banker",
+   "role": "bank",
+   "x": 80,
+   "y": 40
+  }
+ ],
  "rows": [
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaaaaaaaaaaaaataaaaaaaaaaa~~~~aaaaaaaaaaaaaaaa",
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaataaaaaaaaadddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~~~~aaaaaatataaaaaaa",
@@ -511,14 +577,14 @@
   "....ddddddddddddddddddddd.........W.....c,,,,..,c,,,ccccccccccccccccc....c.......c....W...........~~~~....SSSSSSSSSSSS..",
   "....ddBB+BBdddddBB+BBBddd..T......W.BBBB+BBBB.BB+BBBccccccccccccccccc.BBB+BBB.BBB+BBB.W........T..~~~~....SSSddddSSSSS..",
   "....ddBwwwBdddddBwwwwBddd.........W.BsssssssB.BwwwwBccccccccccccccccc.BwwwwwB.BwwwwwB.W............~~~~...SSSddddSSSSS..",
-  "....ddBwwwBdddddBwwwwBddd.........W.BsssssssB.BwwwwBccMcccccccccccMcc.BwwwwwB.BwwwwwB.W......T.....~~~~...SSSSSSSSSSSS..",
+  "....ddBwwwBdddddBwwwwBddd.........W.BssssssUB.BwwwwBccMcccccccccccMcc.BwwwwwB.BwwwwwB.W......T.....~~~~...SSSSSSSSSSSS..",
   "....ddBBBBBdddddBBBBBBddd.........W.BssAsAssB.BwwwwBcccccccccccHccccc.BwwwwwB.BwwwwwB.W......T.....~~~~...SSSSSSSSSSSS..",
   "............,,,,,.................W.BsssssssB.BwwwwBccccccccccccccccc.BwwwwwB.BwwwwwB,W.............~~~~..SSSSSSSSSSSS..",
   "...........,,,Z,,,............T...W.BsssssssB.BBBBBB,,,,,..ccc........BBBBBBB.BBBBBBB,W...,,,.......~~~~................",
-  "..........,,Z,,,Z,,...............W.BBBBBBBBB..,,,,,,,,,...ccc..................,,,,,,W.T,T,,,......~~~~................",
+  "..........,,Z,,,Z,,...............W.BBBBBBBBB..,,,,,,,,,...ccc..................,,,,,,W.T,T,,,......N~~~................",
   "..........,,,,,,,,,.........T.....W............,,,,,,,,,...ccc.................T,,,,,,W..,,,,,..T...~~~~...........T.T..",
   "..........,Z,,,,,Z,...............W.cccccccccccccccccccccccccc.BBBBBBB......T.T.,,,,T,W..,,,,,.......~~~~....T..........",
-  "...T......,,,,,,,,,...............W.cccccccccccccccccccccccccc.BwwwwwB...ggg..T.,,,,,,W...,T,........~~~~.......T.......",
+  "...T......,,,,,,,,,...............W.cccccccccccccccccccccccccc.BwwwwRB...ggg..T.,,,,,,W...,T,........N~~~.......T.......",
   "..........,,Z,,,Z,,d..............W..BB+BBB..BB+BBB..BB+BB.ccc.BwwwwwB...ggg...T.T,,,,W..............~~~~..........T....",
   "..T........,,,Z,,,..d.............W..BwwwwB..BwwwwB..BwwwB.cccc+wwwwwB..........T.TT..W........,,,...~~~~...T....,,,,,T.",
   "............,,,,,....d............W..BwwwwB..BwwwwB..BwwwB.ccc.BwwwwwB..TT........T.T.W......,,T,,,,.~~~~......,,,,,,,,,",
@@ -526,10 +592,10 @@
   ",T,,,,,,T,T,T,,,,TT,,,d,,TTT,TTTT.W..BBBBBB..BBBBBB..BwwwB.ccc,BBBBBBB,.TTT..~~~~.T.,,W,,,,,,,,TT,,,,~~~~.....,,,,,,,,,,",
   ",,,T,T,,,,,,T,T,,,,,T,d,,,TT,T,,,.W..................BBBBB.ccc,,,,,,,,,......~~~~..T,,W,,,,,,,,,T,,,,~~~~.....,,,,,,,,,,",
   ",T,,,,T,,T,,TTTT,T,TT,d,,,,,,TT,,.W..BBB+BBBB..............ccc,,,,,,,,,............,,,W,,,,TT,,,T,,,,~~~~.....,,,,,,,,,,",
-  ",T,,,TTT,T,,TT,T,TT,T,d,T,,,T,,,,.W..BwwwwwwB..............ccc,,,,,,,,,T..........ggg,W,,,,,,,,,,,,T,~~~~.....,,,,,,,T,,",
+  ",T,,,TTT,T,,TT,T,TT,T,d,T,,,T,,,,.W..BwwwwwwB..............ccc,,,,,,,,,T..........ggg,W,,,,,,,,,,,,T,Q~~~.....,,,,,,,T,,",
   ",TT,,,,TTTT,,,T,,,TT,,d,T,TT,T,TT.W..BwwwwwwB..............ccc.,,,,,,,,,,T,...T...ggg,W,,,,,,,,,,,,,,~~~~.....,,,,,,,,,,",
   ",,,TT,,,,,,,TT,,,TT,,,d,T,TT,T,,,.W..BwwwwwwB..............ccc..,,,,,,,,,,,T......,,,,W,,,,,,,,,,,,,,~~~~......,,,,,,,,,",
-  ",T,,,T,,,T,,TT,,,,TT,,d,T,,,T,,TT.W..BBBBBBBB..............ccc....,,,,,,,,,,,....,,,,,W,,,,,,,,,,,,,,~~~~......,,,,,,,,,",
+  ",T,,,T,,,T,,TT,,,,TT,,d,T,,,T,,TT.W..BBBBBBBB..............ccc....,,,,,,,,,,,....,,,,,W,,,,,,,,,,,,,,Q~~~......,,,,,,,,,",
   ",,T,,T,T,,,TTT,,T,,,,,d,T,TT,,,,T.WWWWWWWWWWWWWWWWWWWWWWWWWcccWWWWWWWWWWWWWWWWWWWWWWWWW,,,,,,,.,,T,,,~~~~....T...,,T,,..",
   ",T,,,,,TT,T,,,T,,,,T,,d,,,T,TT,,,..........................ddd,,,,,,,,,,,,,,,,,,.,,,,,,,,,T,,..,,,,,,~~~~...............",
   ",T,,TT,,,,T,,T,T,,TTT,d,T,TTT,,,T..........................ddd,,,,,,,,,,,,,,,,,,,.,,,,,,,,,,.....,,,,,~~~~..............",

@@ -14,6 +14,7 @@ export function shared<T extends THREE.BufferGeometry | THREE.Material>(resource
 export function disposeModel(root: THREE.Object3D): void {
   root.traverse((o) => {
     if (!(o instanceof THREE.Mesh)) return;
+    if (o instanceof THREE.SkinnedMesh) o.skeleton.dispose();
     if (!o.geometry.userData.shared) o.geometry.dispose();
     for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (!m.userData.shared) m.dispose();
   });

@@ -6,8 +6,11 @@ import { hash2, type TileInfo } from './palette';
 import { textures } from './textures';
 
 export const WALL_HEIGHT = 1.3;
+export const CITY_WALL_HEIGHT = 1.8;
+/** Real point lights, moved to the nearest light spots each frame. */
+const LIGHT_POOL = 6;
 
-export type BuildingKind = 'bank' | 'store' | 'smithy' | 'kitchen' | 'house';
+export type BuildingKind = 'bank' | 'store' | 'smithy' | 'chapel' | 'inn' | 'keep' | 'library' | 'house';
 
 export interface Building {
   /** Wall rectangle, inclusive tile coordinates. */
@@ -17,41 +20,138 @@ export interface Building {
   y1: number;
   doors: Point[];
   kind: BuildingKind;
+  /** The map's name for it, or '' for an unnamed hut. */
   name: string;
+  /** 'round' buildings (The Bourse) have curved walls: a conical roof and no wall trim. */
+  shape: 'rect' | 'round';
   /** A floor tile near the middle, used when the roof is clicked. */
   entry: Point;
 }
 
+const FLOORS = new Set(['stone_floor', 'wooden_floor']);
+
 const KIND_BY_OBJECT: Record<string, BuildingKind> = {
-  bank_chest: 'bank',
-  shopkeeper: 'store',
-  furnace: 'smithy',
+  bank_booth: 'bank',
   anvil: 'smithy',
-  range: 'kitchen',
+  altar: 'chapel',
 };
 
-const NAMES: Record<BuildingKind, string> = {
-  bank: 'Bank',
-  store: 'General Store',
-  smithy: 'Smithy',
-  kitchen: 'Kitchen',
-  house: 'House',
-};
+/** Kinds the map's building names imply, checked in order. */
+const KIND_BY_NAME: [RegExp, BuildingKind][] = [
+  [/keep/i, 'keep'],
+  [/chapel|shrine|temple/i, 'chapel'],
+  [/bank/i, 'bank'],
+  [/smith/i, 'smithy'],
+  [/inn|tavern/i, 'inn'],
+  [/scriptorium|library/i, 'library'],
+  [/store|shop|blades|robe/i, 'store'],
+];
 
-/** Finds rooms: connected floor areas enclosed by a rectangle of walls and doors. */
+/**
+ * Finds buildings: the map's named areas whose edge is all wall and door, plus
+ * any other floor area enclosed by a rectangle of walls (unnamed huts).
+ */
 export function detectBuildings(map: MapData, info: TileInfo): Building[] {
   const { width, height } = map;
-  const seen = new Uint8Array(width * height);
+  const key = (x: number, y: number) => info.terrainKey[y * width + x];
   const buildings: Building[] = [];
+
+  const make = (b: { x0: number; y0: number; x1: number; y1: number }, name: string): Building | null => {
+    const doors: Point[] = [];
+    let closed = true;
+    forEachBorder(b, (x, y) => {
+      const k = key(x, y);
+      if (k === 'door') doors.push({ x, y });
+      else if (k !== 'building_wall') closed = false;
+    });
+    if (!closed || !doors.length) return null;
+    const objects = new Set<string>();
+    let floors = 0;
+    for (let y = b.y0 + 1; y < b.y1; y++)
+      for (let x = b.x0 + 1; x < b.x1; x++) {
+        if (FLOORS.has(key(x, y))) floors++;
+        const p = info.placementKey[y * width + x];
+        if (p) objects.add(p);
+      }
+    if (!floors) return null;
+    let kind: BuildingKind = KIND_BY_NAME.find(([re]) => re.test(name))?.[1] ?? 'house';
+    if (kind === 'house') for (const o of objects) kind = KIND_BY_OBJECT[o] ?? kind;
+    // Entry: the floor tile nearest the middle (the middle may be an inner wall).
+    const mx = (b.x0 + b.x1) / 2;
+    const my = (b.y0 + b.y1) / 2;
+    let entry = { x: b.x0 + 1, y: b.y0 + 1 };
+    for (let y = b.y0 + 1; y < b.y1; y++)
+      for (let x = b.x0 + 1; x < b.x1; x++)
+        if (FLOORS.has(key(x, y)) && !info.placementKey[y * width + x] && Math.hypot(x - mx, y - my) < Math.hypot(entry.x - mx, entry.y - my)) entry = { x, y };
+    return { ...b, doors, kind, name, entry, shape: 'rect' as const };
+  };
+
+  /** A named area holding an enclosed floor that isn't a rectangle, like the round Bourse. */
+  const makeRound = (a: { x: number; y: number; w: number; h: number; name: string }): Building | null => {
+    const inArea = (x: number, y: number) => x >= a.x && y >= a.y && x < a.x + a.w && y < a.y + a.h;
+    let start = -1;
+    for (let i = 0; i < a.w * a.h && start < 0; i++) {
+      const x = a.x + (i % a.w);
+      const y = a.y + Math.floor(i / a.w);
+      if (FLOORS.has(key(x, y))) start = y * width + x;
+    }
+    if (start < 0) return null;
+    const seen = new Set([start]);
+    const stack = [start];
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    const doors: Point[] = [];
+    while (stack.length) {
+      const i = stack.pop()!;
+      const x = i % width;
+      const y = Math.floor(i / width);
+      x0 = Math.min(x0, x);
+      x1 = Math.max(x1, x);
+      y0 = Math.min(y0, y);
+      y1 = Math.max(y1, y);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const j = ny * width + nx;
+        if (seen.has(j)) continue;
+        if (!inArea(nx, ny)) return null; // the floor leaks out: not enclosed
+        const k = key(nx, ny);
+        if (k === 'door') {
+          seen.add(j);
+          doors.push({ x: nx, y: ny });
+        } else if (FLOORS.has(k) || info.placementKey[j]) {
+          seen.add(j);
+          stack.push(j);
+        } else if (k !== 'building_wall') return null;
+      }
+    }
+    const b = { x0: x0 - 1, y0: y0 - 1, x1: x1 + 1, y1: y1 + 1 };
+    // It must be the area itself, not a hut somewhere inside a larger district.
+    if ((b.x1 - b.x0 + 1) * (b.y1 - b.y0 + 1) < a.w * a.h * 0.5) return null;
+    const kind = KIND_BY_NAME.find(([re]) => re.test(a.name))?.[1] ?? 'house';
+    return { ...b, doors, kind, name: a.name, entry: { x: Math.round((x0 + x1) / 2), y: y1 }, shape: 'round' };
+  };
+
+  for (const a of map.areas) {
+    if (a.w < 3 || a.h < 3) continue;
+    const b = make({ x0: a.x, y0: a.y, x1: a.x + a.w - 1, y1: a.y + a.h - 1 }, a.name) ?? makeRound(a);
+    if (b) buildings.push(b);
+  }
+
+  const inside = (x: number, y: number) => buildings.some((b) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1);
+  const seen = new Uint8Array(width * height);
   for (let start = 0; start < width * height; start++) {
-    if (seen[start] || info.terrainKey[start] !== 'floor') continue;
+    const sx = start % width;
+    const sy = Math.floor(start / width);
+    if (seen[start] || !FLOORS.has(info.terrainKey[start]) || inside(sx, sy)) continue;
     const stack = [start];
     seen[start] = 1;
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
-    const kinds = new Set<BuildingKind>();
     while (stack.length) {
       const i = stack.pop()!;
       const x = i % width;
@@ -60,35 +160,20 @@ export function detectBuildings(map: MapData, info: TileInfo): Building[] {
       maxX = Math.max(maxX, x);
       minY = Math.min(minY, y);
       maxY = Math.max(maxY, y);
-      const k = info.placementKey[i];
-      if (k && KIND_BY_OBJECT[k]) kinds.add(KIND_BY_OBJECT[k]);
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = x + dx;
         const ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
         const j = ny * width + nx;
-        if (!seen[j] && info.terrainKey[j] === 'floor') {
+        if (!seen[j] && (FLOORS.has(info.terrainKey[j]) || info.placementKey[j])) {
           seen[j] = 1;
           stack.push(j);
         }
       }
     }
-    const b = { x0: minX - 1, y0: minY - 1, x1: maxX + 1, y1: maxY + 1 };
-    const doors: Point[] = [];
-    let solid = 0;
-    let border = 0;
-    forEachBorder(b, (x, y) => {
-      border++;
-      const k = info.terrainKey[y * width + x];
-      if (k === 'wall') solid++;
-      if (k === 'door') {
-        solid++;
-        doors.push({ x, y });
-      }
-    });
-    if (solid < border) continue; // not a closed rectangular room
-    const kind: BuildingKind = kinds.has('bank') ? 'bank' : kinds.has('store') ? 'store' : kinds.has('smithy') ? 'smithy' : kinds.has('kitchen') ? 'kitchen' : 'house';
-    buildings.push({ ...b, doors, kind, name: NAMES[kind], entry: { x: Math.round((minX + maxX) / 2), y: Math.round((minY + maxY) / 2) } });
+    if (minX < 1 || minY < 1 || maxX > width - 2 || maxY > height - 2) continue;
+    const b = make({ x0: minX - 1, y0: minY - 1, x1: maxX + 1, y1: maxY + 1 }, '');
+    if (b) buildings.push(b);
   }
   return buildings;
 }
@@ -116,9 +201,15 @@ const ROOF_COLORS: Record<BuildingKind, number> = {
   bank: 0x48627f,
   store: 0x9c3f2c,
   smithy: 0x45464f,
-  kitchen: 0xb0623a,
+  chapel: 0x5d6a78,
+  inn: 0xb0623a,
+  keep: 0x3e4450,
+  library: 0x6a4a7a,
   house: 0x7a5a3a,
 };
+
+/** Kinds with a working hearth: they get a chimney and smoke. */
+const HEARTH: Partial<Record<BuildingKind, true>> = { smithy: true, inn: true, house: true };
 
 interface RoofState {
   building: Building;
@@ -150,6 +241,9 @@ export class BuildingLayer {
   private readonly roofs: RoofState[] = [];
   private readonly flames: Flame[] = [];
   private readonly smoke: Smoke[] = [];
+  /** Where warm lights belong; a few real lights follow the player between them. */
+  private readonly lightSpots: { pos: THREE.Vector3; color: number; intensity: number }[] = [];
+  private readonly lights: THREE.PointLight[] = [];
   private lastUpdate = 0;
   roofsEnabled = true;
 
@@ -163,12 +257,22 @@ export class BuildingLayer {
     this.buildings = buildings;
     const batch = new Batcher((x, z) => hm.groundAt(x, z));
     for (const b of buildings) {
+      if (b.shape === 'round') {
+        this.addRoundRoof(b);
+        continue;
+      }
       this.addWallDetail(batch, b);
       this.addInterior(batch, b);
       this.addRoof(b);
     }
     this.addBoundaryDetail(batch);
     this.group.add(batch.build());
+    // A fixed number of lights keeps shaders the same size however many rooms there are.
+    for (let i = 0; i < LIGHT_POOL; i++) {
+      const light = new THREE.PointLight(0xffb060, 0, 6.5, 1.6);
+      this.lights.push(light);
+      this.group.add(light);
+    }
   }
 
   buildingFromHit(hit: THREE.Intersection): Building | null {
@@ -200,6 +304,17 @@ export class BuildingLayer {
         m.opacity = roof.opacity;
         m.depthWrite = !transparent;
       }
+    }
+    if (player) {
+      const near = this.lightSpots
+        .map((spot) => ({ spot, d: Math.hypot(spot.pos.x - player.x - 0.5, spot.pos.z - player.y - 0.5) }))
+        .sort((a, b) => a.d - b.d);
+      this.lights.forEach((light, i) => {
+        const n = near[i];
+        light.intensity = n && n.d < 24 ? n.spot.intensity : 0;
+        if (n) light.position.copy(n.spot.pos);
+        if (n) light.color.setHex(n.spot.color);
+      });
     }
     for (const f of this.flames) {
       const s = 1 + Math.sin(now * 0.018 + f.phase) * 0.12 + Math.sin(now * 0.041 + f.phase * 2) * 0.08;
@@ -260,9 +375,9 @@ export class BuildingLayer {
       }
     });
 
-    // Sign beside the first door, on the outside face.
+    // Sign beside the first door, on the outside face. Unnamed huts get none.
     const door = b.doors[0];
-    if (door) {
+    if (door && b.name) {
       const [nx, nz] = outward(b, door.x, door.y);
       const ax = nz !== 0 ? 1 : 0;
       const az = nx !== 0 ? 1 : 0;
@@ -327,19 +442,20 @@ export class BuildingLayer {
       const tz = (fy0 + fy1 + 1) / 2;
       this.addTorch(batch, wx, tz, dir, 0);
     }
-    const light = new THREE.PointLight(0xffb060, 6, 6.5, 1.6);
-    light.position.set((fx0 + fx1 + 1) / 2, this.hm.groundAt((fx0 + fx1 + 1) / 2, (fy0 + fy1 + 1) / 2) + 1.1, (fy0 + fy1 + 1) / 2);
-    this.group.add(light);
+    const lx = (fx0 + fx1 + 1) / 2;
+    const lz = (fy0 + fy1 + 1) / 2;
+    this.lightSpots.push({ pos: new THREE.Vector3(lx, this.hm.groundAt(lx, lz) + 1.1, lz), color: 0xffb060, intensity: 6 });
 
     // Back wall furnishings, mounted flat so they never look like they block a tile.
     const shelfGeo = new THREE.BoxGeometry(0.92, 0.04, 0.24);
     const jar = new THREE.CylinderGeometry(0.05, 0.06, 0.14, 8);
     const box = new THREE.BoxGeometry(0.14, 0.12, 0.14);
     const shelfZ = backInnerZ + inward * 0.12;
+    const bookGeo = new THREE.BoxGeometry(0.04, 0.15, 0.16);
     const tiles: number[] = [];
     for (let x = fx0; x <= fx1; x++) tiles.push(x);
 
-    if (b.kind === 'store' || b.kind === 'kitchen') {
+    if (b.kind === 'store' || b.kind === 'inn' || b.kind === 'library') {
       for (const x of tiles.slice(0, tiles.length - 2)) {
         for (const [i, h] of [0.45, 0.8, 1.12].entries()) {
           batch.add('shelf', shelfGeo, wood, { position: [x + 0.5, h, shelfZ] }, 0x6b4a2e);
@@ -347,26 +463,31 @@ export class BuildingLayer {
             if (hash2(x, i, k) < 0.25) continue;
             const ox = -0.33 + k * 0.22;
             const tint = JAR_COLORS[Math.floor(hash2(x, i, k + 10) * JAR_COLORS.length)];
-            if (hash2(x, i, k + 20) < 0.5) batch.add('jar', jar, lambert(), { position: [x + 0.5 + ox, h + 0.09, shelfZ] }, tint);
+            if (b.kind === 'library') {
+              for (let n = 0; n < 4; n++) batch.add('book', bookGeo, lambert(), { position: [x + 0.5 + ox - 0.075 + n * 0.05, h + 0.09, shelfZ], rotationY: 0 }, BOOK_COLORS[Math.floor(hash2(x * 7 + n, i, k) * BOOK_COLORS.length)]);
+            } else if (hash2(x, i, k + 20) < 0.5) batch.add('jar', jar, lambert(), { position: [x + 0.5 + ox, h + 0.09, shelfZ] }, tint);
             else batch.add('crate', box, lambert(), { position: [x + 0.5 + ox, h + 0.08, shelfZ], rotationY: hash2(x, k) }, b.kind === 'store' ? 0xa07a48 : tint);
           }
         }
       }
     }
-    if (b.kind === 'kitchen') {
+    if (b.kind === 'inn') {
       const pan = new THREE.CylinderGeometry(0.13, 0.11, 0.03, 12).rotateX(Math.PI / 2);
       for (const x of tiles.slice(-2)) {
         batch.add('pan-rail', new THREE.BoxGeometry(0.9, 0.04, 0.04), wood, { position: [x + 0.5, 1.12, backInnerZ + inward * 0.04] }, 0x3b3b3b);
         for (const ox of [-0.25, 0.05, 0.3]) batch.add('pan', pan, lambert(), { position: [x + 0.5 + ox, 0.92, backInnerZ + inward * 0.05] }, 0x2b2b2b);
       }
     }
-    if (b.kind === 'bank') {
+    const bannerColor = b.kind === 'bank' ? 0x2f4f8a : b.kind === 'chapel' ? 0xe8e0c8 : b.kind === 'keep' ? 0x8a2a2a : null;
+    if (bannerColor !== null) {
       const banner = new THREE.PlaneGeometry(0.5, 0.85);
       for (const x of [fx0 + 1, fx1 - 1]) {
-        batch.add('banner', banner, lambert(0xffffff, { side: THREE.DoubleSide }), { position: [x + 0.5, 0.8, backInnerZ + inward * 0.02], rotationY: inward > 0 ? 0 : Math.PI }, 0x2f4f8a);
+        batch.add('banner', banner, lambert(0xffffff, { side: THREE.DoubleSide }), { position: [x + 0.5, 0.8, backInnerZ + inward * 0.02], rotationY: inward > 0 ? 0 : Math.PI }, bannerColor);
         batch.add('banner-trim', new THREE.BoxGeometry(0.56, 0.06, 0.04), wood, { position: [x + 0.5, 1.24, backInnerZ + inward * 0.03] }, 0xd4a73a);
         batch.add('banner-emblem', new THREE.CircleGeometry(0.11, 6), lambert(0xffffff, { side: THREE.DoubleSide }), { position: [x + 0.5, 0.85, backInnerZ + inward * 0.03], rotationY: inward > 0 ? 0 : Math.PI }, 0xe0bb4a);
       }
+    }
+    if (b.kind === 'bank') {
       const coin = new THREE.CylinderGeometry(0.05, 0.05, 0.02, 10);
       for (const x of tiles.slice(2, -2)) {
         batch.add('shelf', shelfGeo, wood, { position: [x + 0.5, 0.7, shelfZ] }, 0x6b4a2e);
@@ -432,12 +553,12 @@ export class BuildingLayer {
     const materials: THREE.Material[] = [roofMat, gableMat, trimMat];
     const state: RoofState = { building: b, group, materials, opacity: 1 };
 
-    // Chimneys over the furnace and the range.
+    // A chimney toward the back wall of anything with a hearth.
     const chimneyMat = new THREE.MeshLambertMaterial({ color: 0x8a7a6a, map: textures.bricks() });
     materials.push(chimneyMat);
-    for (const p of this.map.placements) {
-      if (p.defKey !== 'furnace' && p.defKey !== 'range') continue;
-      if (p.x < b.x0 || p.x > b.x1 || p.y < b.y0 || p.y > b.y1) continue;
+    const door = b.doors[0];
+    const hearths = HEARTH[b.kind] && door ? [{ x: Math.round(b.x0 + w * 0.3), y: door.y === b.y1 ? b.y0 + 1 : b.y1 - 1 }] : [];
+    for (const p of hearths) {
       const lx = p.x + 0.5 - (b.x0 + w / 2);
       const lz = p.y + 0.5 - (b.y0 + d / 2);
       const [l, s] = alongX ? [lx, lz] : [lz, lx];
@@ -467,35 +588,60 @@ export class BuildingLayer {
     this.roofs.push(state);
   }
 
+  /** Conical roof over a round hall, with a finial. */
+  private addRoundRoof(b: Building): void {
+    const w = b.x1 - b.x0 + 1;
+    const d = b.y1 - b.y0 + 1;
+    const radius = Math.max(w, d) / 2 + 0.25;
+    const height = radius * 0.75;
+    const shingleTex = textures.shingles().clone();
+    shingleTex.repeat.set(14, 5);
+    shingleTex.needsUpdate = true;
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0x3f6a5a, map: shingleTex, side: THREE.DoubleSide });
+    const trimMat = new THREE.MeshLambertMaterial({ color: 0xd4a73a });
+    const group = new THREE.Group();
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 16, 1, true), roofMat);
+    cone.position.y = height / 2;
+    const finial = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), trimMat);
+    finial.position.y = height + 0.1;
+    group.add(cone, finial);
+    const cx = b.x0 + w / 2;
+    const cz = b.y0 + d / 2;
+    group.position.set(cx, WALL_HEIGHT + this.hm.groundAt(cx, cz), cz);
+    group.traverse((o) => {
+      o.castShadow = true;
+      o.userData.building = b;
+    });
+    this.group.add(group);
+    this.roofPickables.push(group);
+    this.roofs.push({ building: b, group, materials: [roofMat, trimMat], opacity: 1 });
+    this.lightSpots.push({ pos: new THREE.Vector3(cx, this.hm.groundAt(cx, cz) + 1.2, cz), color: 0xffb060, intensity: 8 });
+  }
+
   private addBoundaryDetail(batch: Batcher): void {
     const { map, info, grid } = this;
-    const inBuilding = (x: number, y: number) => this.buildings.some((b) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1);
+    const key = (x: number, y: number) => (x < 0 || y < 0 || x >= map.width || y >= map.height ? '' : info.terrainKey[y * map.width + x]);
     const stone = lambert(0xffffff, { map: textures.bricks() });
     const merlon = new THREE.BoxGeometry(0.46, 0.3, 0.46);
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
-        const i = y * map.width + x;
-        if (info.terrainKey[i] !== 'wall' || inBuilding(x, y)) continue;
-        batch.add('walltop', new THREE.BoxGeometry(1.04, 0.1, 1.04), stone, { position: [x + 0.5, WALL_HEIGHT + 0.05, y + 0.5] }, 0x5e5853);
-        if ((x + y) % 2 === 0) batch.add('merlon', merlon, stone, { position: [x + 0.5, WALL_HEIGHT + 0.25, y + 0.5] }, 0x6a645e);
+        if (key(x, y) !== 'city_wall') continue;
+        batch.add('walltop', new THREE.BoxGeometry(1.04, 0.1, 1.04), stone, { position: [x + 0.5, CITY_WALL_HEIGHT + 0.05, y + 0.5] }, 0x5e5853);
+        if ((x + y) % 2 === 0) batch.add('merlon', merlon, stone, { position: [x + 0.5, CITY_WALL_HEIGHT + 0.25, y + 0.5] }, 0x6a645e);
+
+        // Where a run of wall ends at an opening, it is a gateway: torches on both faces.
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          if (!grid.isWalkable(x + dx, y + dy) || key(x - dx, y - dy) !== 'city_wall') continue;
+          for (const s of [-1, 1]) {
+            const fx = dy !== 0 ? s : 0;
+            const fy = dx !== 0 ? s : 0;
+            this.addTorch(batch, x + 0.5 + fx * 0.52, y + 0.5 + fy * 0.52, fx, fy);
+            const lx = x + 0.5 + fx * 1.2 + dx * 0.5;
+            const lz = y + 0.5 + fy * 1.2 + dy * 0.5;
+            this.lightSpots.push({ pos: new THREE.Vector3(lx, this.hm.groundAt(lx, lz) + 1.4, lz), color: 0xff9a40, intensity: 4 });
+          }
+        }
       }
-    }
-    // Torches on the outside face of the wall either side of each gate.
-    for (let i = 0; i < grid.gateAt.length; i++) {
-      if (grid.gateAt[i] === -1) continue;
-      const gx = i % map.width;
-      const gy = Math.floor(i / map.width);
-      const outside = [[0, -1], [0, 1], [-1, 0], [1, 0]].find(([dx, dy]) => grid.isWalkable(gx + dx, gy + dy) && grid.gateZone[grid.index(gx + dx, gy + dy)] === -1);
-      if (!outside) continue;
-      const [ox, oy] = outside;
-      for (const s of [-1, 1]) {
-        const wx = gx + (oy !== 0 ? s : 0);
-        const wy = gy + (ox !== 0 ? s : 0);
-        this.addTorch(batch, wx + 0.5 + ox * 0.52, wy + 0.5 + oy * 0.52, ox, oy);
-      }
-      const light = new THREE.PointLight(0xff9a40, 5, 6, 1.6);
-      light.position.set(gx + 0.5 + ox * 1.2, this.hm.tileCentre(gx, gy) + 1.3, gy + 0.5 + oy * 1.2);
-      this.group.add(light);
     }
   }
 }
@@ -543,9 +689,14 @@ function gableEndsGeometry(len: number, span: number, height: number): THREE.Buf
 const RUGS: Partial<Record<BuildingKind, [string, string]>> = {
   bank: ['#2f4f7a', '#d4a73a'],
   store: ['#7a2f3a', '#e3c27a'],
-  kitchen: ['#4f5f34', '#e0d0a0'],
+  inn: ['#4f5f34', '#e0d0a0'],
+  chapel: ['#6a2a3a', '#e8d8a0'],
+  keep: ['#6a1f1f', '#d4a73a'],
+  library: ['#3a2f5a', '#c8b88a'],
   house: ['#6a4a2a', '#d0b080'],
 };
+
+const BOOK_COLORS = [0x7a2a2a, 0x2a4a7a, 0x2f5a35, 0x6a4a2a, 0x4a2f5a, 0x8a7a3a];
 
 const JAR_COLORS = [0x9fc4a0, 0xc9a86a, 0x8a5a3a, 0xd8d0b0, 0x7a8fb0, 0xb05a4a];
 
@@ -591,7 +742,57 @@ const SIGN_SYMBOLS: Record<BuildingKind, (ctx: CanvasRenderingContext2D) => void
     ctx.fillRect(-14, -42, 28, 12);
     ctx.restore();
   },
-  kitchen: (ctx) => {
+  chapel: (ctx) => {
+    ctx.fillStyle = '#f0c850';
+    ctx.beginPath();
+    ctx.arc(0, 6, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#f0c850';
+    ctx.lineWidth = 4;
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 20, 6 + Math.sin(a) * 20);
+      ctx.lineTo(Math.cos(a) * 30, 6 + Math.sin(a) * 30);
+      ctx.stroke();
+    }
+  },
+  keep: (ctx) => {
+    ctx.fillStyle = '#8a2a2a';
+    ctx.beginPath();
+    ctx.moveTo(-24, -26);
+    ctx.lineTo(24, -26);
+    ctx.lineTo(24, 4);
+    ctx.quadraticCurveTo(24, 26, 0, 34);
+    ctx.quadraticCurveTo(-24, 26, -24, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#d4a73a';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.fillStyle = '#d4a73a';
+    ctx.fillRect(-3, -18, 6, 40);
+    ctx.fillRect(-14, -6, 28, 6);
+  },
+  library: (ctx) => {
+    ctx.fillStyle = '#e8e0c8';
+    ctx.beginPath();
+    ctx.moveTo(0, -12);
+    ctx.quadraticCurveTo(-16, -22, -32, -14);
+    ctx.lineTo(-32, 22);
+    ctx.quadraticCurveTo(-16, 14, 0, 24);
+    ctx.quadraticCurveTo(16, 14, 32, 22);
+    ctx.lineTo(32, -14);
+    ctx.quadraticCurveTo(16, -22, 0, -12);
+    ctx.fill();
+    ctx.strokeStyle = '#6a4a7a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, -12);
+    ctx.lineTo(0, 24);
+    ctx.stroke();
+  },
+  inn: (ctx) => {
     ctx.fillStyle = '#2b2b2b';
     ctx.beginPath();
     ctx.ellipse(0, 10, 30, 20, 0, 0, Math.PI);

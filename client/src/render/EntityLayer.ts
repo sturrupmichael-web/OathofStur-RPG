@@ -3,8 +3,8 @@ import type { EntityId, MapData, WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView } from '../state/ClientState';
 import { animateCharacter, buildCharacter, type CharacterRig } from './character';
 import { FLICKER, RESOURCE_STYLES, buildStation, type PartStyle } from './models';
-import { WATER_Y, type Heightmap } from './heightmap';
-import { hash2, shade } from './palette';
+import type { Heightmap } from './heightmap';
+import { hash2, shade, type TileInfo } from './palette';
 
 /** One InstancedMesh per part of a resource model, shared by every node of that type. */
 interface ResourcePool {
@@ -31,9 +31,10 @@ export class EntityLayer {
 
   constructor(
     private readonly state: ClientState,
-    map: MapData,
+    private readonly map: MapData,
     private readonly grid: WorldGrid,
     private readonly hm: Heightmap,
+    private readonly info: TileInfo,
   ) {
     const counts = new Map<string, number>();
     for (const p of map.placements) counts.set(p.defKey, (counts.get(p.defKey) ?? 0) + 1);
@@ -112,7 +113,7 @@ export class EntityLayer {
       return;
     }
     let obj: THREE.Object3D;
-    if (data.kind === 'station') obj = buildStation(data.defKey ?? '');
+    if (data.kind === 'station' || data.kind === 'scenery') obj = buildStation(data.defKey ?? '', (dx, dy) => this.objectAt(data.x + dx, data.y + dy), hash2(data.x, data.y, 5));
     else {
       const style = data.kind === 'npc' ? (data.defKey ?? '') : data.id === this.state.playerId ? 'player' : 'other_player';
       const rig = buildCharacter(style, hash2(data.id, 3) * 100);
@@ -121,7 +122,8 @@ export class EntityLayer {
     }
     obj.userData.entityId = data.id;
     obj.position.set(data.x + 0.5, this.hm.tileCentre(data.x, data.y), data.y + 0.5);
-    if (data.kind === 'station' || data.kind === 'npc') obj.rotation.y = this.faceOpenSide(data.x, data.y);
+    // Multi-tile props (tents) are laid out in map axes and keep their rotation.
+    if ((data.kind === 'station' || data.kind === 'scenery' || data.kind === 'npc') && !obj.userData.span) obj.rotation.y = this.faceOpenSide(data.x, data.y);
     obj.traverse((o) => {
       if (o.name === FLICKER) this.flickers.push(o);
     });
@@ -154,7 +156,7 @@ export class EntityLayer {
     const rot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), hash2(x, y, 7) * Math.PI * 2);
     const size = 0.88 + hash2(x, y, 8) * 0.24;
     // Fishing-spot parts are modelled relative to a water surface at -0.18.
-    const ground = pool.ripple ? WATER_Y + 0.18 : this.hm.tileCentre(x, y);
+    const ground = pool.ripple ? this.hm.waterAt(x, y) + 0.18 : this.hm.tileCentre(x, y);
     const base = new THREE.Matrix4().compose(new THREE.Vector3(x + 0.5, ground, y + 0.5), rot, new THREE.Vector3(size, size, size));
     const color = new THREE.Color();
     pool.parts.forEach(({ style, mesh }, k) => {
@@ -203,6 +205,12 @@ export class EntityLayer {
     obj.position.set(pos.x + 0.5, this.hm.groundAt(pos.x + 0.5, pos.y + 0.5), pos.y + 0.5);
     const rig = this.rigs.get(id);
     if (rig) animateCharacter(rig, dt, now, moving, Math.min(1.4, Math.hypot(dx, dy)));
+  }
+
+  private objectAt(x: number, y: number): string | null {
+    if (x < 0 || y < 0 || x >= this.map.width || y >= this.map.height) return null;
+    const i = y * this.map.width + x;
+    return this.info.placementKey[i] ?? this.info.terrainKey[i];
   }
 
   /** Face NPCs and stations toward a walkable neighbour, preferring south. */

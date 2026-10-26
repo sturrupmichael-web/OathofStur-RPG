@@ -309,7 +309,7 @@ export class Simulation {
     const { defs } = this.map;
     for (const p of this.map.placements) {
       if (p.kind === 'monster') continue; // monsters arrive in phase 4
-      const table = p.kind === 'resource' ? defs.resources : p.kind === 'station' ? defs.stations : defs.npcs;
+      const table = p.kind === 'resource' ? defs.resources : p.kind === 'station' ? defs.stations : p.kind === 'scenery' ? defs.scenery : defs.npcs;
       const entity: ObjectEntity = {
         id: this.allocateId(),
         kind: p.kind,

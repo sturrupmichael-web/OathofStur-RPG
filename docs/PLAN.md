@@ -5,7 +5,7 @@
 Low-poly procedural meshes give the 2.5D look cheaply, instanced meshes draw all 6,000 tiles in a handful of draw calls, and raycast picking makes click-to-move and right-click menus straightforward, where a hand-rolled isometric canvas would need its own depth sorting and hit-testing.
 
 ## Architecture in one paragraph
-`/shared` holds a pure TypeScript `Simulation` (no DOM, no Three.js, no `Math.random`). It owns the world, a seeded RNG, entity IDs, and a `step()` that runs every 600 ms: drain queued intents, then run systems in a fixed order (movement, interaction, skilling, combat, AI, respawns, ground-item visibility), then emit events and state deltas. The client talks to a `ServerConnection` interface. Phases 1–5 use `LocalServer` (runs the sim in the browser on a tick timer and passes messages through a JSON-serialise boundary, so nothing can leak by reference). Phase 6 adds `NetworkServer` (WebSocket) and a Node server that hosts the exact same `Simulation`. Map loading goes through a `MapSource` interface; `AsciiMapSource` reads world.txt + legend.json, and a Tiled/LDtk source can drop in later.
+`/shared` holds a pure TypeScript `Simulation` (no DOM, no Three.js, no `Math.random`). It owns the world, a seeded RNG, entity IDs, and a `step()` that runs every 600 ms: drain queued intents, then run systems in a fixed order (movement, interaction, skilling, combat, AI, respawns, ground-item visibility), then emit events and state deltas. The client talks to a `ServerConnection` interface. Phases 1–5 use `LocalServer` (runs the sim in the browser on a tick timer and passes messages through a JSON-serialise boundary, so nothing can leak by reference). Phase 6 adds `NetworkServer` (WebSocket) and a Node server that hosts the exact same `Simulation`. Map loading goes through a `MapSource` interface; `JsonMapSource` reads maps/kelmoor.json (it replaced the original world.txt + legend.json on 2026-10-26), and a Tiled/LDtk source can drop in later.
 
 ## Folder structure
 ```
@@ -13,7 +13,7 @@ Low-poly procedural meshes give the 2.5D look cheaply, instanced meshes draw all
 /tsconfig.base.json
 /shared
   /data
-    /maps/world.txt, legend.json        (copied verbatim, source of truth)
+    /maps/kelmoor.json                  (copied verbatim, source of truth)
     items.json        names, examine text, value, stackable, equip slot + stats
     skills.json       XP curve parameters, per-action XP
     resources.json    success-rate tuning, tool tiers, fish level splits
@@ -23,7 +23,7 @@ Low-poly procedural meshes give the 2.5D look cheaply, instanced meshes draw all
     shops.json        stock + buy/sell prices
     dialogue.json, quests.json
   /src
-    /map       MapSource interface, AsciiMapSource, tile/legend types
+    /map       MapSource interface, JsonMapSource, tile/legend types
     /sim       Simulation, World, entities, systems/*, pathfinding (A*), combat formulas
     /protocol  ClientMessage / ServerMessage types, version number
     /save      save schema (versioned) + migrations

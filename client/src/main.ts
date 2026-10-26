@@ -1,6 +1,5 @@
-import { AsciiMapSource, WorldGrid, type AsciiLegend, type MapSource, type Point } from '@rpg/shared';
-import worldText from '@rpg/shared/data/maps/world.txt?raw';
-import legend from '@rpg/shared/data/maps/legend.json';
+import { JsonMapSource, WorldGrid, areaAt, type JsonMapFile, type MapSource, type Point } from '@rpg/shared';
+import kelmoor from '@rpg/shared/data/maps/kelmoor.json';
 import { LocalServer } from './net/LocalServer';
 import type { ServerConnection } from './net/ServerConnection';
 import { Renderer, type PickResult } from './render/Renderer';
@@ -14,7 +13,7 @@ const WORLD_SEED = 20261025;
 
 async function start(): Promise<void> {
   // Swap this for a Tiled/LDtk MapSource later; nothing below depends on the format.
-  const mapSource: MapSource = new AsciiMapSource('world', worldText, legend as AsciiLegend);
+  const mapSource: MapSource = new JsonMapSource('kelmoor', kelmoor as JsonMapFile);
   const map = mapSource.load();
   const grid = new WorldGrid(map);
 
@@ -24,6 +23,7 @@ async function start(): Promise<void> {
   const viewport = document.getElementById('viewport')!;
   const renderer = new Renderer(viewport, map, grid, state);
   const labels = document.getElementById('labels')!;
+  const regionLabel = document.getElementById('region')!;
 
   const walk = (tile: Point) => {
     renderer.showClick(tile);
@@ -44,7 +44,7 @@ async function start(): Promise<void> {
 
   /** Human-readable description of whatever is under the cursor. */
   const describe = (pick: PickResult): { action: string; target: string } => {
-    if (pick.buildingName) return { action: 'Walk into', target: pick.buildingName };
+    if (pick.buildingName !== undefined) return { action: 'Walk into', target: pick.buildingName || 'Hut' };
     if (pick.entityId !== null) {
       const e = state.entities.get(pick.entityId)?.data;
       if (e?.kind === 'player') return { action: 'Walk here', target: `${e.name} (level-${e.combatLevel})` };
@@ -133,6 +133,9 @@ async function start(): Promise<void> {
 
     renderer.frame(now);
     minimap.draw(now);
+    const me = state.player?.data;
+    const here = me ? (areaAt(map, me.x, me.y)?.name ?? '') : '';
+    if (regionLabel.textContent !== here) regionLabel.textContent = here;
 
     if (pointer && !hud.menuOpen) {
       const rect = canvas.getBoundingClientRect();

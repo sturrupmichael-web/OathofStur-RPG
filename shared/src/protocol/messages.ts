@@ -20,7 +20,7 @@ export type ClientMessage =
 /** What any client may see about an entity. Private state never goes here. */
 export interface PublicEntity {
   id: EntityId;
-  kind: 'player' | 'resource' | 'station' | 'npc';
+  kind: 'player' | 'resource' | 'station' | 'scenery' | 'npc';
   x: number;
   y: number;
   name: string;

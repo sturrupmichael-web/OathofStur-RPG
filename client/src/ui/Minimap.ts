@@ -30,13 +30,18 @@ export class Minimap {
         const i = y * map.width + x;
         const key = info.placementKey[i];
         let color = '#' + tileColors[i].toString(16).padStart(6, '0');
-        if (key?.endsWith('tree')) color = key === 'yew_tree' ? '#1d4a2c' : '#2b5e27';
+        const terrain = info.terrainKey[i];
+        if (key === 'dead_tree') color = '#5a5048';
+        else if (key?.endsWith('tree')) color = '#2b5e27';
         else if (key?.endsWith('rock')) color = '#b9a27a';
-        else if (key?.endsWith('fishing_spot')) color = '#bfe3ff';
-        else if (info.terrainKey[i] === 'mountain') color = '#4f483f';
-        else if (info.terrainKey[i] === 'wall') color = '#d8d4cc';
-        else if (info.terrainKey[i] === 'fence') color = '#8a6240';
-        else if (info.terrainKey[i] === 'gate') color = '#e0b040';
+        else if (key === 'hide_tent') color = '#9a7a52';
+        else if (key) color = '#c8c0b0';
+        else if (terrain === 'city_wall') color = '#d8d4cc';
+        else if (terrain === 'building_wall') color = '#efe6d2';
+        else if (terrain === 'door') color = '#b0603a';
+        else if (terrain === 'fence') color = '#8a6240';
+        else if (terrain === 'palisade') color = '#5a3d22';
+        else if (terrain === 'ditch') color = '#2e261e';
         b.fillStyle = color;
         b.fillRect(x * SCALE, y * SCALE, SCALE, SCALE);
       }

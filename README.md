@@ -23,10 +23,11 @@ npm run build      # static site in client/dist, deploy anywhere
 
 ```
 shared/   simulation, protocol types, map loading, game data (no DOM, no rendering)
-  data/   maps/world.txt + legend.json (source of truth), skills.json, ...
+  data/   maps/kelmoor.json (source of truth), skills.json, ...
 client/   Three.js rendering, UI, LocalServer
 server/   Node WebSocket server (phase 6)
 docs/     PLAN.md: phases, message types, map notes
+tools/    kelmoor-viewer.html: the 2D viewer and generator that produced kelmoor.json
 ```
 
 ## Architecture
@@ -37,12 +38,14 @@ docs/     PLAN.md: phases, message types, map notes
 - The client talks to a `ServerConnection`. In single-player that is `LocalServer`, which
   runs the simulation in the browser and passes every message through JSON exactly as a
   socket would. Phase 6 swaps in a `NetworkServer` without touching game logic.
-- Maps load through the `MapSource` interface. `AsciiMapSource` reads the ASCII map and
-  legend; a Tiled or LDtk loader can replace it later.
+- Maps load through the `MapSource` interface. `JsonMapSource` reads `kelmoor.json`
+  (rows + legend + areas + npcs); a Tiled or LDtk loader can replace it later.
 
 ## Map decisions
 
-The map and legend are used unchanged. Where they were ambiguous, the defaults in
-`docs/PLAN.md` ("Map and legend: issues I found") apply. Notably: the gate's "combat 20"
-uses a derived combat level, players can always walk out through the gate, and tiles
-under resources/NPCs/stations take the terrain around them (fishing spots sit on water).
+`kelmoor.json` is used unchanged. The legend only gives a name and walkable flag, so
+`JsonMapSource` decides by name which tiles are objects (trees, rocks, anvils, bank booths,
+stalls, tents, ...) and gives each the most common walkable ground around it. Buildings
+take their names from the map's `areas`. Open questions about the map (no bridge over the
+River Vell, an unreachable corner of the Ashen Waste, missing skill and NPC data) are in
+the "Kelmoor map: issues and gaps" doc.

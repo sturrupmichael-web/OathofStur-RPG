@@ -68,7 +68,7 @@ export class Renderer {
     this.buildings = new BuildingLayer(map, grid, this.info, buildings, this.heightmap);
     this.scene.add(this.buildings.group);
     this.scene.add(buildScenery(map, grid, this.info, areas, this.tileColors, this.heightmap));
-    this.entities = new EntityLayer(state, map, grid, this.heightmap);
+    this.entities = new EntityLayer(state, map, grid, this.heightmap, this.info);
     this.scene.add(this.entities.group);
 
     this.hoverOutline = new THREE.LineLoop(

@@ -1,5 +1,5 @@
 export * from './map/types';
-export { AsciiMapSource, type AsciiLegend } from './map/AsciiMapSource';
+export { JsonMapSource, areaAt, slug, type JsonMapFile } from './map/JsonMapSource';
 export * from './protocol/messages';
 export { Rng } from './rng';
 export type { Entity, EntityId, ObjectEntity, PlayerEntity } from './sim/entities';

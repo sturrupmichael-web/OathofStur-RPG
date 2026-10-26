@@ -18,10 +18,10 @@ export interface PlayerEntity {
   gateNotice: Point | null;
 }
 
-/** Static world objects that occupy a tile: resource nodes, stations, NPCs. */
+/** Static world objects that occupy a tile: resource nodes, stations, props, NPCs. */
 export interface ObjectEntity {
   id: EntityId;
-  kind: 'resource' | 'station' | 'npc';
+  kind: 'resource' | 'station' | 'scenery' | 'npc';
   defKey: string;
   name: string;
   x: number;

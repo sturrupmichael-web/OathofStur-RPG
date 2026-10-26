@@ -1,0 +1,560 @@
+{
+ "name": "Kelmoor",
+ "width": 120,
+ "height": 96,
+ "tileSize": 16,
+ "spawn": {
+  "x": 60,
+  "y": 49
+ },
+ "legend": {
+  "1": {
+   "name": "Copper rock",
+   "walkable": false
+  },
+  "2": {
+   "name": "Tin rock",
+   "walkable": false
+  },
+  "3": {
+   "name": "Iron rock",
+   "walkable": false
+  },
+  "4": {
+   "name": "Coal rock",
+   "walkable": false
+  },
+  ".": {
+   "name": "Grass",
+   "walkable": true
+  },
+  ",": {
+   "name": "Long grass",
+   "walkable": true
+  },
+  "d": {
+   "name": "Dirt path",
+   "walkable": true
+  },
+  "c": {
+   "name": "Cobblestone",
+   "walkable": true
+  },
+  "s": {
+   "name": "Stone floor",
+   "walkable": true
+  },
+  "w": {
+   "name": "Wooden floor",
+   "walkable": true
+  },
+  "g": {
+   "name": "Flower bed",
+   "walkable": true
+  },
+  "f": {
+   "name": "Crop field",
+   "walkable": true
+  },
+  "S": {
+   "name": "Sand",
+   "walkable": true
+  },
+  "a": {
+   "name": "Scorched earth",
+   "walkable": true
+  },
+  "b": {
+   "name": "Bridge",
+   "walkable": true
+  },
+  "+": {
+   "name": "Door",
+   "walkable": true
+  },
+  "H": {
+   "name": "Sewer hatch",
+   "walkable": true
+  },
+  "W": {
+   "name": "City wall",
+   "walkable": false
+  },
+  "B": {
+   "name": "Building wall",
+   "walkable": false
+  },
+  "~": {
+   "name": "Water",
+   "walkable": false
+  },
+  "D": {
+   "name": "Ditch",
+   "walkable": false
+  },
+  "F": {
+   "name": "Fence",
+   "walkable": false
+  },
+  "T": {
+   "name": "Tree",
+   "walkable": false
+  },
+  "t": {
+   "name": "Dead tree",
+   "walkable": false
+  },
+  "Z": {
+   "name": "Standing stone",
+   "walkable": false
+  },
+  "A": {
+   "name": "Anvil",
+   "walkable": false
+  },
+  "K": {
+   "name": "Bank booth",
+   "walkable": false
+  },
+  "M": {
+   "name": "Market stall",
+   "walkable": false
+  },
+  "O": {
+   "name": "Statue",
+   "walkable": false
+  },
+  "x": {
+   "name": "Altar",
+   "walkable": false
+  },
+  "L": {
+   "name": "Log pile",
+   "walkable": false
+  },
+  "m": {
+   "name": "Trampled mud",
+   "walkable": true
+  },
+  "k": {
+   "name": "Bone scatter",
+   "walkable": true
+  },
+  "P": {
+   "name": "Palisade",
+   "walkable": false
+  },
+  "E": {
+   "name": "Hide tent",
+   "walkable": false
+  },
+  "C": {
+   "name": "Campfire",
+   "walkable": false
+  },
+  "J": {
+   "name": "Goblin totem",
+   "walkable": false
+  }
+ },
+ "areas": [
+  {
+   "name": "Kelmoor Keep",
+   "x": 37,
+   "y": 24,
+   "w": 17,
+   "h": 12
+  },
+  {
+   "name": "Chapel of the Dawn",
+   "x": 67,
+   "y": 25,
+   "w": 9,
+   "h": 9
+  },
+  {
+   "name": "Scriptorium",
+   "x": 78,
+   "y": 25,
+   "w": 7,
+   "h": 8
+  },
+  {
+   "name": "West Bank",
+   "x": 37,
+   "y": 39,
+   "w": 9,
+   "h": 6
+  },
+  {
+   "name": "East Bank",
+   "x": 73,
+   "y": 39,
+   "w": 11,
+   "h": 6
+  },
+  {
+   "name": "Smithy",
+   "x": 36,
+   "y": 49,
+   "w": 9,
+   "h": 7
+  },
+  {
+   "name": "Aldric's Blades",
+   "x": 46,
+   "y": 49,
+   "w": 6,
+   "h": 6
+  },
+  {
+   "name": "General Store",
+   "x": 70,
+   "y": 49,
+   "w": 7,
+   "h": 6
+  },
+  {
+   "name": "Rune & Robe",
+   "x": 78,
+   "y": 49,
+   "w": 7,
+   "h": 6
+  },
+  {
+   "name": "Blue Gull Inn",
+   "x": 63,
+   "y": 57,
+   "w": 7,
+   "h": 7
+  },
+  {
+   "name": "Longhouse",
+   "x": 12,
+   "y": 38,
+   "w": 7,
+   "h": 5
+  },
+  {
+   "name": "Farmhouse",
+   "x": 46,
+   "y": 88,
+   "w": 6,
+   "h": 5
+  },
+  {
+   "name": "Barn",
+   "x": 66,
+   "y": 88,
+   "w": 7,
+   "h": 5
+  },
+  {
+   "name": "Field Tent",
+   "x": 111,
+   "y": 34,
+   "w": 5,
+   "h": 3
+  },
+  {
+   "name": "Woodcutter's Shed",
+   "x": 87,
+   "y": 17,
+   "w": 5,
+   "h": 4
+  },
+  {
+   "name": "Kelmoor Square",
+   "x": 52,
+   "y": 39,
+   "w": 17,
+   "h": 15
+  },
+  {
+   "name": "Kelmoor Park",
+   "x": 71,
+   "y": 56,
+   "w": 15,
+   "h": 14
+  },
+  {
+   "name": "Lumber Yard",
+   "x": 85,
+   "y": 16,
+   "w": 14,
+   "h": 10
+  },
+  {
+   "name": "The Bourse",
+   "x": 13,
+   "y": 14,
+   "w": 19,
+   "h": 19
+  },
+  {
+   "name": "Brakk Village",
+   "x": 4,
+   "y": 38,
+   "w": 21,
+   "h": 15
+  },
+  {
+   "name": "Standing Stones",
+   "x": 9,
+   "y": 52,
+   "w": 11,
+   "h": 11
+  },
+  {
+   "name": "Goblin Encampment",
+   "x": 12,
+   "y": 76,
+   "w": 21,
+   "h": 20
+  },
+  {
+   "name": "Thornwood",
+   "x": 0,
+   "y": 62,
+   "w": 33,
+   "h": 34
+  },
+  {
+   "name": "Hollin Farm",
+   "x": 43,
+   "y": 75,
+   "w": 35,
+   "h": 18
+  },
+  {
+   "name": "Copperback Mine",
+   "x": 83,
+   "y": 77,
+   "w": 15,
+   "h": 13
+  },
+  {
+   "name": "Dig Site",
+   "x": 106,
+   "y": 32,
+   "w": 12,
+   "h": 22
+  },
+  {
+   "name": "River Vell",
+   "x": 99,
+   "y": 0,
+   "w": 7,
+   "h": 96
+  },
+  {
+   "name": "Ashen Ditch",
+   "x": 0,
+   "y": 13,
+   "w": 120,
+   "h": 1
+  },
+  {
+   "name": "The Ashen Waste",
+   "x": 0,
+   "y": 0,
+   "w": 120,
+   "h": 13
+  },
+  {
+   "name": "Kelmoor",
+   "x": 34,
+   "y": 22,
+   "w": 53,
+   "h": 49
+  }
+ ],
+ "npcs": [
+  {
+   "type": "goblin",
+   "level": 2,
+   "x": 20,
+   "y": 84,
+   "wander": {
+    "cx": 22,
+    "cy": 86,
+    "radius": 6
+   }
+  },
+  {
+   "type": "goblin",
+   "level": 2,
+   "x": 24,
+   "y": 84,
+   "wander": {
+    "cx": 22,
+    "cy": 86,
+    "radius": 6
+   }
+  },
+  {
+   "type": "goblin",
+   "level": 2,
+   "x": 20,
+   "y": 88,
+   "wander": {
+    "cx": 22,
+    "cy": 86,
+    "radius": 6
+   }
+  },
+  {
+   "type": "goblin",
+   "level": 2,
+   "x": 23,
+   "y": 88,
+   "wander": {
+    "cx": 22,
+    "cy": 86,
+    "radius": 6
+   }
+  },
+  {
+   "type": "goblin",
+   "level": 2,
+   "x": 17,
+   "y": 85,
+   "wander": {
+    "cx": 22,
+    "cy": 86,
+    "radius": 6
+   }
+  },
+  {
+   "type": "goblin",
+   "level": 2,
+   "x": 27,
+   "y": 86,
+   "wander": {
+    "cx": 22,
+    "cy": 86,
+    "radius": 6
+   }
+  },
+  {
+   "type": "goblin",
+   "level": 2,
+   "x": 22,
+   "y": 82,
+   "wander": {
+    "cx": 22,
+    "cy": 86,
+    "radius": 6
+   }
+  },
+  {
+   "type": "goblin",
+   "level": 2,
+   "x": 22,
+   "y": 91,
+   "wander": {
+    "cx": 22,
+    "cy": 86,
+    "radius": 6
+   }
+  }
+ ],
+ "rows": [
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaaaaaaaaaaaaataaaaaaaaaaa~~~~aaaaaaaaaaaaaaaa",
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaataaaaaaaaadddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~~~~aaaaaatataaaaaaa",
+  "aaaaaaaaaaaaaaaaaaaaataaaaaaataaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaataaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~~~~aaaaaaaaaaaaaaa",
+  "aaaaaaaaaaaaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~~~Baaaaaaaaaaaaaaa",
+  "aaaaaaaaaaaaaaaaaaaaBBBBBaaaaaaaaaaaaaataaaaaaaaaaaaaaataaadddaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaaaaaaaa~~~Baaaaaaataaaaaaa",
+  "aaaaaaaaaaaaaaaataaaBaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~~B~aaaaaaaaaaaaaa",
+  "aaaaaaataaaaaaaaaaaaBaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaaaaaBBBBaaaaaaaaaaaaaaaaaa~~~~aaaataaaaaaaaa",
+  "aaaaaaaaaaaaaaaaaaaaBaaaaaaaaaaaaaaaaaaaaaaaaaaaataaaaaaaaadddaaaaaaaaaaaaaaaaaaBaaaaataaaaaaaaaaaaaaa~~~~aaaaaaaaaaaaaa",
+  "aaaaaaaaaaaaaaaataataaaaaaaaaaaaataaaaaaBBBaaaaaaaaaaataaaadddaaaaaaaaaaaaaaaaaaBaaaaaaaaaaaaaaaaaaaaa~~~~aaaaaaaaaaaaaa",
+  "aataaaaaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaaaaaBaaaaaaaaaaaaaaaaaaata~~~~aataaaaaaaaaaa",
+  "aaaaataataaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaataaaaaaaaaaaaaaaaaaaaaataa~~~~aaaaaaaaaaaaaa",
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaaaaaaaaa~~~~aaaaaaaaaaataa",
+  "aaaaaaaaaaataaataaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaataaa~~~~aaaaaaaaaaaaaa",
+  "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDdddDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD~~~~DDDDDDDDDDDDDD",
+  ",,,,,......................................................ddd.........,,,,,,,,,......................~~~~..............",
+  ",,,,,T...........T......................................T..ddd.........,,,,,,,,,T.T......,,,,,....,T,.~~~~..............",
+  ",,,,,,,.............BB+BB..................................ddd.........,,,,,,,,,...T.FFFFFFFFFFFFFF,T,~~~~..............",
+  ",,,,,,,T..........BBsssssBB.............T.........T........ddd.........,,,,,,,,,.....FdBBBBBddddddF,,~~~~...............",
+  ",,,,,,,...T......BsssssssssB.........................T.....ddd..........,,,,,,,TT....FdBwwwBddLLddF,,~~~~.....T.........",
+  ",,,,,,,...T.....BsssssssssssB..........................T...ddd.TT........,,,,,..T....FdBwwwBddLdddF,,~~~~...............",
+  ",,,,,,,.........BsssKsssKsssB.....T.........T..............ddd....................T..FdBB+BBddddddF..~~~~............T..",
+  ",,,,,T,.....T..BsssKsssssKsssB.............................ddd.......................FddddddddddLdF..~~~~......T........",
+  ",,,,,,,........BsssssssssssssB....WWWWWWWWWWWWWWWWWWWWWWWWWcccWWWWWWWWWWWWWWWWWWWWWWWWWddddddLddddF..~~~~...............",
+  ",,,T,,......T..+ssssssOssssss+ddd.W......,,,...............ccc.......................FWddddddddLddF..~~~~...T.......T...",
+  ",T,,,..........BsssssssssssssBddd.W..BBBBBBBBBBBBBBBBB.....ccc.....,,,...............FWdddddddddddF..~~~~...............",
+  "...............BsssKsssssKsssB.dd.W..BsssssssBsssssssB.....ccc....,BBBBBBBBB..BBBBBBBFWFFFFFddFFFFF..~~~~...............",
+  "..........T.....BsssKsssKsssB..dd.W..BsssxsssBsssssssB.....ccc...,,BsssxsssB..BwwwwwB.W.....dd.......~~~~.........T.....",
+  ".............T..BsssssssssssB..dd.W..BsssssssBsssssssB.....ccc...,,BsssssssB..BwwwwwB.W.....dd.......~~~~,,.............",
+  ".................BsssssssssB...dd.W..BsssssssBsssssssB...,,ccc...,,BsssssssB..BwwwwwB.W...T.dd......~~~~,,,,............",
+  "..................BBsssssBB.T..dd.W..Bsssssss+sssssssB,,,,,ccc....,BsssssssB..BwwwwwB.W...T.dd......~~~~,,TT............",
+  ".......T........TT..BB+BB......dd.W..BsssssssBsssssssB,,,,,ccc.....BsssssssB..BwwwwwB.W.....dd....T.~~~~,,,,.......T....",
+  "........T.........T............dd.W..BsssssssBsssssssB,,,,,ccc,....BsssssssB..BwwwwwB.W..TT.dd....T.~~~~,T,.............",
+  "....T.T........T..T............dd.W.,BsssssssBsssssssB,,,,,ccc,....BsssssssB..BBB+BBB.W.TT..dd.T..T.~~~~..SSSSSSSSSSSS..",
+  ".................,,,...T.......dd.W,,BsssssssBsssssssB,,,,,ccc,....BBBB+BBBB.....c....W,,T..dd.T.T..~~~~..SSSSSSSSSSSS..",
+  ".............T..,,,,,......T...dd.W.,BsssssssBsssssssB,,,,,ccc.........c.........c...,W,,,T.dd.....~~~~...SSSSSBBBBBSS..",
+  "........T......,,T,,,,.........dd.W..BBBBBBBBBBBB+BBBB,,,,,ccc.........c.........c...,W,,,..dd..T..~~~~...SSSSSBwwwBSS..",
+  "..............,,,,,,,,,........dd.W..ggggggggggggcgggg,,,,,ccc,,.......c.........c...,W,,,T.dd.....~~~~...SSSSSBB+BBSS..",
+  "..............,,,,,,,,,........dd.W..ggggggggggggcgggg,,,.,ccc,,,......c.........c....W,,...dd....~~~~....SSSSSSSSSSSS..",
+  "............BBBBBBB,,,,........dd.W.ccccccccccccccccccccccccccccccccccccccccccccccccc.W.....dd....~~~~....SSSSSSSSSSSS..",
+  "....dBBBBBddBwwwwwBdBBBBd......dd.W..BBBBBBBBB,,,...ccccccccccccccccc....BBBBBBBBBBB..W.T.T.dd.T..~~~~....SSdddSSSSSSS..",
+  "....dBwwwBddBwwwwwBdBwwBd......dd.W..BsssssssB,,....ccccccccccccccccc....BsssssssssB..W.....dd....~~~~....SSdddSSSSSSS..",
+  "....dBwwwBddBwwwwwBdBwwBd......dd.W..BsKKKKKsB,.....ccMcMcccccccMcMcc....BsKKKKKKKsB..W.....dd....~~~~....SSdddSSSSSSS..",
+  "....dBB+BBddBBB+BBBdB+BBd......dd.W..BsssssssB......ccccccccccccccccc....BsssssssssB..W.....dd...~~~~.....SSSSSSSdddSS..",
+  "....ddddddddddddddddddddd......dd.W..BsssssssB......ccccccccccccccccc....BsssssssssB..W.....dd...~~~~.....SSSSSSSdddSS..",
+  "....ddddddddddddddddddddd......dd.W..BBBB+BBBB......ccccccccccccccccc....BBBBB+BBBBB..W.....dd...~~~~.....SSSSSSSdddSS..",
+  "...dddddddddddddddddddddddddddddddccccccccccccccccccccccccc~~~cccccccccccccccccccccccccddddddddddddddddddddddddddddddddd",
+  "...dddddddddddddddddddddddddddddddccccccccccccccccccccccccc~O~cccccccccccccccccccccccccddddddddddddddddddddddddddddddddd",
+  ".T.dddddddddddddddddddddddddddddddccccccccccccccccccccccccc~~~cccccccccccccccccccccccccddddddddddddddddddddddddddddddddd",
+  "....ddddddddddddddddddddd.........W.....c,,,,..,c,,,ccccccccccccccccc....c.......c....W...........~~~~....SSSSSSSSSSSS..",
+  "....ddBB+BBdddddBB+BBBddd..T......W.BBBB+BBBB.BB+BBBccccccccccccccccc.BBB+BBB.BBB+BBB.W........T..~~~~....SSSddddSSSSS..",
+  "....ddBwwwBdddddBwwwwBddd.........W.BsssssssB.BwwwwBccccccccccccccccc.BwwwwwB.BwwwwwB.W............~~~~...SSSddddSSSSS..",
+  "....ddBwwwBdddddBwwwwBddd.........W.BsssssssB.BwwwwBccMcccccccccccMcc.BwwwwwB.BwwwwwB.W......T.....~~~~...SSSSSSSSSSSS..",
+  "....ddBBBBBdddddBBBBBBddd.........W.BssAsAssB.BwwwwBcccccccccccHccccc.BwwwwwB.BwwwwwB.W......T.....~~~~...SSSSSSSSSSSS..",
+  "............,,,,,.................W.BsssssssB.BwwwwBccccccccccccccccc.BwwwwwB.BwwwwwB,W.............~~~~..SSSSSSSSSSSS..",
+  "...........,,,Z,,,............T...W.BsssssssB.BBBBBB,,,,,..ccc........BBBBBBB.BBBBBBB,W...,,,.......~~~~................",
+  "..........,,Z,,,Z,,...............W.BBBBBBBBB..,,,,,,,,,...ccc..................,,,,,,W.T,T,,,......~~~~................",
+  "..........,,,,,,,,,.........T.....W............,,,,,,,,,...ccc.................T,,,,,,W..,,,,,..T...~~~~...........T.T..",
+  "..........,Z,,,,,Z,...............W.cccccccccccccccccccccccccc.BBBBBBB......T.T.,,,,T,W..,,,,,.......~~~~....T..........",
+  "...T......,,,,,,,,,...............W.cccccccccccccccccccccccccc.BwwwwwB...ggg..T.,,,,,,W...,T,........~~~~.......T.......",
+  "..........,,Z,,,Z,,d..............W..BB+BBB..BB+BBB..BB+BB.ccc.BwwwwwB...ggg...T.T,,,,W..............~~~~..........T....",
+  "..T........,,,Z,,,..d.............W..BwwwwB..BwwwwB..BwwwB.cccc+wwwwwB..........T.TT..W........,,,...~~~~...T....,,,,,T.",
+  "............,,,,,....d............W..BwwwwB..BwwwwB..BwwwB.ccc.BwwwwwB..TT........T.T.W......,,T,,,,.~~~~......,,,,,,,,,",
+  ",TTT,,,,,,,,,,,,,,,,T,d,TT,T,T,,T.W..BwwwwB..BwwwwB..BwwwB.ccc,BwwwwwB,......~~~~.TT.,W,,,,,,,,,,,,,,~~~~......,,,,,,,,,",
+  ",T,,,,,,T,T,T,,,,TT,,,d,,TTT,TTTT.W..BBBBBB..BBBBBB..BwwwB.ccc,BBBBBBB,.TTT..~~~~.T.,,W,,,,,,,,TT,,,,~~~~.....,,,,,,,,,,",
+  ",,,T,T,,,,,,T,T,,,,,T,d,,,TT,T,,,.W..................BBBBB.ccc,,,,,,,,,......~~~~..T,,W,,,,,,,,,T,,,,~~~~.....,,,,,,,,,,",
+  ",T,,,,T,,T,,TTTT,T,TT,d,,,,,,TT,,.W..BBB+BBBB..............ccc,,,,,,,,,............,,,W,,,,TT,,,T,,,,~~~~.....,,,,,,,,,,",
+  ",T,,,TTT,T,,TT,T,TT,T,d,T,,,T,,,,.W..BwwwwwwB..............ccc,,,,,,,,,T..........ggg,W,,,,,,,,,,,,T,~~~~.....,,,,,,,T,,",
+  ",TT,,,,TTTT,,,T,,,TT,,d,T,TT,T,TT.W..BwwwwwwB..............ccc.,,,,,,,,,,T,...T...ggg,W,,,,,,,,,,,,,,~~~~.....,,,,,,,,,,",
+  ",,,TT,,,,,,,TT,,,TT,,,d,T,TT,T,,,.W..BwwwwwwB..............ccc..,,,,,,,,,,,T......,,,,W,,,,,,,,,,,,,,~~~~......,,,,,,,,,",
+  ",T,,,T,,,T,,TT,,,,TT,,d,T,,,T,,TT.W..BBBBBBBB..............ccc....,,,,,,,,,,,....,,,,,W,,,,,,,,,,,,,,~~~~......,,,,,,,,,",
+  ",,T,,T,T,,,TTT,,T,,,,,d,T,TT,,,,T.WWWWWWWWWWWWWWWWWWWWWWWWWcccWWWWWWWWWWWWWWWWWWWWWWWWW,,,,,,,.,,T,,,~~~~....T...,,T,,..",
+  ",T,,,,,TT,T,,,T,,,,T,,d,,,T,TT,,,..........................ddd,,,,,,,,,,,,,,,,,,.,,,,,,,,,T,,..,,,,,,~~~~...............",
+  ",T,,TT,,,,T,,T,T,,TTT,d,T,TTT,,,T..........................ddd,,,,,,,,,,,,,,,,,,,.,,,,,,,,,,.....,,,,,~~~~..............",
+  ",,T,,,TT,TT,,,,,,,,TT,d,,,T,,,,,,............T.............ddddddddddddddddddddddddddddddddd..........~~~~..............",
+  ",,,,,TTT,,T,,~~~~~,,T,d,,TTT,,T,T.T........................ddddddddddddddddddddddddddddddddd..........~~~~..............",
+  ",T,TT,,,T,,~~~~~~~~~,,d,T,T,T,T,T..........FFFFFFFFFFFFFFF.ddd,FFFFFFFFFFFFFFF,,,,........dd..........~~~~..............",
+  ",,T,T,T,TT,~~~~~~~~~,,d,,,T,,,,TT.......T..FfffffffffffffF.ddd,FfffffffffffffF,,,.........dd.......T..~~~~.T............",
+  ",TT,,TT,,,,~~~~~~~~~,.d.,,,T,,,T,......T...FfffffffffffffF.ddd,FfffffffffffffF,,...ddddddddddddddd.T..~~~~.........T....",
+  ",,,TT,T,T,T,,~~~~~....d....,,,T,,..........FfffffffffffffF.ddd,FfffffffffffffF,....ddd13dddddd1ddd....~~~~.........T....",
+  ",,,T,T,,TTTT,,,,,...PPdPP...,TTT,......T...FfffffffffffffF.ddd,FfffffffffffffF.T...ddddddd1ddddddd....~~~~........T.....",
+  ",TT,TT,,,T,T,T,,..PPmJmJmPP..,T,T..........Ffffffffffffffd.ddd,dfffffffffffffF.....ddd2ddddddddd4d....~~~~..T.T.........",
+  ",,,,,,,TT,,T,T,..PmmmmmmmmmP..,,,..........FfffffffffffffF.ddd.FfffffffffffffF.....dddd2d432dddddd...~~~~...............",
+  ",,T,,,,,T,,T,T..PmEEmmmmmEEmP..,T..........FfffffffffffffF.ddd.FfffffffffffffF.....ddd2ddd21d14ddd...~~~~...........T...",
+  ",TTT,,TTTTT,,,..PmEEmmmmmEEmP..,T..........FfffffffffffffF.ddd.FfffffffffffffF.....dddd1ddd2dddddd...~~~~.....T.T.......",
+  ",,T,T,T,TT,,T,.PmmmmmmmmmmmJmP.,,..........FfffffffffffffF.ddd.FfffffffffffffF.....ddddddddddddd2d...~~~~...............",
+  ",,T,T,T,,TT,T..PmmmmmmmmmkmmmP..,..........FFFFFFFFFFFFFFF.ddd.FFFFFFFFFFFFFFF...,,ddd1ddddddd3ddd..~~~~............T...",
+  ",,T,T,T,T,,T,..PmkmmkmCmmmmmmdddddddddddddddd..............ddd..................,,,ddddddd2dd2dd3d..~~~~................",
+  ",TTT,,,,TT,T,..PmmmmmmmmkmmmmP..,............ddddddddddddddddddddddddd.........,,,,dddddddd1dd3ddd..~~~~.,,,............",
+  ",T,,,T,,T,,T,,.PmmmmmmmmmmmJmP.,,.T...........BB+BBB.......ddd....BBB+BBB,,...,,,,,dddddddd3d1d1dd.~~~~,,T,,,,..........",
+  ",T,T,,,T,TT,,,..PmEEmmmmmEEmP..,,.............BwwwwB.......ddd....BwwwwwB,,,..,,,,,ddddddddddddddd.~~~~,,,,,,,,......T..",
+  ",,,,,,,,T,TT,T..PmEEmmkmmEEmP..,,T,,..........BwwwwB.......ddd....BwwwwwB,,,,.,,,,,,,,,............~~~~,,,,,,,,....T..T.",
+  ",,,T,,TT,TT,,,,..PmmmmmmmmmP..,,,,,,,.........BwwwwB.......ddd....BwwwwwB,TT,..,,,,,,,............~~~~,,,,,,,,,,........",
+  ",,,,T,TTTT,,,,T,..PPmmmmmPP..,,TT,,,,,..T.....BBBBBB...T...ddd....BBBBBBB,,,T...,,,,,.............~~~~,,,,,,,T,,........",
+  ",T,T,,,T,,,TT,T,,...PPPPP...,,,,,,,,,,.....................ddd....,,,,,,,,,,,....,,,..............~~~~,,,,,,,,,,........",
+  ",T,,T,,TT,,,T,,T,,.........,,T,T,,,,,,.................T...ddd....,,T,,,,,,,,.....................~~~~,,,,,,,,,.........",
+  ",,,,,,,,,,,,,,,,,,,,,...,,,,,,,,,,,,,,.....................ddd....,,,,,,,,,,,.....................~~~~,,,,,,,,,........."
+ ]
+}

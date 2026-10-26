@@ -104,6 +104,14 @@ export const RESOURCE_STYLES: Record<string, PartStyle[]> = {
     { geometry: new THREE.ConeGeometry(0.34, 0.7, 8), color: 0x276042, position: [0, 1.72, 0], vary: 0.1 },
     { geometry: new THREE.ConeGeometry(0.18, 0.45, 8), color: 0x2c6a48, position: [0, 2.05, 0], vary: 0.1 },
   ],
+  dead_tree: [
+    { geometry: trunk(0.13, 1.1), color: 0x5a5048, position: [0, 0.55, 0], vary: 0.12 },
+    ...roots(0x4e463e, 0.13),
+    { geometry: new THREE.CylinderGeometry(0.03, 0.06, 0.6, 5), color: 0x5a5048, position: [0.18, 1.05, 0], rotation: [0, 0, -0.8], vary: 0.12 },
+    { geometry: new THREE.CylinderGeometry(0.025, 0.05, 0.5, 5), color: 0x544a42, position: [-0.15, 1.15, 0.05], rotation: [0.3, 0, 0.9], vary: 0.12 },
+    { geometry: new THREE.CylinderGeometry(0.02, 0.04, 0.45, 5), color: 0x5a5048, position: [0.02, 1.25, -0.14], rotation: [-0.8, 0, 0.1], vary: 0.12 },
+    { geometry: new THREE.CylinderGeometry(0.015, 0.03, 0.3, 4), color: 0x4e463e, position: [0.36, 1.32, 0], rotation: [0, 0, -0.2] },
+  ],
   copper_rock: rockParts(0xd07a3a),
   tin_rock: rockParts(0xd4d8e0),
   iron_rock: rockParts(0x9a5238),
@@ -123,27 +131,177 @@ function mesh(geo: THREE.BufferGeometry, color: number, x = 0, y = 0, z = 0, opt
 }
 
 const B = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
+
+
 const C = (rt: number, rb: number, h: number, seg = 10) => new THREE.CylinderGeometry(rt, rb, h, seg);
 
 /** Glowing parts that flicker (furnace mouth, range fire). Renderer animates them. */
 export const FLICKER = 'flicker';
 
-/** Stations face +Z (toward the open tile in front of them). */
-export function buildStation(defKey: string): THREE.Group {
+/** The object on the tile at an offset, or its terrain if it has none, for props that span tiles. */
+export type NeighbourLookup = (dx: number, dy: number) => string | null;
+
+/** Stations and props face +Z (toward the open tile in front of them). */
+export function buildStation(defKey: string, near: NeighbourLookup = () => null, seed = 0): THREE.Group {
+  const k = Math.floor(seed * 1e6);
   const g = new THREE.Group();
   const bricks = textures.bricks();
+  const planks = textures.planks();
   switch (defKey) {
-    case 'bank_chest': {
+    case 'bank_booth': {
+      // Counter with a brass grille; neighbouring booths join into one long counter.
       g.add(
-        mesh(B(0.82, 0.42, 0.56), 0x7a4f26, 0, 0.23, 0, { map: textures.planks() }),
-        mesh(C(0.29, 0.29, 0.84, 12, ).rotateZ(Math.PI / 2), 0x8f5d2e, 0, 0.44, 0, { map: textures.planks() }),
-        mesh(B(0.1, 0.68, 0.6), 0x3a3a40, -0.3, 0.32, 0),
-        mesh(B(0.1, 0.68, 0.6), 0x3a3a40, 0.3, 0.32, 0),
-        mesh(B(0.16, 0.18, 0.06), 0xe0bb4a, 0, 0.38, 0.3, { emissive: 0x2a1c00 }),
-        mesh(B(0.04, 0.07, 0.02), 0x222222, 0, 0.36, 0.335),
-        mesh(B(0.9, 0.04, 0.62), 0x3a3a40, 0, 0.03, 0),
+        mesh(B(1.0, 0.72, 0.6), 0x6e4526, 0, 0.36, 0, { map: planks }),
+        mesh(B(1.04, 0.06, 0.66), 0x4a2f1a, 0, 0.75, 0),
+        mesh(B(1.0, 0.1, 0.08), 0x3a2416, 0, 1.55, 0.02),
       );
-      for (const x of [-0.3, 0.3]) for (const z of [-0.2, 0.2]) g.add(mesh(new THREE.SphereGeometry(0.025, 6, 4), 0xd4a73a, x, 0.3, z + Math.sign(z) * 0.11));
+      for (const x of [-0.45, 0.45]) g.add(mesh(B(0.08, 0.84, 0.08), 0x4a2f1a, x, 1.16, 0.02));
+      for (let n = -2; n <= 2; n++) g.add(mesh(C(0.012, 0.012, 0.7, 5), 0xd4a73a, n * 0.16, 1.15, 0.02, { emissive: 0x2a1c00 }));
+      g.add(mesh(B(0.3, 0.02, 0.2), 0xe8e0c8, 0.15, 0.79, 0.12), mesh(C(0.04, 0.04, 0.05, 8), 0xe8c04a, -0.2, 0.8, 0.1, { emissive: 0x2a1c00 }));
+      break;
+    }
+    case 'market_stall': {
+      const awning = [0xc0392b, 0x2f6a9a, 0x3f8a3a, 0xd4a020][k % 4];
+      g.add(mesh(B(0.92, 0.6, 0.5), 0x7a5230, 0, 0.3, 0.12, { map: planks }), mesh(B(0.98, 0.05, 0.56), 0x5a3a20, 0, 0.62, 0.12));
+      for (const x of [-0.44, 0.44]) for (const z of [-0.36, 0.34]) g.add(mesh(B(0.06, z < 0 ? 1.5 : 1.25, 0.06), 0x5a3a20, x, z < 0 ? 0.75 : 0.62, z));
+      // Striped awning sloping toward the customer.
+      for (let n = 0; n < 5; n++) {
+        const stripe = mesh(B(0.2, 0.03, 0.86), n % 2 ? 0xf2ead8 : awning, -0.4 + n * 0.2, 1.38, -0.01);
+        stripe.rotation.x = 0.28;
+        g.add(stripe);
+      }
+      // Goods: produce, pots and cloth bolts.
+      const goods = [0xd04a2a, 0xe8b030, 0x6a9a3a, 0x8a5a3a, 0xc8b8e8];
+      for (let n = 0; n < 5; n++) g.add(mesh(new THREE.SphereGeometry(0.06, 6, 4), goods[(n * 3 + k) % goods.length], -0.32 + n * 0.16, 0.7, 0.18));
+      g.add(mesh(C(0.06, 0.05, 0.14, 8), 0x9a6a4a, 0.3, 0.71, 0.0), mesh(C(0.05, 0.05, 0.3, 8).rotateZ(Math.PI / 2), 0x7a4a8a, -0.2, 0.69, 0.0));
+      break;
+    }
+    case 'altar': {
+      g.add(
+        mesh(B(0.9, 0.12, 0.6), 0x8a8478, 0, 0.06, 0, { map: bricks }),
+        mesh(B(0.76, 0.6, 0.48), 0xd8d0c0, 0, 0.42, 0),
+        mesh(B(0.84, 0.06, 0.56), 0xe8e0d0, 0, 0.75, 0),
+        mesh(B(0.3, 0.62, 0.02), 0x7a2a3a, 0, 0.47, 0.26),
+        mesh(B(0.3, 0.02, 0.56), 0x7a2a3a, 0, 0.785, 0),
+      );
+      for (const x of [-0.3, 0.3]) {
+        g.add(mesh(C(0.025, 0.03, 0.18, 6), 0xf4eedc, x, 0.87, -0.1));
+        const flame = mesh(new THREE.ConeGeometry(0.02, 0.06, 5), 0xffc040, x, 0.99, -0.1, { emissive: 0xff8a00 });
+        flame.name = FLICKER;
+        g.add(flame);
+      }
+      g.add(mesh(new THREE.TorusGeometry(0.09, 0.015, 5, 16), 0xe0bb4a, 0, 0.93, -0.12, { emissive: 0x2a1c00 }));
+      break;
+    }
+    case 'statue': {
+      const fountain = near(1, 0) === 'water' && near(-1, 0) === 'water';
+      if (fountain) {
+        // A 3x3 basin rim around the pool, then the statue rising from the water.
+        for (const [x, z, w, d] of [[0, -1.45, 3.1, 0.2], [0, 1.45, 3.1, 0.2], [-1.45, 0, 0.2, 2.7], [1.45, 0, 0.2, 2.7]]) g.add(mesh(B(w, 0.75, d), 0xb0a898, x, 0.42, z, { map: bricks }));
+        g.add(mesh(C(0.32, 0.4, 0.7, 10), 0xb0a898, 0, 0.35, 0, { map: bricks }), mesh(C(0.5, 0.42, 0.08, 14), 0xc8c0b0, 0, 0.72, 0));
+      } else {
+        g.add(mesh(B(0.7, 0.5, 0.7), 0xb0a898, 0, 0.25, 0, { map: bricks }), mesh(B(0.78, 0.06, 0.78), 0xc8c0b0, 0, 0.52, 0));
+      }
+      // A robed figure holding a sun disc aloft.
+      const stone = 0xd8d4c8;
+      const base = fountain ? 0.76 : 0.55;
+      g.add(
+        mesh(C(0.14, 0.24, 0.7, 9), stone, 0, base + 0.35, 0),
+        mesh(C(0.1, 0.14, 0.24, 9), stone, 0, base + 0.82, 0),
+        mesh(new THREE.SphereGeometry(0.1, 9, 7), stone, 0, base + 1.03, 0),
+        mesh(C(0.035, 0.04, 0.42, 6), stone, 0.12, base + 1.0, 0, {}),
+        mesh(new THREE.TorusGeometry(0.12, 0.03, 6, 16), 0xe0bb4a, 0.2, base + 1.28, 0, { emissive: 0x2a1c00 }),
+      );
+      (g.children[g.children.length - 2] as THREE.Mesh).rotation.z = -0.35;
+      break;
+    }
+    case 'standing_stone': {
+      const h = 1.3 + (k % 5) * 0.12;
+      const stone = mesh(B(0.42, h, 0.3), 0x8a8a84, 0, h / 2 - 0.05, 0, { map: textures.rock() });
+      stone.rotation.set(((k % 7) - 3) * 0.02, (k % 11) * 0.3, ((k % 5) - 2) * 0.03);
+      g.add(stone, mesh(new THREE.DodecahedronGeometry(0.18, 0), 0x7a7a74, 0.05, h - 0.1, 0, { map: textures.rock() }));
+      // Lichen patches
+      g.add(mesh(B(0.2, 0.25, 0.02), 0x9aa86a, 0.06, 0.5, 0.16), mesh(B(0.15, 0.18, 0.02), 0xb0a860, -0.1, 0.9, 0.16));
+      break;
+    }
+    case 'log_pile': {
+      // Pyramid of logs: four, three, two.
+      let row = 0;
+      for (const n of [4, 3, 2]) {
+        for (let k = 0; k < n; k++) {
+          const log = mesh(C(0.11, 0.11, 0.86, 8).rotateX(Math.PI / 2), 0x7a5230, (k - (n - 1) / 2) * 0.22, 0.11 + row * 0.19, 0);
+          // Pale end grain pokes just past the bark.
+          g.add(log, mesh(C(0.09, 0.09, 0.87, 8).rotateX(Math.PI / 2), 0xd8b080, (k - (n - 1) / 2) * 0.22, 0.11 + row * 0.19, 0.0));
+        }
+        row++;
+      }
+      break;
+    }
+    case 'hide_tent': {
+      // One tent per block of tent tiles, built by its north-west tile.
+      if (near(-1, 0) === 'hide_tent' || near(0, -1) === 'hide_tent') break;
+      let w = 1;
+      let d = 1;
+      while (near(w, 0) === 'hide_tent') w++;
+      while (near(0, d) === 'hide_tent') d++;
+      const cx = (w - 1) / 2;
+      const cz = (d - 1) / 2;
+      const tent = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.62, 1.7, 7), new THREE.MeshLambertMaterial({ color: 0x9a7a52, flatShading: true }));
+      tent.position.set(cx, 0.85, cz);
+      tent.castShadow = tent.receiveShadow = true;
+      g.add(tent);
+      for (let n = 0; n < 4; n++) {
+        const a = (n / 4) * Math.PI * 2 + 0.4;
+        const pole = mesh(C(0.025, 0.03, 0.6, 5), 0x4a3020, cx + Math.cos(a) * 0.12, 1.75, cz + Math.sin(a) * 0.12);
+        pole.rotation.set(Math.sin(a) * 0.4, 0, -Math.cos(a) * 0.4);
+        g.add(pole);
+      }
+      // Dark doorway flap and painted band.
+      g.add(mesh(new THREE.CircleGeometry(0.3, 3), 0x2a1c12, cx, 0.32, cz + Math.max(w, d) * 0.5));
+      g.add(mesh(new THREE.TorusGeometry(Math.max(w, d) * 0.43, 0.03, 4, 7).rotateX(Math.PI / 2), 0x8a2a1a, cx, 0.55, cz));
+      g.userData.span = [w, d];
+      break;
+    }
+    case 'campfire': {
+      for (let n = 0; n < 8; n++) {
+        const a = (n / 8) * Math.PI * 2;
+        g.add(mesh(new THREE.DodecahedronGeometry(0.09, 0), 0x6a6660, Math.cos(a) * 0.32, 0.06, Math.sin(a) * 0.32, { map: textures.rock() }));
+      }
+      for (let n = 0; n < 4; n++) {
+        const log = mesh(C(0.045, 0.05, 0.5, 6), 0x4a3020, 0, 0.12, 0);
+        log.rotation.set(Math.PI / 2 - 0.5, (n / 4) * Math.PI * 2, 0);
+        g.add(log);
+      }
+      g.add(mesh(new THREE.CircleGeometry(0.25, 10).rotateX(-Math.PI / 2), 0x2a2420, 0, 0.02, 0));
+      for (const [s, x, z] of [[1, 0, 0], [0.7, 0.07, 0.05], [0.6, -0.06, -0.04]]) {
+        const flame = mesh(new THREE.ConeGeometry(0.11 * s, 0.42 * s, 6).translate(0, 0.21 * s, 0), 0xffa030, x, 0.1, z, { emissive: 0xff5a00 });
+        flame.name = FLICKER;
+        g.add(flame);
+      }
+      // Spit with a roast over the fire.
+      for (const x of [-0.36, 0.36]) g.add(mesh(C(0.02, 0.02, 0.62, 5), 0x3a2416, x, 0.31, 0));
+      g.add(mesh(C(0.015, 0.015, 0.8, 5).rotateZ(Math.PI / 2), 0x3a3a3a, 0, 0.6, 0), mesh(new THREE.SphereGeometry(0.1, 7, 5), 0x7a3a1a, 0, 0.6, 0));
+      (g.children[g.children.length - 1] as THREE.Mesh).scale.set(1.5, 0.9, 0.9);
+      break;
+    }
+    case 'goblin_totem': {
+      g.add(mesh(C(0.1, 0.13, 1.7, 7), 0x5a3d22, 0, 0.85, 0, { map: planks }));
+      const faces = [0x8a3a2a, 0x3a6a3a, 0xc0a040];
+      faces.forEach((c, n) => {
+        g.add(mesh(B(0.3, 0.3, 0.28), c, 0, 0.45 + n * 0.42, 0));
+        for (const x of [-0.07, 0.07]) g.add(mesh(B(0.06, 0.05, 0.02), 0x111111, x, 0.5 + n * 0.42, 0.145));
+        g.add(mesh(B(0.14, 0.04, 0.02), 0xe8e0c8, 0, 0.4 + n * 0.42, 0.145));
+      });
+      g.add(mesh(new THREE.SphereGeometry(0.11, 8, 6), 0xf0e8d4, 0, 1.8, 0));
+      for (const x of [-0.04, 0.04]) g.add(mesh(new THREE.SphereGeometry(0.025, 5, 4), 0x111111, x, 1.82, 0.09));
+      for (const s of [-1, 1]) {
+        const horn = mesh(new THREE.ConeGeometry(0.035, 0.2, 5), 0xd8d0b8, s * 0.12, 1.88, 0);
+        horn.rotation.z = -s * 0.9;
+        g.add(horn);
+        const feather = mesh(B(0.04, 0.3, 0.01), s < 0 ? 0xc0392b : 0x2a2a2a, s * 0.18, 1.35, 0.05);
+        feather.rotation.z = s * 0.4;
+        g.add(feather);
+      }
       break;
     }
     case 'furnace': {

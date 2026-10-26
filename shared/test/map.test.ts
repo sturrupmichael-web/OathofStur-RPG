@@ -1,49 +1,57 @@
 import { describe, expect, it } from 'vitest';
-import { AsciiMapSource } from '../src/map/AsciiMapSource';
-import { WorldGrid } from '../src/sim/grid';
+import { JsonMapSource, areaAt, type JsonMapFile } from '../src/map/JsonMapSource';
 import { loadWorld } from './helpers';
 
-describe('AsciiMapSource', () => {
+describe('JsonMapSource', () => {
   const map = loadWorld();
+  const terrainAt = (x: number, y: number) => map.terrainDefs[map.terrain[y * map.width + x]].key;
+  const count = (key: string) => map.placements.filter((p) => p.defKey === key).length;
 
-  it('loads the full 100x60 world', () => {
-    expect(map.width).toBe(100);
-    expect(map.height).toBe(60);
-    expect(map.terrain).toHaveLength(6000);
+  it('loads the full 120x96 Kelmoor map', () => {
+    expect(map.width).toBe(120);
+    expect(map.height).toBe(96);
+    expect(map.terrain).toHaveLength(120 * 96);
     expect(map.terrain.every((t) => t >= 0)).toBe(true);
-    expect(map.spawn).toEqual({ x: 42, y: 31 });
+    expect(map.spawn).toEqual({ x: 60, y: 49 });
+    expect(map.areas).toHaveLength(30);
   });
 
-  it('places every resource, station, NPC and monster spawn', () => {
-    const count = (key: string) => map.placements.filter((p) => p.defKey === key).length;
-    expect(count('tree')).toBe(227);
-    expect(count('bank_chest')).toBe(3);
-    expect(count('elder_maren')).toBe(1);
-    expect(count('hen')).toBe(8);
-    expect(count('cinder_drake')).toBe(1);
+  it('turns trees, rocks, stations and props into placements', () => {
+    expect(count('tree')).toBe(435);
+    expect(count('dead_tree')).toBe(37);
+    expect(count('copper_rock')).toBe(10);
+    expect(count('bank_booth')).toBe(20);
+    expect(count('anvil')).toBe(2);
+    expect(count('hide_tent')).toBe(16);
+    expect(map.defs.resources.coal_rock.skill).toBe('mining');
+    expect(map.defs.resources.tree.level).toBeUndefined(); // not in the map data
   });
 
-  it('puts fishing spots on water and indoor stations on floor', () => {
-    const terrainAt = (x: number, y: number) => map.terrainDefs[map.terrain[y * map.width + x]].key;
-    const spot = map.placements.find((p) => p.defKey === 'deep_fishing_spot')!;
-    expect(terrainAt(spot.x, spot.y)).toBe('water');
-    const bank = map.placements.find((p) => p.defKey === 'bank_chest')!;
-    expect(terrainAt(bank.x, bank.y)).toBe('floor');
+  it('spawns the encampment goblins with their level and wander area', () => {
+    const goblins = map.placements.filter((p) => p.kind === 'monster');
+    expect(goblins).toHaveLength(8);
+    expect(goblins.every((g) => g.defKey === 'goblin' && g.level === 2 && g.wander?.radius === 6)).toBe(true);
+  });
+
+  it('gives objects the ground around them', () => {
+    expect(terrainAt(39, 52)).toBe('stone_floor'); // anvil in the smithy
+    expect(terrainAt(60, 46)).toBe('water'); // fountain statue
+    expect(terrainAt(1, 66)).toBe('long_grass'); // Thornwood tree
+  });
+
+  it('finds the smallest named area at a tile', () => {
+    expect(areaAt(map, 39, 52)?.name).toBe('Smithy');
+    expect(areaAt(map, 60, 49)?.name).toBe('Kelmoor Square');
+    expect(areaAt(map, 22, 86)?.name).toBe('Goblin Encampment');
+    expect(areaAt(map, 2, 90)?.name).toBe('Thornwood');
   });
 
   it('rejects malformed maps with a clear error', () => {
-    const legend = { width: 2, height: 1, spawn: { x: 0, y: 0 }, tiles: { '.': { name: 'grass', walkable: true } }, resources: {}, stations: {}, npcs: {}, monsters: {} };
-    expect(() => new AsciiMapSource('bad', '.?\n', legend).load()).toThrow(/unknown character '\?'/);
-    expect(() => new AsciiMapSource('bad', '...\n', legend).load()).toThrow(/columns/);
-  });
-
-  it('finds the walled area behind the gate', () => {
-    const grid = new WorldGrid(map);
-    expect(grid.isGate(80, 38)).toBe(true);
-    const gate = grid.index(80, 38);
-    expect(grid.gateZone[grid.index(80, 39)]).toBe(gate); // just inside
-    expect(grid.gateZone[grid.index(92, 45)]).toBe(gate); // near the drake
-    expect(grid.gateZone[grid.index(80, 37)]).toBe(-1); // just outside
-    expect(grid.gateZone[grid.index(map.spawn.x, map.spawn.y)]).toBe(-1);
+    const base: JsonMapFile = { name: 'bad', width: 2, height: 1, spawn: { x: 0, y: 0 }, legend: { '.': { name: 'Grass', walkable: true } }, rows: ['..'] };
+    expect(() => new JsonMapSource('bad', { ...base, rows: ['.?'] }).load()).toThrow(/unknown character '\?'/);
+    expect(() => new JsonMapSource('bad', { ...base, rows: ['...'] }).load()).toThrow(/columns/);
+    expect(() => new JsonMapSource('bad', { ...base, spawn: { x: 5, y: 0 } }).load()).toThrow(/spawn/);
+    const tree = { ...base, legend: { ...base.legend, T: { name: 'Tree', walkable: true } }, rows: ['.T'] };
+    expect(() => new JsonMapSource('bad', tree).load()).toThrow(/walkable/);
   });
 });

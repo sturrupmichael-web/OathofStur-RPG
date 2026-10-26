@@ -7,9 +7,9 @@ describe('findPath', () => {
   const map = loadWorld();
   const grid = new WorldGrid(map);
 
-  it('finds a valid path across the river to the mine', () => {
+  it('finds a valid path out of the city and across the river to the dig site', () => {
     const start = map.spawn;
-    const target = { x: 78, y: 15 };
+    const target = { x: 109, y: 40 };
     const { path, reachedGoal } = findPath(grid, start, [target], target);
     expect(reachedGoal).toBe(true);
     expect(path[path.length - 1]).toEqual(target);
@@ -34,7 +34,7 @@ describe('findPath', () => {
   });
 
   it('walks as close as possible to an unreachable tile', () => {
-    const water = { x: 61, y: 40 };
+    const water = { x: 101, y: 30 }; // middle of the River Vell
     const { path, reachedGoal } = findPath(grid, map.spawn, [water], water);
     expect(reachedGoal).toBe(false);
     const end = path[path.length - 1];

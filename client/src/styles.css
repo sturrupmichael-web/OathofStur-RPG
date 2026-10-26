@@ -162,6 +162,17 @@ body {
   color: var(--gold);
 }
 
+#player-card {
+  flex-wrap: wrap;
+}
+
+#region {
+  order: 3;
+  flex-basis: 100%;
+  color: #e8dcc0;
+  font-style: italic;
+}
+
 .tabs {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

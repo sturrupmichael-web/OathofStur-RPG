@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { MapData, WorldGrid } from '@rpg/shared';
 import { Batcher, lambert } from './batch';
-import { WATER_Y, type Heightmap } from './heightmap';
+import type { Heightmap } from './heightmap';
 import { hash2, shade, type Area, type TileInfo } from './palette';
 
 /**
@@ -28,6 +28,14 @@ export function buildScenery(map: MapData, grid: WorldGrid, info: TileInfo, area
 
   const isWater = (x: number, y: number) => x >= 0 && y >= 0 && x < map.width && y < map.height && info.terrainKey[y * map.width + x] === 'water';
   const flowerColors = [0xffffff, 0xffe14d, 0xb57edc, 0xe8505b, 0x7ab8ff];
+  const bedColors = [0xe8505b, 0xffe14d, 0xb57edc, 0xff9a40, 0xffffff];
+  const wheat = new THREE.CylinderGeometry(0.01, 0.012, 0.42, 3);
+  wheat.translate(0, 0.21, 0);
+  const ear = new THREE.CapsuleGeometry(0.022, 0.07, 2, 4);
+  const bone = new THREE.CylinderGeometry(0.014, 0.014, 0.2, 4).rotateZ(Math.PI / 2);
+  const knob = new THREE.SphereGeometry(0.025, 5, 3);
+  const skull = new THREE.SphereGeometry(0.06, 7, 5);
+  const puddle = new THREE.CircleGeometry(0.2, 10).rotateX(-Math.PI / 2);
 
   for (let y = 0; y < map.height; y++) {
     for (let x = 0; x < map.width; x++) {
@@ -35,54 +43,115 @@ export function buildScenery(map: MapData, grid: WorldGrid, info: TileInfo, area
       const key = info.terrainKey[i];
       const h = (salt: number) => hash2(x, y, salt);
       const at = (dx: number, dz: number): [number, number, number] => [x + 0.5 + dx, 0, y + 0.5 + dz];
+      const pebbles = (n: number, chance: number, color: number) => {
+        if (h(40) >= chance) return;
+        for (let k = 0; k < n; k++) batch.add('pebble', pebble, plain, { position: at((h(41 + k) - 0.5) * 0.8, (h(44 + k) - 0.5) * 0.8), rotationY: h(47 + k) * 6, scale: 0.6 + h(50 + k) * 0.6 }, shade(color, 0.9 + h(53 + k) * 0.2), noShadow);
+      };
+      if (info.placementKey[i]) continue;
 
-      if (key === 'water') {
-        if (info.placementKey[i] || h(30) > 0.07) continue;
-        const [px, , pz] = at((h(31) - 0.5) * 0.6, (h(32) - 0.5) * 0.6);
-        batch.add('lilypad', pad, lambert(0xffffff, { side: THREE.DoubleSide }), { position: [px, WATER_Y + 0.01, pz], rotationY: h(33) * 6 }, 0x4f8a3a, { ...noShadow, absolute: true });
-        if (h(34) < 0.4) batch.add('lily', petal, plain, { position: [px + 0.04, WATER_Y + 0.04, pz], scale: [1, 0.6, 1] }, 0xf5b8d0, { ...noShadow, absolute: true });
-        continue;
+      switch (key) {
+        case 'water': {
+          // Lilies on ponds and the river, not in the fountain.
+          if (areas[i] === 'town' || h(30) > 0.07) continue;
+          const [px, , pz] = at((h(31) - 0.5) * 0.6, (h(32) - 0.5) * 0.6);
+          const level = hm.waterAt(x, y);
+          batch.add('lilypad', pad, lambert(0xffffff, { side: THREE.DoubleSide }), { position: [px, level + 0.01, pz], rotationY: h(33) * 6 }, 0x4f8a3a, { ...noShadow, absolute: true });
+          if (h(34) < 0.4) batch.add('lily', petal, plain, { position: [px + 0.04, level + 0.04, pz], scale: [1, 0.6, 1] }, 0xf5b8d0, { ...noShadow, absolute: true });
+          continue;
+        }
+        case 'dirt_path':
+          pebbles(1, 0.18, 0x8a8478);
+          continue;
+        case 'cobblestone':
+          pebbles(1, 0.06, 0x8a8478);
+          continue;
+        case 'sand':
+          pebbles(2, 0.15, 0xb8a888);
+          continue;
+        case 'scorched_earth':
+          pebbles(2, 0.3, 0x3e3a36);
+          if (h(60) < 0.04) {
+            // Charred stump
+            batch.add('stump', new THREE.CylinderGeometry(0.08, 0.12, 0.22, 6).translate(0, 0.11, 0), plain, { position: at((h(61) - 0.5) * 0.5, (h(62) - 0.5) * 0.5), rotationY: h(63) * 6 }, 0x2a2622);
+          }
+          continue;
+        case 'trampled_mud':
+          if (h(70) < 0.2) batch.add('puddle', puddle, plain, { position: at((h(71) - 0.5) * 0.5, (h(72) - 0.5) * 0.5), scale: [1 + h(73), 1, 0.6 + h(74) * 0.6] }, 0x3e3226, noShadow);
+          continue;
+        case 'bone_scatter':
+          for (let k = 0; k < 3; k++) {
+            const [px, , pz] = at((h(80 + k) - 0.5) * 0.7, (h(83 + k) - 0.5) * 0.7);
+            const yaw = h(86 + k) * 6;
+            batch.add('bone', bone, plain, { position: [px, 0.02, pz], rotationY: yaw }, 0xe8e0c8, noShadow);
+            for (const e of [-0.1, 0.1]) batch.add('bone-end', knob, plain, { position: [px + Math.cos(yaw) * e, 0.025, pz - Math.sin(yaw) * e] }, 0xe8e0c8, noShadow);
+          }
+          batch.add('skull', skull, plain, { position: at(0.15, -0.1), scale: [1, 0.85, 1.15], rotationY: h(89) * 6 }, 0xf0e8d4);
+          continue;
+        case 'flower_bed':
+          for (let k = 0; k < 9; k++) {
+            const [px, , pz] = at(((k % 3) - 1) * 0.3 + (h(90 + k) - 0.5) * 0.1, (Math.floor(k / 3) - 1) * 0.3 + (h(100 + k) - 0.5) * 0.1);
+            batch.add('stem', stem, plain, { position: [px, 0, pz] }, 0x4a7a2a, noShadow);
+            batch.add('flower', petal, plain, { position: [px, 0.15, pz], scale: 1.3 }, bedColors[Math.floor(h(110 + k) * bedColors.length)], noShadow);
+          }
+          continue;
+        case 'crop_field':
+          // Rows of wheat running east-west.
+          for (const row of [-0.25, 0.25]) {
+            for (let k = 0; k < 4; k++) {
+              const [px, , pz] = at(-0.36 + k * 0.24 + (h(120 + k) - 0.5) * 0.06, row + (h(124 + k) - 0.5) * 0.06);
+              const tilt: [number, number, number] = [(h(128 + k) - 0.5) * 0.25, 0, (h(132 + k) - 0.5) * 0.25];
+              batch.add('wheat', wheat, plain, { position: [px, 0, pz], rotation: tilt }, 0xa89a4a, noShadow);
+              batch.add('ear', ear, plain, { position: [px + tilt[2] * -0.4, 0.44, pz + tilt[0] * 0.4], rotation: tilt }, 0xe0c060, noShadow);
+            }
+          }
+          continue;
+        case 'grass':
+        case 'long_grass':
+          break;
+        default:
+          continue;
       }
-      if (key === 'dirt_path' || key === 'road') {
-        if (h(40) < 0.18) batch.add('pebble', pebble, plain, { position: at((h(41) - 0.5) * 0.8, (h(42) - 0.5) * 0.8), rotationY: h(43) * 6, scale: 0.6 + h(44) * 0.5 }, shade(0x8a8478, 0.9 + h(45) * 0.2), noShadow);
-        continue;
-      }
-      if (key !== 'grass' || grid.blocked[i]) continue;
+      if (grid.blocked[i]) continue;
       const area = areas[i];
       const ground = tileColors[i];
+      const long = key === 'long_grass';
 
-      // Reeds where grass meets the river.
+      // Reeds where grass meets water.
       const shoreDir = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([dx, dy]) => isWater(x + dx, y + dy));
-      if (shoreDir && h(50) < 0.7) {
+      if (shoreDir && area !== 'town' && h(50) < 0.7) {
+        const level = hm.waterAt(x + shoreDir[0], y + shoreDir[1]);
         for (let k = 0; k < 4; k++) {
           const ox = shoreDir[0] * 0.38 + (shoreDir[0] === 0 ? (h(51 + k) - 0.5) * 0.9 : (h(55 + k) - 0.5) * 0.15);
           const oz = shoreDir[1] * 0.38 + (shoreDir[1] === 0 ? (h(59 + k) - 0.5) * 0.9 : (h(63 + k) - 0.5) * 0.15);
           const tall = 0.7 + h(67 + k) * 0.5;
           const [px, , pz] = at(ox, oz);
-          batch.add('reed', reed, plain, { position: [px, 0, pz], scale: [1, tall, 1], rotation: [(h(70 + k) - 0.5) * 0.2, 0, (h(74 + k) - 0.5) * 0.2] }, 0x6f8f3a, noShadow);
-          if (k % 2 === 0) batch.add('cattail', cattail, plain, { position: [px, 0.55 * tall, pz] }, 0x6a4526, noShadow);
+          const base = Math.min(hm.groundAt(px, pz), level + 0.05);
+          batch.add('reed', reed, plain, { position: [px, base, pz], scale: [1, tall, 1], rotation: [(h(70 + k) - 0.5) * 0.2, 0, (h(74 + k) - 0.5) * 0.2] }, 0x6f8f3a, { ...noShadow, absolute: true });
+          if (k % 2 === 0) batch.add('cattail', cattail, plain, { position: [px, base + 0.55 * tall, pz] }, 0x6a4526, { ...noShadow, absolute: true });
         }
       }
 
-      if (area === 'pen') {
+      if (area === 'farm' && h(140) < 0.15) {
         for (let k = 0; k < 6; k++) {
           const [px, , pz] = at((h(80 + k) - 0.5) * 0.8, (h(86 + k) - 0.5) * 0.8);
           batch.add('straw', straw, plain, { position: [px, 0.01, pz], rotationY: h(92 + k) * 6 }, 0xe0c060, noShadow);
         }
-        continue;
       }
 
-      // Grass tufts take the tile's own colour, so Hollowmere's are ashen.
-      const tuftChance = area === 'town' ? 0.25 : area === 'mine' ? 0.2 : 0.55;
-      if (h(1) < tuftChance) {
-        const cx = (h(2) - 0.5) * 0.6;
-        const cz = (h(3) - 0.5) * 0.6;
-        for (let k = 0; k < 4; k++) {
-          const [px, , pz] = at(cx + (h(4 + k) - 0.5) * 0.14, cz + (h(8 + k) - 0.5) * 0.14);
-          batch.add('tuft', blade, plain, { position: [px, 0, pz], rotation: [(h(12 + k) - 0.5) * 0.6, 0, (h(16 + k) - 0.5) * 0.6], scale: [1, 0.7 + h(20 + k) * 0.6, 1] }, shade(ground, 0.8 + h(24 + k) * 0.3), noShadow);
+      // Tufts take the tile's own colour; long grass is thicker and taller.
+      const tuftChance = long ? 0.95 : area === 'town' ? 0.25 : area === 'ash' ? 0.2 : 0.5;
+      const tufts = long ? 2 : 1;
+      for (let t = 0; t < tufts; t++) {
+        if (h(1 + t * 200) >= tuftChance) continue;
+        const cx = (h(2 + t * 200) - 0.5) * 0.7;
+        const cz = (h(3 + t * 200) - 0.5) * 0.7;
+        for (let k = 0; k < (long ? 6 : 4); k++) {
+          const [px, , pz] = at(cx + (h(4 + k + t * 200) - 0.5) * 0.18, cz + (h(8 + k + t * 200) - 0.5) * 0.18);
+          const tall = (long ? 1.3 : 0.7) + h(20 + k + t * 200) * 0.6;
+          batch.add('tuft', blade, plain, { position: [px, 0, pz], rotation: [(h(12 + k) - 0.5) * 0.6, 0, (h(16 + k) - 0.5) * 0.6], scale: [1, tall, 1] }, shade(ground, 0.8 + h(24 + k) * 0.3), noShadow);
         }
       }
-      if ((area === 'grass' || area === 'town') && h(100) < 0.08) {
+      if ((area === 'grass' || area === 'town' || area === 'farm') && h(100) < 0.08) {
         const color = flowerColors[Math.floor(h(101) * flowerColors.length)];
         for (let k = 0; k < 3; k++) {
           const [px, , pz] = at((h(102 + k) - 0.5) * 0.7, (h(105 + k) - 0.5) * 0.7);
@@ -94,11 +163,6 @@ export function buildScenery(map: MapData, grid: WorldGrid, info: TileInfo, area
         const [px, , pz] = at((h(111) - 0.5) * 0.6, (h(112) - 0.5) * 0.6);
         batch.add('mush-stem', new THREE.CylinderGeometry(0.02, 0.025, 0.08, 5).translate(0, 0.04, 0), plain, { position: [px, 0, pz] }, 0xeee6d0, noShadow);
         batch.add('mush-cap', capGeo, plain, { position: [px, 0.07, pz] }, h(113) < 0.5 ? 0xc0392b : 0x8a5a3a, noShadow);
-      }
-      if ((area === 'mine' || area === 'hollowmere') && h(120) < 0.22) {
-        for (let k = 0; k < 2; k++) {
-          batch.add('pebble', pebble, plain, { position: at((h(121 + k) - 0.5) * 0.8, (h(123 + k) - 0.5) * 0.8), rotationY: h(125 + k) * 6, scale: 0.6 + h(127 + k) * 0.8 }, shade(area === 'mine' ? 0x8a8478 : 0x55524c, 0.9 + h(129) * 0.2), noShadow);
-        }
       }
     }
   }

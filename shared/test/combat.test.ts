@@ -7,7 +7,7 @@ import { INVENTORY_SIZE, ITEMS, addItem, countItem, emptyInventory, type Equipme
 import { parseSave } from '../src/sim/save';
 import { DEATH_PILE_TICKS, PRIVATE_TICKS, Simulation } from '../src/sim/Simulation';
 import { combatLevel, startingXp, xpForLevel, type SkillId } from '../src/sim/skills';
-import { loadWorld } from './helpers';
+import { kx, ky, loadWorld } from './helpers';
 
 const map = loadWorld();
 
@@ -211,6 +211,19 @@ describe('Equipment and eating', () => {
     expect(p.inventory[1]).toEqual({ itemId: 'bronze_sword', qty: 1 });
     const self = sim.drain(p.id).filter((m) => m.type === 'self').pop();
     expect(self?.type === 'self' && self.state.bonuses).toEqual({ attack: 10, strength: 9, defence: 2 });
+  });
+
+  it('wields an axe as a weapon and still chops with it', () => {
+    const sim = new Simulation({ map, seed: 3 });
+    const p = addPlayer(sim, { at: { x: kx(25), y: ky(60) }, items: [['bronze_axe', 1]] });
+    sim.queueIntent(p.id, { type: 'equip', slot: 0 });
+    sim.step();
+    expect(p.equipment.weapon).toBe('bronze_axe');
+    expect(p.inventory.every((s) => s === null)).toBe(true);
+    const tree = entities(sim).find((e) => e.kind === 'resource' && e.x === kx(26) && e.y === ky(60))!;
+    sim.queueIntent(p.id, { type: 'interact', targetId: tree.id, action: 'gather' });
+    run(sim, 200, () => countItem(p.inventory, 'logs') > 0);
+    expect(countItem(p.inventory, 'logs')).toBeGreaterThan(0);
   });
 
   it('needs the level to use steel', () => {

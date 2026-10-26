@@ -576,9 +576,11 @@ export class Simulation {
         return this.stopGathering(player);
       }
     } else {
-      const tool = bestTool(player.inventory, data.skill, level);
+      // A wielded axe or pickaxe counts as much as one in the pack.
+      const carried = [...player.inventory, player.equipment.weapon ? { itemId: player.equipment.weapon, qty: 1 } : null];
+      const tool = bestTool(carried, data.skill, level);
       if (!tool) {
-        const why = hasAnyTool(player.inventory, data.skill) ? `You need a higher ${skillName} level to use the tool you have.` : `You need ${text.tool}.`;
+        const why = hasAnyTool(carried, data.skill) ? `You need a higher ${skillName} level to use the tool you have.` : `You need ${text.tool}.`;
         this.message(player.id, why, 'warn');
         return this.stopGathering(player);
       }

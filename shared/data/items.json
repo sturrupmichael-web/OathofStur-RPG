@@ -1,14 +1,14 @@
 {
-  "comment": "Every item in the game. value is the shop price in coins; shops buy back at 40%. Items don't stack unless stackable is true. tool.bonus is added to the chance of success per attempt. heals is hitpoints restored when eaten. equip: the slot it is worn in, its attack/strength/defence bonuses, and the level needed (Attack for weapons, Defence for armour; 1 when left out). Weapons all attack every 4 ticks; style picks the animation.",
+  "comment": "Every item in the game. value is the shop price in coins; shops buy back at 40%. Items don't stack unless stackable is true. tool.bonus is added to the chance of success per attempt. heals is hitpoints restored when eaten. equip: the slot it is worn in, its attack/strength/defence bonuses, and the level needed (Attack for weapons, Defence for armour; 1 when left out). Weapons all attack every 4 ticks; style picks the animation. Axes and pickaxes can be wielded and still work as tools.",
   "items": [
     { "id": "coins", "name": "Coins", "examine": "Kelmoor crowns. Lovely money.", "stackable": true, "value": 1 },
 
-    { "id": "bronze_axe", "name": "Bronze axe", "examine": "A sturdy axe with a bronze head. Good for felling trees.", "value": 16, "tool": { "skill": "woodcutting", "level": 1, "bonus": 0 } },
-    { "id": "iron_axe", "name": "Iron axe", "examine": "An iron-headed axe. It bites deeper than bronze.", "value": 56, "tool": { "skill": "woodcutting", "level": 10, "bonus": 0.08 } },
-    { "id": "steel_axe", "name": "Steel axe", "examine": "A well-balanced steel axe.", "value": 200, "tool": { "skill": "woodcutting", "level": 20, "bonus": 0.16 } },
-    { "id": "bronze_pickaxe", "name": "Bronze pickaxe", "examine": "Used for mining. The point is a little blunt.", "value": 16, "tool": { "skill": "mining", "level": 1, "bonus": 0 } },
-    { "id": "iron_pickaxe", "name": "Iron pickaxe", "examine": "An iron pickaxe. Rocks don't stand a chance.", "value": 56, "tool": { "skill": "mining", "level": 10, "bonus": 0.08 } },
-    { "id": "steel_pickaxe", "name": "Steel pickaxe", "examine": "A heavy steel pickaxe.", "value": 200, "tool": { "skill": "mining", "level": 20, "bonus": 0.16 } },
+    { "id": "bronze_axe", "name": "Bronze axe", "examine": "A sturdy axe with a bronze head. Good for felling trees.", "value": 16, "tool": { "skill": "woodcutting", "level": 1, "bonus": 0 }, "equip": { "slot": "weapon", "style": "slash", "attack": 3, "strength": 4 } },
+    { "id": "iron_axe", "name": "Iron axe", "examine": "An iron-headed axe. It bites deeper than bronze.", "value": 56, "tool": { "skill": "woodcutting", "level": 10, "bonus": 0.08 }, "equip": { "slot": "weapon", "style": "slash", "attack": 5, "strength": 6 } },
+    { "id": "steel_axe", "name": "Steel axe", "examine": "A well-balanced steel axe.", "value": 200, "tool": { "skill": "woodcutting", "level": 20, "bonus": 0.16 }, "equip": { "slot": "weapon", "style": "slash", "attack": 8, "strength": 9, "level": 5 } },
+    { "id": "bronze_pickaxe", "name": "Bronze pickaxe", "examine": "Used for mining. The point is a little blunt.", "value": 16, "tool": { "skill": "mining", "level": 1, "bonus": 0 }, "equip": { "slot": "weapon", "style": "slash", "attack": 3, "strength": 3 } },
+    { "id": "iron_pickaxe", "name": "Iron pickaxe", "examine": "An iron pickaxe. Rocks don't stand a chance.", "value": 56, "tool": { "skill": "mining", "level": 10, "bonus": 0.08 }, "equip": { "slot": "weapon", "style": "slash", "attack": 5, "strength": 5 } },
+    { "id": "steel_pickaxe", "name": "Steel pickaxe", "examine": "A heavy steel pickaxe.", "value": 200, "tool": { "skill": "mining", "level": 20, "bonus": 0.16 }, "equip": { "slot": "weapon", "style": "slash", "attack": 7, "strength": 7, "level": 5 } },
     { "id": "small_net", "name": "Small fishing net", "examine": "Good for scooping up little fish in the shallows.", "value": 5 },
     { "id": "fishing_rod", "name": "Fishing rod", "examine": "A rod for deep-water fishing. It needs bait.", "value": 5 },
     { "id": "fishing_bait", "name": "Fishing bait", "examine": "Wriggly worms in a pot. Fish love them.", "stackable": true, "value": 3 },

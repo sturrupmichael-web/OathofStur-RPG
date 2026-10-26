@@ -6,6 +6,7 @@ import { BuildingLayer, detectBuildings } from './buildings';
 import { EntityLayer } from './EntityLayer';
 import { buildTileColors, classifyAreas, tileInfo, type TileInfo } from './palette';
 import { buildScenery } from './scenery';
+import { buildHeightmap, type Heightmap } from './heightmap';
 import { buildTerrain, type TerrainLayer } from './terrain';
 
 export interface PickResult {
@@ -22,6 +23,7 @@ export class Renderer {
   readonly info: TileInfo;
   readonly tileColors: number[];
   readonly buildings: BuildingLayer;
+  readonly heightmap: Heightmap;
   private readonly webgl: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly entities: EntityLayer;
@@ -48,8 +50,8 @@ export class Renderer {
 
     this.scene.background = new THREE.Color(0x1b2430);
     this.scene.fog = new THREE.Fog(0x1b2430, 120, 220);
-    this.scene.add(new THREE.HemisphereLight(0xdfefff, 0x4a4030, 1.1));
-    this.sun = new THREE.DirectionalLight(0xfff1d6, 1.6);
+    this.scene.add(new THREE.HemisphereLight(0xdfefff, 0x4a4030, 0.85));
+    this.sun = new THREE.DirectionalLight(0xfff1d6, 2.1);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     Object.assign(this.sun.shadow.camera, { left: -28, right: 28, top: 28, bottom: -28, near: 1, far: 120 });
@@ -60,12 +62,13 @@ export class Renderer {
     const areas = classifyAreas(map, grid, this.info);
     this.tileColors = buildTileColors(map, this.info, areas);
     const buildings = detectBuildings(map, this.info);
-    this.terrain = buildTerrain(map, grid, this.info, this.tileColors, buildings);
+    this.heightmap = buildHeightmap(map, this.info, areas, buildings);
+    this.terrain = buildTerrain(map, this.info, this.tileColors, buildings, this.heightmap);
     this.scene.add(this.terrain.group);
-    this.buildings = new BuildingLayer(map, grid, this.info, buildings);
+    this.buildings = new BuildingLayer(map, grid, this.info, buildings, this.heightmap);
     this.scene.add(this.buildings.group);
-    this.scene.add(buildScenery(map, grid, this.info, areas, this.tileColors));
-    this.entities = new EntityLayer(state, map, grid);
+    this.scene.add(buildScenery(map, grid, this.info, areas, this.tileColors, this.heightmap));
+    this.entities = new EntityLayer(state, map, grid, this.heightmap);
     this.scene.add(this.entities.group);
 
     this.hoverOutline = new THREE.LineLoop(
@@ -105,8 +108,12 @@ export class Renderer {
     const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.rig.camera);
 
+    // The sloped ground first; the y=0 plane is only a fallback off the map.
     const groundHit = new THREE.Vector3();
-    const hasGround = this.raycaster.ray.intersectPlane(this.groundPlane, groundHit) !== null;
+    const terrainHit = this.raycaster.intersectObjects(this.terrain.ground, false)[0];
+    let hasGround = !!terrainHit;
+    if (terrainHit) groundHit.copy(terrainHit.point);
+    else hasGround = this.raycaster.ray.intersectPlane(this.groundPlane, groundHit) !== null;
     const groundDist = hasGround ? this.raycaster.ray.origin.distanceTo(groundHit) : Infinity;
 
     const roofs = this.buildings.roofPickables.filter((r) => r.visible);
@@ -134,12 +141,19 @@ export class Renderer {
 
   setHover(tile: Point | null): void {
     this.hoverOutline.visible = !!tile;
-    if (tile) this.hoverOutline.position.set(tile.x, 0.03, tile.y);
+    if (!tile) return;
+    // Drape the outline over the tile's four corners.
+    const pos = this.hoverOutline.geometry.attributes.position as THREE.BufferAttribute;
+    const h = this.heightmap;
+    const deck = h.isDeck(tile.x, tile.y) ? h.tileCentre(tile.x, tile.y) : null;
+    [[0, 0], [1, 0], [1, 1], [0, 1]].forEach(([dx, dz], k) => pos.setY(k, (deck ?? h.corner(tile.x + dx, tile.y + dz)) + 0.03));
+    pos.needsUpdate = true;
+    this.hoverOutline.position.set(tile.x, 0, tile.y);
   }
 
   showClick(tile: Point): void {
     this.clickPulseAt = performance.now();
-    this.clickPulse.position.set(tile.x + 0.5, 0.04, tile.y + 0.5);
+    this.clickPulse.position.set(tile.x + 0.5, this.heightmap.tileCentre(tile.x, tile.y) + 0.04, tile.y + 0.5);
   }
 
   /** World position of an entity, projected to screen pixels (for labels). */
@@ -147,7 +161,7 @@ export class Renderer {
     const view = this.state.entities.get(entityId);
     if (!view) return null;
     const p = this.state.renderPosition(view, now);
-    const v = new THREE.Vector3(p.x + 0.5, height, p.y + 0.5).project(this.rig.camera);
+    const v = new THREE.Vector3(p.x + 0.5, height + this.heightmap.groundAt(p.x + 0.5, p.y + 0.5), p.y + 0.5).project(this.rig.camera);
     const rect = this.canvas.getBoundingClientRect();
     return { x: ((v.x + 1) / 2) * rect.width, y: ((1 - v.y) / 2) * rect.height };
   }
@@ -156,16 +170,16 @@ export class Renderer {
     const player = this.state.player;
     if (player) {
       const p = this.state.renderPosition(player, now);
-      this.rig.update(new THREE.Vector3(p.x + 0.5, 0, p.y + 0.5), !this.hasSnapped);
+      this.rig.update(new THREE.Vector3(p.x + 0.5, this.heightmap.groundAt(p.x + 0.5, p.y + 0.5), p.y + 0.5), !this.hasSnapped);
       this.hasSnapped = true;
     }
     const t = this.rig.target;
-    this.sun.position.set(t.x - 18, 40, t.z + 12);
+    this.sun.position.set(t.x - 30, t.y + 26, t.z + 14); // low sun so slopes cast light and shade
     this.sun.target.position.copy(t);
 
     const dest = this.state.self?.destination;
     this.destinationMarker.visible = !!dest;
-    if (dest) this.destinationMarker.position.set(dest.x + 0.5, 0, dest.y + 0.5);
+    if (dest) this.destinationMarker.position.set(dest.x + 0.5, this.heightmap.tileCentre(dest.x, dest.y), dest.y + 0.5);
     this.destinationMarker.rotation.y = this.rig.yaw;
 
     const age = (now - this.clickPulseAt) / 450;

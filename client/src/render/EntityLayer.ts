@@ -3,6 +3,7 @@ import type { EntityId, MapData, WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView } from '../state/ClientState';
 import { animateCharacter, buildCharacter, type CharacterRig } from './character';
 import { FLICKER, RESOURCE_STYLES, buildStation, type PartStyle } from './models';
+import { WATER_Y, type Heightmap } from './heightmap';
 import { hash2, shade } from './palette';
 
 /** One InstancedMesh per part of a resource model, shared by every node of that type. */
@@ -32,6 +33,7 @@ export class EntityLayer {
     private readonly state: ClientState,
     map: MapData,
     private readonly grid: WorldGrid,
+    private readonly hm: Heightmap,
   ) {
     const counts = new Map<string, number>();
     for (const p of map.placements) counts.set(p.defKey, (counts.get(p.defKey) ?? 0) + 1);
@@ -118,7 +120,7 @@ export class EntityLayer {
       obj = rig.root;
     }
     obj.userData.entityId = data.id;
-    obj.position.set(data.x + 0.5, 0, data.y + 0.5);
+    obj.position.set(data.x + 0.5, this.hm.tileCentre(data.x, data.y), data.y + 0.5);
     if (data.kind === 'station' || data.kind === 'npc') obj.rotation.y = this.faceOpenSide(data.x, data.y);
     obj.traverse((o) => {
       if (o.name === FLICKER) this.flickers.push(o);
@@ -151,7 +153,9 @@ export class EntityLayer {
   private writeResource(pool: ResourcePool, slot: number, x: number, y: number, t: number): void {
     const rot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), hash2(x, y, 7) * Math.PI * 2);
     const size = 0.88 + hash2(x, y, 8) * 0.24;
-    const base = new THREE.Matrix4().compose(new THREE.Vector3(x + 0.5, 0, y + 0.5), rot, new THREE.Vector3(size, size, size));
+    // Fishing-spot parts are modelled relative to a water surface at -0.18.
+    const ground = pool.ripple ? WATER_Y + 0.18 : this.hm.tileCentre(x, y);
+    const base = new THREE.Matrix4().compose(new THREE.Vector3(x + 0.5, ground, y + 0.5), rot, new THREE.Vector3(size, size, size));
     const color = new THREE.Color();
     pool.parts.forEach(({ style, mesh }, k) => {
       const [sx, sy, sz] = style.scale ?? [1, 1, 1];
@@ -196,7 +200,7 @@ export class EntityLayer {
     if (moving) this.facing.set(id, Math.atan2(dx, dy));
     const targetYaw = this.facing.get(id) ?? obj.rotation.y;
     obj.rotation.y += shortestAngle(obj.rotation.y, targetYaw) * Math.min(1, dt * 12);
-    obj.position.set(pos.x + 0.5, 0, pos.y + 0.5);
+    obj.position.set(pos.x + 0.5, this.hm.groundAt(pos.x + 0.5, pos.y + 0.5), pos.y + 0.5);
     const rig = this.rigs.get(id);
     if (rig) animateCharacter(rig, dt, now, moving, Math.min(1.4, Math.hypot(dx, dy)));
   }

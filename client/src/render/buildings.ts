@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { MapData, Point, WorldGrid } from '@rpg/shared';
 import { Batcher, lambert } from './batch';
+import type { Heightmap } from './heightmap';
 import { hash2, type TileInfo } from './palette';
 import { textures } from './textures';
 
@@ -157,9 +158,10 @@ export class BuildingLayer {
     private readonly grid: WorldGrid,
     private readonly info: TileInfo,
     buildings: Building[],
+    private readonly hm: Heightmap,
   ) {
     this.buildings = buildings;
-    const batch = new Batcher();
+    const batch = new Batcher((x, z) => hm.groundAt(x, z));
     for (const b of buildings) {
       this.addWallDetail(batch, b);
       this.addInterior(batch, b);
@@ -270,7 +272,7 @@ export class BuildingLayer {
         new THREE.PlaneGeometry(0.9, 0.45),
         new THREE.MeshLambertMaterial({ map: textures.sign(b.name, SIGN_SYMBOLS[b.kind]) }),
       );
-      sign.position.set(sx, 0.74, sz);
+      sign.position.set(sx, this.hm.groundAt(sx, sz) + 0.74, sz);
       sign.rotation.y = Math.atan2(nx, nz);
       this.group.add(sign);
     }
@@ -315,7 +317,7 @@ export class BuildingLayer {
       const w = fx1 - fx0 - 1;
       const d = fy1 - fy0 - 1;
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: textures.rug(rug[0], rug[1]) }));
-      mesh.position.set((fx0 + fx1 + 1) / 2, 0.012, (fy0 + fy1 + 1) / 2);
+      mesh.position.set((fx0 + fx1 + 1) / 2, this.hm.groundAt((fx0 + fx1 + 1) / 2, (fy0 + fy1 + 1) / 2) + 0.012, (fy0 + fy1 + 1) / 2);
       mesh.receiveShadow = true;
       this.group.add(mesh);
     }
@@ -326,7 +328,7 @@ export class BuildingLayer {
       this.addTorch(batch, wx, tz, dir, 0);
     }
     const light = new THREE.PointLight(0xffb060, 6, 6.5, 1.6);
-    light.position.set((fx0 + fx1 + 1) / 2, 1.1, (fy0 + fy1 + 1) / 2);
+    light.position.set((fx0 + fx1 + 1) / 2, this.hm.groundAt((fx0 + fx1 + 1) / 2, (fy0 + fy1 + 1) / 2) + 1.1, (fy0 + fy1 + 1) / 2);
     this.group.add(light);
 
     // Back wall furnishings, mounted flat so they never look like they block a tile.
@@ -401,7 +403,7 @@ export class BuildingLayer {
       new THREE.ConeGeometry(0.06, 0.18, 6).translate(0, 0.09, 0),
       new THREE.MeshBasicMaterial({ color: 0xffa531 }),
     );
-    flame.position.set(x + dirX * 0.16, 1.17, z + dirZ * 0.16);
+    flame.position.set(x + dirX * 0.16, this.hm.groundAt(x + dirX * 0.16, z + dirZ * 0.16) + 1.17, z + dirZ * 0.16);
     this.group.add(flame);
     this.flames.push({ mesh: flame, phase: hash2(Math.round(x * 10), Math.round(z * 10)) * 10 });
   }
@@ -450,11 +452,11 @@ export class BuildingLayer {
         this.group.add(puff);
         puffs.push(puff);
       }
-      const world = new THREE.Vector3(alongX ? l : s, top, alongX ? s : l).add(new THREE.Vector3(b.x0 + w / 2, WALL_HEIGHT, b.y0 + d / 2));
+      const world = new THREE.Vector3(alongX ? l : s, top, alongX ? s : l).add(new THREE.Vector3(b.x0 + w / 2, WALL_HEIGHT + this.hm.groundAt(b.x0 + w / 2, b.y0 + d / 2), b.y0 + d / 2));
       this.smoke.push({ puffs, origin: world, roof: state });
     }
 
-    group.position.set(b.x0 + w / 2, WALL_HEIGHT, b.y0 + d / 2);
+    group.position.set(b.x0 + w / 2, WALL_HEIGHT + this.hm.groundAt(b.x0 + w / 2, b.y0 + d / 2), b.y0 + d / 2);
     if (!alongX) group.rotation.y = -Math.PI / 2;
     group.traverse((o) => {
       o.castShadow = true;
@@ -492,7 +494,7 @@ export class BuildingLayer {
         this.addTorch(batch, wx + 0.5 + ox * 0.52, wy + 0.5 + oy * 0.52, ox, oy);
       }
       const light = new THREE.PointLight(0xff9a40, 5, 6, 1.6);
-      light.position.set(gx + 0.5 + ox * 1.2, 1.3, gy + 0.5 + oy * 1.2);
+      light.position.set(gx + 0.5 + ox * 1.2, this.hm.tileCentre(gx, gy) + 1.3, gy + 0.5 + oy * 1.2);
       this.group.add(light);
     }
   }

@@ -17,13 +17,16 @@ export class Batcher {
   private readonly entries = new Map<string, BatchEntry>();
   private readonly tmp = new THREE.Object3D();
 
+  /** With a ground function, every item's y is relative to the ground under it. */
+  constructor(private readonly groundAt?: (x: number, z: number) => number) {}
+
   add(
     key: string,
     geometry: THREE.BufferGeometry,
     material: THREE.Material,
     transform: { position: [number, number, number]; rotationY?: number; rotation?: [number, number, number]; scale?: [number, number, number] | number },
     color = 0xffffff,
-    shadows: { cast?: boolean; receive?: boolean } = { cast: true, receive: true },
+    shadows: { cast?: boolean; receive?: boolean; absolute?: boolean } = { cast: true, receive: true },
   ): void {
     let entry = this.entries.get(key);
     if (!entry) {
@@ -32,6 +35,7 @@ export class Batcher {
     }
     const t = this.tmp;
     t.position.set(...transform.position);
+    if (this.groundAt && !shadows.absolute) t.position.y += this.groundAt(t.position.x, t.position.z);
     if (transform.rotation) t.rotation.set(...transform.rotation);
     else t.rotation.set(0, transform.rotationY ?? 0, 0);
     const s = transform.scale ?? 1;

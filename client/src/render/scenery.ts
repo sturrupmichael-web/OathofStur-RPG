@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { MapData, WorldGrid } from '@rpg/shared';
 import { Batcher, lambert } from './batch';
-import { WATER_TOP } from './terrain';
+import { WATER_Y, type Heightmap } from './heightmap';
 import { hash2, shade, type Area, type TileInfo } from './palette';
 
 /**
@@ -9,8 +9,8 @@ import { hash2, shade, type Area, type TileInfo } from './palette';
  * reeds, lily pads and straw. Kept low and small so it never reads as
  * something that blocks a tile.
  */
-export function buildScenery(map: MapData, grid: WorldGrid, info: TileInfo, areas: Area[], tileColors: number[]): THREE.Group {
-  const batch = new Batcher();
+export function buildScenery(map: MapData, grid: WorldGrid, info: TileInfo, areas: Area[], tileColors: number[], hm: Heightmap): THREE.Group {
+  const batch = new Batcher((x, z) => hm.groundAt(x, z));
   const blade = new THREE.ConeGeometry(0.035, 0.2, 3);
   blade.translate(0, 0.1, 0);
   const petal = new THREE.IcosahedronGeometry(0.04, 0);
@@ -39,8 +39,8 @@ export function buildScenery(map: MapData, grid: WorldGrid, info: TileInfo, area
       if (key === 'water') {
         if (info.placementKey[i] || h(30) > 0.07) continue;
         const [px, , pz] = at((h(31) - 0.5) * 0.6, (h(32) - 0.5) * 0.6);
-        batch.add('lilypad', pad, lambert(0xffffff, { side: THREE.DoubleSide }), { position: [px, WATER_TOP + 0.01, pz], rotationY: h(33) * 6 }, 0x4f8a3a, noShadow);
-        if (h(34) < 0.4) batch.add('lily', petal, plain, { position: [px + 0.04, WATER_TOP + 0.04, pz], scale: [1, 0.6, 1] }, 0xf5b8d0, noShadow);
+        batch.add('lilypad', pad, lambert(0xffffff, { side: THREE.DoubleSide }), { position: [px, WATER_Y + 0.01, pz], rotationY: h(33) * 6 }, 0x4f8a3a, { ...noShadow, absolute: true });
+        if (h(34) < 0.4) batch.add('lily', petal, plain, { position: [px + 0.04, WATER_Y + 0.04, pz], scale: [1, 0.6, 1] }, 0xf5b8d0, { ...noShadow, absolute: true });
         continue;
       }
       if (key === 'dirt_path' || key === 'road') {

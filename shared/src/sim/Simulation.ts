@@ -3,6 +3,7 @@ import {
   PROTOCOL_VERSION,
   type Activity,
   type ClientMessage,
+  type AnimationKind,
   type GameMessageKind,
   type PublicEntity,
   type SelfState,
@@ -10,8 +11,22 @@ import {
   type UiView,
 } from '../protocol/messages';
 import { Rng } from '../rng';
+import {
+  ATTACK_STYLES,
+  EAT_DELAY,
+  MONSTERS,
+  REGEN_TICKS,
+  WEAPON_SPEED,
+  XP_PER_DAMAGE,
+  equipmentBonuses,
+  hitChance,
+  monsterFighter,
+  playerFighter,
+  playerMaxHit,
+  rollQty,
+} from './combat';
 import { RECIPES, RECIPE_BY_ID, SELL_RATE, SHOPS, STATION_TITLES, burnChance, isBanker, shopBuys, shopForNpc, type StationKind } from './crafting';
-import type { Entity, EntityId, GroundItemEntity, ObjectEntity, PlayerEntity } from './entities';
+import type { Entity, EntityId, GroundItemEntity, MonsterEntity, ObjectEntity, PlayerEntity } from './entities';
 import { ATTEMPT_TICKS, EXAMINE, RESOURCE_DATA, gatherChance, requiredLevel } from './gathering';
 import { WorldGrid } from './grid';
 import {
@@ -26,6 +41,7 @@ import {
   hasItem,
   removeItem,
   roomFor,
+  type EquipSlot,
   type ItemStack,
 } from './items';
 import { findPath } from './pathfinding';
@@ -40,6 +56,20 @@ export const TICK_MS = 600;
 export const VIEW_RADIUS = 48;
 /** Dropped items stay on the ground for two minutes. */
 export const GROUND_ITEM_TICKS = 200;
+/** For the first minute only the player who dropped (or earned) an item can see it. */
+export const PRIVATE_TICKS = 100;
+/** What you drop when you die waits ten minutes for you, seen by no one else. */
+export const DEATH_PILE_TICKS = 1000;
+/** You keep this many of your most valuable items when you die. */
+export const KEEP_ON_DEATH = 3;
+/** Ticks the death animation plays before a player wakes at the spawn point. */
+const PLAYER_DEATH_TICKS = 4;
+/** Ticks a monster's death animation plays before its loot drops. */
+const MONSTER_DEATH_TICKS = 2;
+/** Fighting stops when the two are further apart than this. */
+const MAX_CHASE = 16;
+/** Monsters give up a chase this many tiles beyond the edge of where they roam. */
+const LEASH = 8;
 /** What a new character carries. */
 const STARTING_ITEMS: ItemStack[] = [
   { itemId: 'bronze_axe', qty: 1 },
@@ -80,6 +110,8 @@ export class Simulation {
   tick = 0;
 
   private readonly entities = new Map<EntityId, Entity>();
+  /** Tiles taken by players and living monsters, rebuilt each tick; monsters don't share tiles. */
+  private occupied = new Set<number>();
   private readonly sessions = new Map<EntityId, Session>();
   private intents: { playerId: EntityId; msg: ClientMessage }[] = [];
   private nextId = 1;
@@ -104,14 +136,19 @@ export class Simulation {
     const inventory = save ? save.inventory.map((s) => (s ? { ...s } : null)) : emptyInventory();
     if (!save) for (const { itemId, qty } of STARTING_ITEMS) addItem(inventory, itemId, qty);
     const start = save && this.grid.isWalkable(save.position.x, save.position.y) ? save.position : this.map.spawn;
+    const skills = save ? { ...save.skills } : startingXp();
+    const maxHp = levelForXp(skills.hitpoints);
     const player: PlayerEntity = {
       id: this.allocateId(),
       kind: 'player',
       name: (save?.name ?? name).trim().slice(0, 12) || 'Adventurer',
       x: start.x,
       y: start.y,
-      skills: save ? { ...save.skills } : startingXp(),
+      skills,
+      hp: Math.min(maxHp, save?.hp ?? maxHp),
       inventory,
+      equipment: save ? { ...save.equipment } : {},
+      attackStyle: save?.attackStyle ?? 'accurate',
       bank: save ? save.bank.map((s) => ({ ...s })) : [],
       ui: null,
       createdAt: save?.createdAt ?? now,
@@ -120,6 +157,10 @@ export class Simulation {
       gateNotice: null,
       action: null,
       pickup: null,
+      nextAttack: 0,
+      nextEat: 0,
+      nextRegen: this.tick + REGEN_TICKS,
+      attackedBy: null,
     };
     this.entities.set(player.id, player);
     const session: Session = { outbox: [], lastSent: new Map(), lastSelf: '' };
@@ -141,7 +182,7 @@ export class Simulation {
       player.id,
       save
         ? `Welcome back, ${player.name}.`
-        : 'Welcome to Kelmoor, in the Vell Reaches. Click the ground to walk, right-click for options. Chop trees with your axe, net fish in the River Vell, and visit the General Store for more tools.',
+        : 'Welcome to Kelmoor, in the Vell Reaches. Click the ground to walk, right-click for options. Chop trees with your axe, net fish in the River Vell, and visit the General Store for more tools. Goblins camp to the south-west if you fancy a fight.',
     );
     return player.id;
   }
@@ -156,7 +197,9 @@ export class Simulation {
       position: { x: p.x, y: p.y },
       skills: { ...p.skills },
       inventory: p.inventory.map((s) => (s ? { ...s } : null)),
-      equipment: {},
+      equipment: { ...p.equipment },
+      hp: p.hp,
+      attackStyle: p.attackStyle,
       bank: p.bank.map((s) => ({ ...s })),
       quests: {},
       createdAt: p.createdAt || now,
@@ -165,6 +208,7 @@ export class Simulation {
   }
 
   removePlayer(id: EntityId): void {
+    for (const e of this.entities.values()) if (e.kind === 'monster' && e.target === id) e.target = null;
     this.entities.delete(id);
     this.sessions.delete(id);
   }
@@ -181,7 +225,14 @@ export class Simulation {
     for (const { playerId, msg } of intents) this.handleIntent(playerId, msg);
 
     for (const e of this.entities.values()) {
-      if (e.kind === 'player') this.movePlayer(e);
+      if (e.kind === 'player' && e.deadUntil === undefined) this.movePlayer(e);
+    }
+    this.occupied = this.occupancy();
+    for (const e of this.entities.values()) {
+      if (e.kind === 'monster') this.monsterStep(e);
+    }
+    for (const e of this.entities.values()) {
+      if (e.kind === 'player' && e.action?.kind === 'attack') this.fightStep(e);
     }
     for (const e of this.entities.values()) {
       if (e.kind !== 'player' || e.path.length) continue;
@@ -191,6 +242,7 @@ export class Simulation {
       else if (e.action?.kind === 'craft') this.craftStep(e);
     }
     for (const e of [...this.entities.values()]) {
+      if (e.kind === 'player') this.recover(e);
       if (e.kind === 'resource' && e.depletedUntil !== undefined && this.tick >= e.depletedUntil) delete e.depletedUntil;
       if (e.kind === 'item' && this.tick >= e.despawnAt) this.entities.delete(e.id);
     }
@@ -218,6 +270,7 @@ export class Simulation {
   private handleIntent(playerId: EntityId, msg: ClientMessage): void {
     const player = this.entities.get(playerId);
     if (!player || player.kind !== 'player') return;
+    if (player.deadUntil !== undefined) return;
     switch (msg.type) {
       case 'walk':
         if (!Number.isInteger(msg.x) || !Number.isInteger(msg.y) || !this.grid.inBounds(msg.x, msg.y)) {
@@ -273,6 +326,21 @@ export class Simulation {
       case 'shopSell':
         this.shopSell(player, msg.slot, msg.qty);
         return;
+      case 'attack':
+        this.startAttack(player, msg.targetId);
+        return;
+      case 'eat':
+        this.eat(player, msg.slot);
+        return;
+      case 'equip':
+        this.equip(player, msg.slot);
+        return;
+      case 'unequip':
+        this.unequip(player, msg.slot);
+        return;
+      case 'setAttackStyle':
+        if (msg.style in ATTACK_STYLES) player.attackStyle = msg.style;
+        return;
       case 'join':
       case 'requestSave':
         // Handled by the host, not as in-world intents.
@@ -315,6 +383,7 @@ export class Simulation {
     let text: string;
     if (target.kind === 'player') text = target.id === player.id ? "It's you. Looking sharp." : `A fellow adventurer, ${target.name}.`;
     else if (target.kind === 'item') text = ITEMS[target.itemId].examine;
+    else if (target.kind === 'monster') text = MONSTERS[target.defKey]?.examine ?? `It's a ${target.name.toLowerCase()}.`;
     else {
       const key = target.depletedUntil !== undefined ? `${target.defKey}_stump` : target.defKey;
       text = EXAMINE[key] ?? EXAMINE[target.defKey] ?? `It's a ${target.name.toLowerCase()}.`;
@@ -340,12 +409,33 @@ export class Simulation {
       x: player.x,
       y: player.y,
       despawnAt: this.tick + GROUND_ITEM_TICKS,
+      owner: player.id,
+      publicAt: this.tick + PRIVATE_TICKS,
     };
     this.entities.set(item.id, item);
   }
 
-  private walkTo(player: PlayerEntity, target: Point & { size?: number }): void {
-    const goals = this.goalsFor(target);
+  private spawnItem(itemId: string, qty: number, at: Point, owner: EntityId | undefined, publicTicks: number, lifeTicks: number): void {
+    const id = this.allocateId();
+    this.entities.set(id, {
+      id,
+      kind: 'item',
+      itemId,
+      qty,
+      name: ITEMS[itemId].name,
+      x: at.x,
+      y: at.y,
+      despawnAt: this.tick + lifeTicks,
+      ...(owner !== undefined && { owner, publicAt: this.tick + publicTicks }),
+    });
+  }
+
+  /** Someone else's drop stays hidden from you until it turns public. */
+  private canSeeItem(item: GroundItemEntity, viewer: EntityId): boolean {
+    return item.owner === undefined || item.owner === viewer || this.tick >= (item.publicAt ?? 0);
+  }
+
+  private walkTo(player: PlayerEntity, target: Point & { size?: number }, goals = this.goalsFor(target)): void {
     const canStep = this.gateRule(player);
     let result = findPath(this.grid, player, goals, target, { canStep });
     player.gateNotice = null;
@@ -450,7 +540,7 @@ export class Simulation {
   private pickUp(player: PlayerEntity): void {
     const item = this.entities.get(player.pickup!);
     player.pickup = null;
-    if (!item || item.kind !== 'item' || item.x !== player.x || item.y !== player.y) return;
+    if (!item || item.kind !== 'item' || item.x !== player.x || item.y !== player.y || !this.canSeeItem(item, player.id)) return;
     if (!addItem(player.inventory, item.itemId, item.qty)) {
       this.message(player.id, "You don't have enough inventory space to hold that item.", 'warn');
       return;
@@ -543,6 +633,331 @@ export class Simulation {
 
   private skillName(skill: SkillId): string {
     return SKILLS.find((s) => s.id === skill)!.name;
+  }
+
+  // -------------------------------------------------------------------------
+  // Combat
+  // -------------------------------------------------------------------------
+
+  private startAttack(player: PlayerEntity, targetId: EntityId): void {
+    const target = this.entities.get(targetId);
+    this.stopActions(player);
+    if (target?.kind !== 'monster' || !alive(target)) {
+      this.reject(player.id, "You can't attack that.");
+      return;
+    }
+    player.action = { kind: 'attack', targetId };
+  }
+
+  /** A player fighting: close in on the target, then attack whenever the weapon is ready. */
+  private fightStep(player: PlayerEntity): void {
+    const action = player.action;
+    if (action?.kind !== 'attack') return;
+    const target = this.entities.get(action.targetId);
+    if (target?.kind !== 'monster' || !alive(target) || distance(player, target) > MAX_CHASE) {
+      player.action = null;
+      return;
+    }
+    if (inReach(player, target)) {
+      player.path = [];
+      player.destination = null;
+      if (this.tick >= player.nextAttack) this.playerAttack(player, target);
+      return;
+    }
+    // Chase: plan a new route whenever the target has moved.
+    if (player.path.length && action.chasing?.x === target.x && action.chasing.y === target.y) return;
+    action.chasing = { x: target.x, y: target.y };
+    this.walkTo(player, target, this.meleeGoals(target));
+    if (!player.path.length) {
+      this.message(player.id, "I can't reach that.", 'warn');
+      player.action = null;
+    }
+  }
+
+  private playerAttack(player: PlayerEntity, monster: MonsterEntity): void {
+    const stats = MONSTERS[monster.defKey];
+    const attacker = playerFighter(player.skills, player.equipment, player.attackStyle);
+    const landed = this.rng.chance(hitChance(attacker, monsterFighter(stats)));
+    const damage = landed ? Math.min(monster.hp, this.rng.int(1, playerMaxHit(attacker))) : 0;
+    player.nextAttack = this.tick + WEAPON_SPEED;
+    const weapon = player.equipment.weapon ? ITEMS[player.equipment.weapon]?.equip : undefined;
+    this.animate(player, weapon?.style ?? 'punch');
+
+    monster.hp -= damage;
+    monster.damageBy.set(player.id, (monster.damageBy.get(player.id) ?? 0) + damage);
+    this.broadcastHit(player, monster, damage, monster.hp, monster.maxHp);
+    if (damage > 0) {
+      this.addXp(player, ATTACK_STYLES[player.attackStyle].skill, damage * XP_PER_DAMAGE);
+      this.addXp(player, 'hitpoints', Math.round((damage * XP_PER_DAMAGE * 10) / 3) / 10);
+    }
+    // Monsters always fight back; a fresh fight gives them a moment to turn.
+    if (monster.target === null) {
+      monster.target = player.id;
+      monster.nextAttack = Math.max(monster.nextAttack, this.tick + Math.ceil(stats.attackSpeed / 2));
+    }
+    if (monster.hp <= 0) this.monsterDies(monster);
+  }
+
+  private monsterAttack(monster: MonsterEntity, player: PlayerEntity): void {
+    const stats = MONSTERS[monster.defKey];
+    const defender = playerFighter(player.skills, player.equipment, player.attackStyle);
+    const landed = this.rng.chance(hitChance(monsterFighter(stats), defender));
+    const damage = landed ? Math.min(player.hp, this.rng.int(1, stats.maxHit)) : 0;
+    monster.nextAttack = this.tick + stats.attackSpeed;
+    this.animate(monster, stats.attackAnim);
+    player.hp -= damage;
+    player.attackedBy = monster.id;
+    this.broadcastHit(monster, player, damage, player.hp, levelForXp(player.skills.hitpoints));
+    if (player.hp <= 0) return this.playerDies(player);
+    // Auto-retaliate when standing idle.
+    if (!player.action && !player.path.length) {
+      player.action = { kind: 'attack', targetId: monster.id };
+      player.nextAttack = Math.max(player.nextAttack, this.tick + 1);
+    }
+  }
+
+  private monsterDies(monster: MonsterEntity): void {
+    monster.hp = 0;
+    monster.target = null;
+    monster.path = [];
+    monster.dyingUntil = this.tick + MONSTER_DEATH_TICKS;
+    this.animate(monster, 'death');
+    for (const e of this.entities.values()) {
+      if (e.kind !== 'player') continue;
+      if (e.action?.kind === 'attack' && e.action.targetId === monster.id) e.action = null;
+      if (e.attackedBy === monster.id) e.attackedBy = null;
+    }
+  }
+
+  /** Loot goes to whoever did the most damage, seen only by them for the first minute. */
+  private dropLoot(monster: MonsterEntity): void {
+    let killer: EntityId | undefined;
+    let best = 0;
+    for (const [id, dealt] of monster.damageBy) {
+      if (dealt > best && this.entities.has(id)) [killer, best] = [id, dealt];
+    }
+    for (const drop of MONSTERS[monster.defKey].drops) {
+      if (!this.rng.chance(drop.chance)) continue;
+      const qty = rollQty(drop.qty, (a, b) => this.rng.int(a, b));
+      if (ITEMS[drop.item].stackable) this.spawnItem(drop.item, qty, monster, killer, PRIVATE_TICKS, GROUND_ITEM_TICKS);
+      else for (let i = 0; i < qty; i++) this.spawnItem(drop.item, 1, monster, killer, PRIVATE_TICKS, GROUND_ITEM_TICKS);
+    }
+  }
+
+  private playerDies(player: PlayerEntity): void {
+    player.hp = 0;
+    player.deadUntil = this.tick + PLAYER_DEATH_TICKS;
+    player.path = [];
+    player.destination = null;
+    player.gateNotice = null;
+    player.attackedBy = null;
+    this.stopActions(player);
+    this.animate(player, 'death');
+    this.message(player.id, 'You have been defeated.', 'warn');
+    for (const e of this.entities.values()) if (e.kind === 'monster' && e.target === player.id) e.target = null;
+  }
+
+  /**
+   * Back at the spawn point with full health. You keep your most valuable
+   * items (counted one at a time, so a stack of coins is many cheap items);
+   * everything else waits where you fell, for you alone.
+   */
+  private respawnPlayer(player: PlayerEntity): void {
+    type Held = { itemId: string; qty: number; value: number; slot: EquipSlot | null };
+    const held: Held[] = [];
+    for (const [slot, itemId] of Object.entries(player.equipment) as [EquipSlot, string][]) held.push({ itemId, qty: 1, value: ITEMS[itemId].value, slot });
+    for (const stack of player.inventory) if (stack) held.push({ ...stack, value: ITEMS[stack.itemId].value, slot: null });
+    held.sort((a, b) => b.value - a.value);
+
+    let keep = KEEP_ON_DEATH;
+    const inventory = emptyInventory();
+    const equipment: PlayerEntity['equipment'] = {};
+    const lost: ItemStack[] = [];
+    for (const h of held) {
+      const kept = Math.min(keep, h.qty);
+      keep -= kept;
+      if (kept > 0 && h.slot) equipment[h.slot] = h.itemId;
+      else if (kept > 0) addItem(inventory, h.itemId, kept);
+      if (h.qty > kept) lost.push({ itemId: h.itemId, qty: h.qty - kept });
+    }
+    for (const { itemId, qty } of lost) this.spawnItem(itemId, qty, player, player.id, DEATH_PILE_TICKS, DEATH_PILE_TICKS);
+
+    player.inventory = inventory;
+    player.equipment = equipment;
+    player.x = this.map.spawn.x;
+    player.y = this.map.spawn.y;
+    player.hp = levelForXp(player.skills.hitpoints);
+    player.nextRegen = this.tick + REGEN_TICKS;
+    delete player.deadUntil;
+    this.message(
+      player.id,
+      lost.length
+        ? `You wake in Kelmoor, sore but alive. You kept your ${KEEP_ON_DEATH} most valuable items; the rest lies where you fell. Only you can see it, for the next ${DEATH_PILE_TICKS * TICK_MS / 60000} minutes.`
+        : 'You wake in Kelmoor, sore but alive. You kept everything you had.',
+    );
+  }
+
+  /** Waking up after a death, and a hitpoint back every minute. */
+  private recover(player: PlayerEntity): void {
+    if (player.deadUntil !== undefined) {
+      if (this.tick >= player.deadUntil) this.respawnPlayer(player);
+      return;
+    }
+    const max = levelForXp(player.skills.hitpoints);
+    if (player.hp >= max) player.nextRegen = this.tick + REGEN_TICKS;
+    else if (this.tick >= player.nextRegen) {
+      player.hp++;
+      player.nextRegen = this.tick + REGEN_TICKS;
+    }
+  }
+
+  private eat(player: PlayerEntity, slot: number): void {
+    const stack = this.slot(player, slot);
+    const heals = stack ? ITEMS[stack.itemId].heals : undefined;
+    if (!stack || !heals || this.tick < player.nextEat) return;
+    player.inventory[slot] = stack.qty > 1 ? { ...stack, qty: stack.qty - 1 } : null;
+    const max = levelForXp(player.skills.hitpoints);
+    const before = player.hp;
+    player.hp = Math.min(max, player.hp + heals);
+    player.nextEat = this.tick + EAT_DELAY;
+    player.nextAttack = Math.max(player.nextAttack, this.tick + 2);
+    this.animate(player, 'eat');
+    const name = ITEMS[stack.itemId].name.toLowerCase();
+    this.message(player.id, player.hp > before ? `You eat the ${name}. It heals some health.` : `You eat the ${name}.`);
+  }
+
+  private equip(player: PlayerEntity, slot: number): void {
+    const stack = this.slot(player, slot);
+    const equip = stack ? ITEMS[stack.itemId].equip : undefined;
+    if (!stack || !equip) return;
+    const skill = equip.slot === 'weapon' ? 'attack' : 'defence';
+    const need = equip.level ?? 1;
+    if (levelForXp(player.skills[skill]) < need) {
+      this.message(player.id, `You need a${skill === 'attack' ? 'n Attack' : ' Defence'} level of ${need} to ${equip.slot === 'weapon' ? 'wield' : 'wear'} this.`, 'warn');
+      return;
+    }
+    const old = player.equipment[equip.slot];
+    player.equipment[equip.slot] = stack.itemId;
+    player.inventory[slot] = old ? { itemId: old, qty: 1 } : null;
+  }
+
+  private unequip(player: PlayerEntity, slot: EquipSlot): void {
+    const itemId = player.equipment[slot];
+    if (!itemId) return;
+    if (!addItem(player.inventory, itemId)) {
+      this.message(player.id, "You don't have enough free space in your inventory.", 'warn');
+      return;
+    }
+    delete player.equipment[slot];
+  }
+
+  // -------------------------------------------------------------------------
+  // Monsters
+  // -------------------------------------------------------------------------
+
+  /** One tick of a monster's life: respawning, dying, fighting, or wandering. */
+  private monsterStep(m: MonsterEntity): void {
+    const stats = MONSTERS[m.defKey];
+    if (m.respawnAt !== undefined) {
+      if (this.tick < m.respawnAt || this.occupied.has(this.grid.index(m.spawn.x, m.spawn.y))) return;
+      delete m.respawnAt;
+      m.x = m.spawn.x;
+      m.y = m.spawn.y;
+      m.hp = m.maxHp;
+      m.damageBy.clear();
+      m.nextWander = this.tick + this.rng.int(2, 10);
+      this.occupied.add(this.grid.index(m.x, m.y));
+      return;
+    }
+    if (m.dyingUntil !== undefined) {
+      if (this.tick < m.dyingUntil) return;
+      delete m.dyingUntil;
+      this.dropLoot(m);
+      this.occupied.delete(this.grid.index(m.x, m.y));
+      m.respawnAt = this.tick + stats.respawnTicks;
+      return;
+    }
+
+    let target = m.target !== null ? this.entities.get(m.target) : undefined;
+    const home = Math.hypot(m.x - m.wander.cx, m.y - m.wander.cy);
+    if (target && (target.kind !== 'player' || target.deadUntil !== undefined || distance(m, target) > MAX_CHASE || home > m.wander.radius + LEASH)) {
+      target = undefined;
+    }
+    if (!target && stats.aggressive) target = this.findPrey(m, stats.aggroRange ?? 3);
+    m.target = target?.kind === 'player' ? target.id : null;
+
+    if (target?.kind === 'player') {
+      m.path = [];
+      if (inReach(m, target)) {
+        if (this.tick >= m.nextAttack) this.monsterAttack(m, target);
+        return;
+      }
+      const route = findPath(this.grid, m, this.meleeGoals(target), target, { maxNodes: 600, canStep: this.monsterCanStep(m) });
+      if (route.path.length) this.stepMonster(m, route.path[0]);
+      return;
+    }
+
+    // Wandering: drift back if it was led away, else now and then amble somewhere nearby.
+    if (!m.path.length && home > m.wander.radius) {
+      m.path = findPath(this.grid, m, [m.spawn], m.spawn, { maxNodes: 2000, canStep: this.monsterCanStep(m) }).path;
+    } else if (!m.path.length && this.tick >= m.nextWander) {
+      m.nextWander = this.tick + this.rng.int(5, 18);
+      const to = { x: m.x + this.rng.int(-4, 4), y: m.y + this.rng.int(-4, 4) };
+      if (Math.hypot(to.x - m.wander.cx, to.y - m.wander.cy) <= m.wander.radius && this.grid.isWalkable(to.x, to.y)) {
+        m.path = findPath(this.grid, m, [to], to, { maxNodes: 200, canStep: this.monsterCanStep(m, true) }).path.slice(0, 6);
+      }
+    }
+    const next = m.path.shift();
+    if (next && !this.stepMonster(m, next)) m.path = [];
+  }
+
+  /** Moves a monster one tile if nothing stands there; false when blocked. */
+  private stepMonster(m: MonsterEntity, to: Point): boolean {
+    const i = this.grid.index(to.x, to.y);
+    if (this.occupied.has(i) || !this.grid.isWalkable(to.x, to.y)) return false;
+    this.occupied.delete(this.grid.index(m.x, m.y));
+    this.occupied.add(i);
+    m.x = to.x;
+    m.y = to.y;
+    return true;
+  }
+
+  /** Monsters route around each other and around players, and keep out of gates; wandering keeps to their area. */
+  private monsterCanStep(m: MonsterEntity, keepToArea = false) {
+    return (_fx: number, _fy: number, tx: number, ty: number): boolean => {
+      if (this.grid.isGate(tx, ty)) return false;
+      if (keepToArea && Math.hypot(tx - m.wander.cx, ty - m.wander.cy) > m.wander.radius) return false;
+      return !this.occupied.has(this.grid.index(tx, ty)) || (tx === m.x && ty === m.y);
+    };
+  }
+
+  /** The nearest player an aggressive monster will pick on: in range, alive, and not too strong for it. */
+  private findPrey(m: MonsterEntity, range: number): PlayerEntity | undefined {
+    let best: PlayerEntity | undefined;
+    for (const e of this.entities.values()) {
+      if (e.kind !== 'player' || e.deadUntil !== undefined) continue;
+      if (distance(m, e) > range || combatLevel(e.skills) > m.level * 2) continue;
+      if (!best || distance(m, e) < distance(m, best)) best = e;
+    }
+    return best;
+  }
+
+  /** The four tiles you can fight something from: straight beside it, never across a corner. */
+  private meleeGoals(target: Point): Point[] {
+    return [
+      { x: target.x, y: target.y + 1 },
+      { x: target.x + 1, y: target.y },
+      { x: target.x - 1, y: target.y },
+      { x: target.x, y: target.y - 1 },
+    ].filter((p) => this.grid.isWalkable(p.x, p.y));
+  }
+
+  private occupancy(): Set<number> {
+    const taken = new Set<number>();
+    for (const e of this.entities.values()) {
+      if ((e.kind === 'player' && e.deadUntil === undefined) || (e.kind === 'monster' && e.respawnAt === undefined)) taken.add(this.grid.index(e.x, e.y));
+    }
+    return taken;
   }
 
   // -------------------------------------------------------------------------
@@ -748,6 +1163,7 @@ export class Simulation {
     const before = levelForXp(player.skills[skill]);
     player.skills[skill] = Math.min(MAX_XP, Math.round((player.skills[skill] + amount) * 10) / 10);
     const after = levelForXp(player.skills[skill]);
+    if (skill === 'hitpoints' && player.deadUntil === undefined) player.hp += after - before;
     const session = this.sessions.get(player.id);
     session?.outbox.push({ type: 'xpDrop', skill, amount });
     if (after > before) {
@@ -766,6 +1182,22 @@ export class Simulation {
     this.sessions.get(playerId)?.outbox.push({ type: 'gameMessage', text, kind });
   }
 
+  /** Sends a message to every player close enough to see `near`. */
+  private broadcast(near: Point, msg: ServerMessage): void {
+    for (const [id, session] of this.sessions) {
+      const p = this.entities.get(id);
+      if (p && Math.max(Math.abs(p.x - near.x), Math.abs(p.y - near.y)) <= VIEW_RADIUS) session.outbox.push(msg);
+    }
+  }
+
+  private animate(e: Entity, kind: AnimationKind): void {
+    this.broadcast(e, { type: 'animation', entityId: e.id, kind });
+  }
+
+  private broadcastHit(attacker: Entity, target: Entity, damage: number, hp: number, maxHp: number): void {
+    this.broadcast(target, { type: 'hit', attackerId: attacker.id, targetId: target.id, damage, hp: Math.max(0, hp), maxHp });
+  }
+
   private reject(playerId: EntityId, reason: string): void {
     this.sessions.get(playerId)?.outbox.push({ type: 'reject', reason });
   }
@@ -775,6 +1207,8 @@ export class Simulation {
     const out: PublicEntity[] = [];
     for (const e of this.entities.values()) {
       if (e.id !== player.id && Math.max(Math.abs(e.x - player.x), Math.abs(e.y - player.y)) > VIEW_RADIUS) continue;
+      if (e.kind === 'monster' && e.respawnAt !== undefined) continue;
+      if (e.kind === 'item' && !this.canSeeItem(e, player.id)) continue;
       out.push(this.toPublic(e));
     }
     return out;
@@ -783,6 +1217,7 @@ export class Simulation {
   private toPublic(e: Entity): PublicEntity {
     if (e.kind === 'player') {
       const work = this.activityOf(e);
+      const fighting = e.action?.kind === 'attack' ? e.action.targetId : e.attackedBy;
       return {
         id: e.id,
         kind: e.kind,
@@ -790,7 +1225,27 @@ export class Simulation {
         y: e.y,
         name: e.name,
         combatLevel: combatLevel(e.skills),
+        hp: e.hp,
+        maxHp: levelForXp(e.skills.hitpoints),
+        ...(Object.keys(e.equipment).length && { gear: { ...e.equipment } }),
+        ...(fighting !== null && { interacting: fighting }),
+        ...(e.deadUntil !== undefined && { dead: true }),
         ...(work && { workingOn: nearestTile(work.target, e), activity: work.activity }),
+      };
+    }
+    if (e.kind === 'monster') {
+      return {
+        id: e.id,
+        kind: e.kind,
+        x: e.x,
+        y: e.y,
+        name: e.name,
+        defKey: e.defKey,
+        combatLevel: e.level,
+        hp: e.hp,
+        maxHp: e.maxHp,
+        ...(e.target !== null && { interacting: e.target }),
+        ...(e.dyingUntil !== undefined && { dead: true }),
       };
     }
     if (e.kind === 'item') return { id: e.id, kind: e.kind, x: e.x, y: e.y, name: e.name, defKey: e.itemId, qty: e.qty };
@@ -833,8 +1288,14 @@ export class Simulation {
       name: player.name,
       skills: { ...player.skills },
       combatLevel: combatLevel(player.skills),
+      hp: player.hp,
+      maxHp: levelForXp(player.skills.hitpoints),
       destination: player.destination,
       inventory: player.inventory,
+      equipment: player.equipment,
+      attackStyle: player.attackStyle,
+      bonuses: equipmentBonuses(player.equipment),
+      maxHit: playerMaxHit(playerFighter(player.skills, player.equipment, player.attackStyle)),
       ui: this.uiView(player),
     };
     const json = JSON.stringify(state);
@@ -854,7 +1315,10 @@ export class Simulation {
   private spawnStaticObjects(): void {
     const { defs } = this.map;
     for (const p of this.map.placements) {
-      if (p.kind === 'monster') continue; // monsters arrive in phase 4
+      if (p.kind === 'monster') {
+        this.spawnMonster(p);
+        continue;
+      }
       const table = p.kind === 'resource' ? defs.resources : p.kind === 'station' ? defs.stations : p.kind === 'scenery' ? defs.scenery : defs.npcs;
       const entity: ObjectEntity = {
         id: this.allocateId(),
@@ -868,6 +1332,43 @@ export class Simulation {
       this.entities.set(entity.id, entity);
     }
   }
+
+  private spawnMonster(p: MapData['placements'][number]): void {
+    const stats = MONSTERS[p.defKey];
+    if (!stats) return;
+    const monster: MonsterEntity = {
+      id: this.allocateId(),
+      kind: 'monster',
+      defKey: p.defKey,
+      name: this.map.defs.monsters[p.defKey]?.name ?? p.defKey,
+      level: p.level ?? this.map.defs.monsters[p.defKey]?.combatLevel ?? 1,
+      x: p.x,
+      y: p.y,
+      hp: stats.hitpoints,
+      maxHp: stats.hitpoints,
+      spawn: { x: p.x, y: p.y },
+      wander: p.wander ?? { cx: p.x, cy: p.y, radius: 3 },
+      path: [],
+      target: null,
+      nextAttack: 0,
+      nextWander: this.rng.int(1, 12),
+      damageBy: new Map(),
+    };
+    this.entities.set(monster.id, monster);
+  }
+}
+
+function alive(m: MonsterEntity): boolean {
+  return m.respawnAt === undefined && m.dyingUntil === undefined && m.hp > 0;
+}
+
+function distance(a: Point, b: Point): number {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
+/** Melee reach: straight beside, never diagonal and never on the same tile. */
+function inReach(a: Point, b: Point): boolean {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
 }
 
 const CRAFT_TEXT: Record<StationKind, (item: string) => string> = {

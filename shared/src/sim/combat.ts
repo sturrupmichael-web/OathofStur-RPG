@@ -1,0 +1,106 @@
+import monsterData from '../../data/monsters.json';
+import { ITEMS, type Equipment } from './items';
+import { levelForXp, type SkillId, type SkillXp } from './skills';
+
+/** Ticks between attacks for every weapon, and for fists. */
+export const WEAPON_SPEED = 4;
+/** XP per point of damage dealt, to the attack style's skill; Hitpoints gets a third of it. */
+export const XP_PER_DAMAGE = 4;
+/** One hitpoint comes back this often (ticks) when hurt. */
+export const REGEN_TICKS = 100;
+/** Ticks after eating before you can eat again. */
+export const EAT_DELAY = 3;
+
+export type AttackStyle = 'accurate' | 'aggressive' | 'defensive';
+
+/** Each style trains one skill and gives it +3 while fighting. */
+export const ATTACK_STYLES: Readonly<Record<AttackStyle, { skill: SkillId; label: string }>> = {
+  accurate: { skill: 'attack', label: 'Accurate' },
+  aggressive: { skill: 'strength', label: 'Aggressive' },
+  defensive: { skill: 'defence', label: 'Defensive' },
+};
+
+export interface Drop {
+  item: string;
+  qty: number | [number, number];
+  /** 0..1; rolled on its own for each kill. */
+  chance: number;
+}
+
+export interface MonsterStats {
+  hitpoints: number;
+  attack: number;
+  strength: number;
+  defence: number;
+  maxHit: number;
+  attackSpeed: number;
+  aggressive?: boolean;
+  aggroRange?: number;
+  respawnTicks: number;
+  /** Which attack animation the client plays. */
+  attackAnim: string;
+  examine: string;
+  drops: Drop[];
+}
+
+export const MONSTERS: Readonly<Record<string, MonsterStats>> = monsterData.monsters as unknown as Record<string, MonsterStats>;
+
+/** Bonuses from everything worn. */
+export interface Bonuses {
+  attack: number;
+  strength: number;
+  defence: number;
+}
+
+export function equipmentBonuses(equipment: Equipment): Bonuses {
+  const total: Bonuses = { attack: 0, strength: 0, defence: 0 };
+  for (const itemId of Object.values(equipment)) {
+    const e = itemId ? ITEMS[itemId]?.equip : undefined;
+    if (!e) continue;
+    total.attack += e.attack ?? 0;
+    total.strength += e.strength ?? 0;
+    total.defence += e.defence ?? 0;
+  }
+  return total;
+}
+
+/** A fighter's numbers, player or monster, ready for the rolls below. */
+export interface Fighter {
+  attack: number;
+  strength: number;
+  defence: number;
+  bonuses: Bonuses;
+}
+
+export function playerFighter(skills: SkillXp, equipment: Equipment, style: AttackStyle): Fighter {
+  const boost = (skill: SkillId) => (ATTACK_STYLES[style].skill === skill ? 3 : 0);
+  return {
+    attack: levelForXp(skills.attack) + boost('attack'),
+    strength: levelForXp(skills.strength) + boost('strength'),
+    defence: levelForXp(skills.defence) + boost('defence'),
+    bonuses: equipmentBonuses(equipment),
+  };
+}
+
+export function monsterFighter(m: MonsterStats): Fighter {
+  return { attack: m.attack, strength: m.strength, defence: m.defence, bonuses: { attack: 0, strength: 0, defence: 0 } };
+}
+
+/**
+ * Chance an attack lands. Each side rolls up to (level + 8) x (bonus + 64);
+ * the attacker hits when their roll beats the defender's.
+ */
+export function hitChance(attacker: Fighter, defender: Fighter): number {
+  const a = (attacker.attack + 8) * (attacker.bonuses.attack + 64);
+  const d = (defender.defence + 8) * (defender.bonuses.defence + 64);
+  return a > d ? 1 - (d + 2) / (2 * (a + 1)) : a / (2 * (d + 1));
+}
+
+/** Highest hit a player can deal: grows with Strength and strength bonus. */
+export function playerMaxHit(f: Fighter): number {
+  return Math.max(1, Math.floor(0.5 + ((f.strength + 8) * (f.bonuses.strength + 64)) / 640));
+}
+
+export function rollQty(qty: Drop['qty'], roll: (min: number, max: number) => number): number {
+  return Array.isArray(qty) ? roll(qty[0], qty[1]) : qty;
+}

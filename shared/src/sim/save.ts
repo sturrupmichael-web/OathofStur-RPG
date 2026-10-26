@@ -1,8 +1,9 @@
 import type { Point } from '../map/types';
-import { INVENTORY_SIZE, ITEMS, type Inventory, type ItemStack } from './items';
+import { ATTACK_STYLES, type AttackStyle } from './combat';
+import { EQUIP_SLOTS, INVENTORY_SIZE, ITEMS, type Equipment, type Inventory, type ItemStack } from './items';
 import { MAX_XP, SKILLS, startingXp, type SkillXp } from './skills';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 /**
  * Version 1 saves hold Kelmoor's own coordinates. Kelmoor now sits inside the
@@ -13,8 +14,8 @@ const KELMOOR_OFFSET = { x: 130, y: 70 };
 /**
  * Everything needed to bring a character back. XP is stored, levels are
  * derived. The same record maps one-to-one onto a per-account row once the
- * server keeps saves (phase 6). Equipment and quests are empty until
- * the phases that add them.
+ * server keeps saves (phase 6). Quests are empty until phase 5.
+ * Version 3 added hp and attackStyle; older saves start at full health.
  */
 export interface SaveData {
   version: number;
@@ -22,7 +23,10 @@ export interface SaveData {
   position: Point;
   skills: SkillXp;
   inventory: Inventory;
-  equipment: Record<string, string>;
+  equipment: Equipment;
+  /** Current hitpoints. Left out means full. */
+  hp?: number;
+  attackStyle?: AttackStyle;
   bank: ItemStack[];
   quests: Record<string, number>;
   createdAt: string;
@@ -70,6 +74,15 @@ export function parseSave(raw: unknown): SaveData | null {
     else bank.push({ itemId: entry.itemId, qty });
   }
 
+  const equipment: Equipment = {};
+  const worn = (s.equipment ?? {}) as Record<string, unknown>;
+  for (const slot of EQUIP_SLOTS) {
+    const itemId = worn[slot];
+    if (typeof itemId === 'string' && ITEMS[itemId]?.equip?.slot === slot) equipment[slot] = itemId;
+  }
+  const hp = Number(s.hp);
+  const style = typeof s.attackStyle === 'string' && s.attackStyle in ATTACK_STYLES ? s.attackStyle : undefined;
+
   const now = new Date().toISOString();
   return {
     version: SAVE_VERSION,
@@ -77,7 +90,9 @@ export function parseSave(raw: unknown): SaveData | null {
     position: { x, y },
     skills,
     inventory,
-    equipment: {},
+    equipment,
+    ...(Number.isInteger(hp) && hp >= 1 && { hp }),
+    ...(style && { attackStyle: style }),
     bank,
     quests: {},
     createdAt: typeof s.createdAt === 'string' ? s.createdAt : now,

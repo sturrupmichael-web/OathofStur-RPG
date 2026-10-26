@@ -8,11 +8,30 @@ export interface ItemDef {
   stackable?: boolean;
   /** Shop price in coins. */
   value: number;
-  /** Hitpoints restored when eaten (phase 4). */
+  /** Hitpoints restored when eaten. */
   heals?: number;
+  /** Set on things that can be worn or wielded. */
+  equip?: EquipStats;
   /** Set on tools: the skill it is used for, the level needed, and its success bonus. */
   tool?: { skill: SkillId; level: number; bonus: number };
 }
+
+export type EquipSlot = 'helmet' | 'weapon' | 'body' | 'shield' | 'legs';
+export const EQUIP_SLOTS: readonly EquipSlot[] = ['helmet', 'weapon', 'body', 'shield', 'legs'];
+
+export interface EquipStats {
+  slot: EquipSlot;
+  attack?: number;
+  strength?: number;
+  defence?: number;
+  /** Attack level to wield a weapon, Defence level to wear armour. */
+  level?: number;
+  /** Weapons: how it is swung, which picks the animation. */
+  style?: 'stab' | 'slash';
+}
+
+/** What a player is wearing, item id per slot. */
+export type Equipment = Partial<Record<EquipSlot, string>>;
 
 export const ITEMS: Readonly<Record<string, ItemDef>> = Object.fromEntries(
   (itemData.items as ItemDef[]).map((item) => [item.id, item]),

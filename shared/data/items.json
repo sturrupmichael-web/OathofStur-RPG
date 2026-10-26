@@ -1,5 +1,5 @@
 {
-  "comment": "Every item in the game. value is the shop price in coins; shops buy back at 40%. Items don't stack unless stackable is true. tool.bonus is added to the chance of success per attempt. heals is used from phase 4.",
+  "comment": "Every item in the game. value is the shop price in coins; shops buy back at 40%. Items don't stack unless stackable is true. tool.bonus is added to the chance of success per attempt. heals is hitpoints restored when eaten. equip: the slot it is worn in, its attack/strength/defence bonuses, and the level needed (Attack for weapons, Defence for armour; 1 when left out). Weapons all attack every 4 ticks; style picks the animation.",
   "items": [
     { "id": "coins", "name": "Coins", "examine": "Kelmoor crowns. Lovely money.", "stackable": true, "value": 1 },
 
@@ -34,12 +34,27 @@
     { "id": "steel_bar", "name": "Steel bar", "examine": "A bar of steel, ready for the anvil.", "value": 100 },
     { "id": "gold_bar", "name": "Gold bar", "examine": "A bar of soft, bright gold.", "value": 380 },
 
-    { "id": "bronze_dagger", "name": "Bronze dagger", "examine": "Short, sharp, and bronze.", "value": 10 },
-    { "id": "bronze_sword", "name": "Bronze sword", "examine": "A plain bronze sword.", "value": 26 },
-    { "id": "iron_dagger", "name": "Iron dagger", "examine": "A short iron blade.", "value": 35 },
-    { "id": "iron_sword", "name": "Iron sword", "examine": "A solid iron sword.", "value": 91 },
-    { "id": "steel_dagger", "name": "Steel dagger", "examine": "A keen steel blade.", "value": 125 },
-    { "id": "steel_sword", "name": "Steel sword", "examine": "A fine steel sword.", "value": 325 },
+    { "id": "bronze_dagger", "name": "Bronze dagger", "examine": "Short, sharp, and bronze.", "value": 10, "equip": { "slot": "weapon", "style": "stab", "attack": 4, "strength": 3 } },
+    { "id": "bronze_sword", "name": "Bronze sword", "examine": "A plain bronze sword.", "value": 26, "equip": { "slot": "weapon", "style": "slash", "attack": 7, "strength": 6 } },
+    { "id": "iron_dagger", "name": "Iron dagger", "examine": "A short iron blade.", "value": 35, "equip": { "slot": "weapon", "style": "stab", "attack": 6, "strength": 5 } },
+    { "id": "iron_sword", "name": "Iron sword", "examine": "A solid iron sword.", "value": 91, "equip": { "slot": "weapon", "style": "slash", "attack": 10, "strength": 9 } },
+    { "id": "steel_dagger", "name": "Steel dagger", "examine": "A keen steel blade.", "value": 125, "equip": { "slot": "weapon", "style": "stab", "attack": 8, "strength": 7, "level": 5 } },
+    { "id": "steel_sword", "name": "Steel sword", "examine": "A fine steel sword.", "value": 325, "equip": { "slot": "weapon", "style": "slash", "attack": 15, "strength": 14, "level": 5 } },
+
+    { "id": "bronze_helm", "name": "Bronze helm", "examine": "A bronze helmet. It keeps the rain off and the clubs out.", "value": 24, "equip": { "slot": "helmet", "defence": 2 } },
+    { "id": "bronze_chainbody", "name": "Bronze chainbody", "examine": "Linked bronze rings. Heavy, but worth it.", "value": 60, "equip": { "slot": "body", "defence": 8 } },
+    { "id": "bronze_platelegs", "name": "Bronze platelegs", "examine": "Bronze plates for the legs.", "value": 52, "equip": { "slot": "legs", "defence": 6 } },
+    { "id": "bronze_shield", "name": "Bronze shield", "examine": "A kite-shaped bronze shield.", "value": 48, "equip": { "slot": "shield", "defence": 5 } },
+
+    { "id": "iron_helm", "name": "Iron helm", "examine": "An iron helmet. It keeps the rain off and the clubs out.", "value": 84, "equip": { "slot": "helmet", "defence": 3 } },
+    { "id": "iron_chainbody", "name": "Iron chainbody", "examine": "Linked iron rings. Heavy, but worth it.", "value": 210, "equip": { "slot": "body", "defence": 12 } },
+    { "id": "iron_platelegs", "name": "Iron platelegs", "examine": "Iron plates for the legs.", "value": 182, "equip": { "slot": "legs", "defence": 9 } },
+    { "id": "iron_shield", "name": "Iron shield", "examine": "An iron kite shield.", "value": 168, "equip": { "slot": "shield", "defence": 7 } },
+
+    { "id": "steel_helm", "name": "Steel helm", "examine": "A steel helmet. It keeps the rain off and the clubs out.", "value": 300, "equip": { "slot": "helmet", "defence": 5, "level": 5 } },
+    { "id": "steel_chainbody", "name": "Steel chainbody", "examine": "Linked steel rings. Heavy, but worth it.", "value": 750, "equip": { "slot": "body", "defence": 18, "level": 5 } },
+    { "id": "steel_platelegs", "name": "Steel platelegs", "examine": "Steel plates for the legs.", "value": 650, "equip": { "slot": "legs", "defence": 14, "level": 5 } },
+    { "id": "steel_shield", "name": "Steel shield", "examine": "A kite-shaped steel shield.", "value": 600, "equip": { "slot": "shield", "defence": 11, "level": 5 } },
 
     { "id": "raw_minnows", "name": "Raw minnows", "examine": "A handful of tiny fish. Cook them first.", "value": 5 },
     { "id": "minnows", "name": "Minnows", "examine": "Crispy little fried fish.", "value": 8, "heals": 3 },
@@ -47,6 +62,13 @@
     { "id": "perch", "name": "Perch", "examine": "A nicely grilled perch.", "value": 25, "heals": 6 },
     { "id": "raw_pike", "name": "Raw pike", "examine": "A long, toothy pike. Cook it first.", "value": 30 },
     { "id": "pike", "name": "Pike", "examine": "A hearty baked pike.", "value": 50, "heals": 9 },
-    { "id": "burnt_fish", "name": "Burnt fish", "examine": "Oops.", "value": 1 }
+    { "id": "burnt_fish", "name": "Burnt fish", "examine": "Oops.", "value": 1 },
+
+    { "id": "raw_beef", "name": "Raw beef", "examine": "A good cut of beef. Cook it first.", "value": 4 },
+    { "id": "beef", "name": "Roast beef", "examine": "Juicy roast beef.", "value": 6, "heals": 3 },
+    { "id": "burnt_meat", "name": "Burnt meat", "examine": "Charcoal with a memory of beef.", "value": 1 },
+    { "id": "cowhide", "name": "Cowhide", "examine": "A tough hide. A tanner would pay for this.", "value": 10 },
+    { "id": "crimson_feathers", "name": "Crimson feathers", "examine": "Bright red feathers from a crimson swift.", "stackable": true, "value": 2 },
+    { "id": "lizard_scales", "name": "Lizard scales", "examine": "Hard, glittering scales. Traders in Qadir collect them.", "value": 30 }
   ]
 }

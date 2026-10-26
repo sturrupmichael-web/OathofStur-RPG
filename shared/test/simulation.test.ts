@@ -112,7 +112,8 @@ describe('Simulation', () => {
     sim.queueIntent(id, { type: 'walk', x: kx(60), y: ky(51) });
     sim.step();
     const tick = sim.drain(id).find((m) => m.type === 'tick');
-    expect(tick && tick.type === 'tick' && tick.updated.map((e) => e.id)).toEqual([id]);
+    // Monsters roam on their own, so leave them out.
+    expect(tick && tick.type === 'tick' && tick.updated.filter((e) => e.kind !== 'monster').map((e) => e.id)).toEqual([id]);
   });
 });
 

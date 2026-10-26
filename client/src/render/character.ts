@@ -421,6 +421,10 @@ export interface CharacterRig {
   activity: string | null;
   /** Walk cycle angle in radians. */
   phase: number;
+  /** 0 = walking pace, 1 = running; eased. */
+  run: number;
+  /** 0 = not crossing an obstacle, 1 = fully in its pose; eased. */
+  cross: number;
   /** 0 = standing, 1 = full walk; eased so starts and stops blend. */
   walk: number;
   /** How far the character still has to turn (radians, eased): the head leads and the feet shuffle. */
@@ -566,6 +570,8 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
     work: 0,
     activity: null,
     phase: 0,
+    run: 0,
+    cross: 0,
     walk: 0,
     turn: 0,
     blinkAt: 1500 + (seed % 1) * 3000,
@@ -787,6 +793,46 @@ const TOOL_MODELS: Record<string, () => THREE.Group> = {
     g.scale.setScalar(1.6);
     return g;
   },
+  // A garden rake: a long handle gripped near the top, the tines at the far end.
+  rake: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.011, 0.013, 1.15, 6), 0x8a6a42, 0, 0.32, 0.02));
+    g.add(part(new THREE.BoxGeometry(0.22, 0.025, 0.025), 0x6c6e74, 0, 0.9, 0.02));
+    for (let n = -3; n <= 3; n++) g.add(part(new THREE.CylinderGeometry(0.004, 0.004, 0.06, 4).rotateX(Math.PI / 2).translate(0, 0, -0.03), 0x6c6e74, n * 0.033, 0.9, 0.02));
+    g.rotation.x = Math.PI / 2;
+    return g;
+  },
+  // A spade: handle and grip, the flat blade at the far end.
+  spade: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.012, 0.014, 0.8, 6), 0x8a6a42, 0, 0.28, 0.02));
+    g.add(part(new THREE.BoxGeometry(0.1, 0.02, 0.02), 0x6b4a2b, 0, -0.12, 0.02));
+    g.add(metalPart(new THREE.BoxGeometry(0.14, 0.18, 0.012), 0x8a8c92, 0, 0.75, 0.02));
+    g.rotation.x = Math.PI / 2;
+    return g;
+  },
+  // A seed dibber: a short pointed stick.
+  dibber: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.012, 0.014, 0.12, 6), 0x7a5230, 0, 0.01, 0.02));
+    g.add(part(new THREE.ConeGeometry(0.012, 0.12, 6), 0x9a7448, 0, 0.13, 0.02));
+    g.rotation.x = Math.PI / 2;
+    return g;
+  },
+  // A wooden bucket of compost, hanging from the hand by its handle.
+  bucket: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.06, 0.05, 0.1, 10), 0x8a6240, 0, -0.1, 0.03));
+    g.add(part(new THREE.CylinderGeometry(0.055, 0.055, 0.01, 10), 0x3a2a1a, 0, -0.05, 0.03));
+    g.add(part(new THREE.TorusGeometry(0.06, 0.004, 4, 12, Math.PI), 0x6c6e74, 0, -0.05, 0.03));
+    return g;
+  },
+  // An aether shard, glowing faintly, held up in the left hand.
+  shard: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.OctahedronGeometry(0.035, 0).scale(0.7, 1.4, 0.7), 0xcfe8ff, 0, 0.02, 0.03, 0x3a6aaa));
+    return g;
+  },
   pan: () => {
     const g = new THREE.Group();
     g.add(part(new THREE.CylinderGeometry(0.01, 0.012, 0.2, 6), 0x2a2a2a, 0, 0.02, 0.02));
@@ -809,15 +855,20 @@ const ACTIVITY_TOOL: Record<string, string | undefined> = {
   light: 'tinderbox',
   mix: 'vial',
   offer: 'bone',
+  rake: 'rake',
+  dig: 'spade',
+  plant: 'dibber',
   // One-off moves that show something in the hand.
   drink: 'vial',
   bury: 'bone',
+  spread: 'bucket',
+  pour: 'vial',
 };
 /** What each activity holds in the left hand too, if anything. */
-const ACTIVITY_OFFHAND: Record<string, string | undefined> = { fletch: 'stave', mix: 'herb', clean: 'herb' };
+const ACTIVITY_OFFHAND: Record<string, string | undefined> = { fletch: 'stave', mix: 'herb', clean: 'herb', pick: 'herb', inscribe: 'shard' };
 const OFFHAND_TOOLS = new Set(Object.values(ACTIVITY_OFFHAND));
 
-type Pose = Partial<{
+export type Pose = Partial<{
   shoulderLx: number;
   shoulderLz: number;
   shoulderRx: number;
@@ -1027,6 +1078,102 @@ const ACTIVITIES: Record<string, { period: number; pose: (u: number) => Pose }> 
       };
     },
   },
+  // Inscribing: both hands raised to the shrine, the shards held up to its light, a slow pulse.
+  inscribe: {
+    period: 1800,
+    pose: (u) => {
+      const pulse = Math.sin(u * Math.PI * 2);
+      return { shoulderRx: -1.55 - 0.12 * pulse, shoulderLx: -1.65 - 0.12 * pulse, shoulderRz: -0.12, shoulderLz: 0.12, elbowR: -0.3, elbowL: -0.25, torsoX: -0.06, headX: -0.18 - 0.05 * pulse, hipL: -0.1, kneeL: 0.1 };
+    },
+  },
+  // Raking: lean in, reach the rake out, then drag it back toward the feet.
+  rake: {
+    period: 1500,
+    pose: (u) => {
+      const reach = 0.5 - 0.5 * Math.cos(u * Math.PI * 2);
+      return {
+        shoulderRx: -0.55 - 0.45 * reach,
+        shoulderLx: -0.75 - 0.45 * reach,
+        shoulderRz: -0.1,
+        shoulderLz: 0.25,
+        elbowR: -0.9 + 0.55 * reach,
+        elbowL: -0.7 + 0.45 * reach,
+        torsoX: 0.25 + 0.15 * reach,
+        torsoY: -0.2,
+        hipL: -0.35,
+        kneeL: 0.35,
+        hipR: 0.15,
+        headX: 0.3,
+      };
+    },
+  },
+  // Digging: drive the spade in with a foot, lever the earth up, and turn it over.
+  dig: {
+    period: 1800,
+    pose: (u) => {
+      const push = u < 0.35 ? Math.sin((u / 0.35) * Math.PI) : 0;
+      const lever = u >= 0.35 ? Math.sin(((u - 0.35) / 0.65) * Math.PI) : 0;
+      return {
+        shoulderRx: -0.55 - 0.7 * lever,
+        shoulderLx: -0.7 - 0.6 * lever,
+        shoulderRz: -0.1,
+        shoulderLz: 0.2,
+        elbowR: -0.35 - 0.4 * lever,
+        elbowL: -0.5 - 0.3 * lever,
+        torsoX: 0.45 - 0.2 * lever,
+        hipL: -0.9 * push - 0.1,
+        kneeL: 1.0 * push + 0.15,
+        hipR: 0.1,
+        kneeR: 0.25 * lever,
+        headX: 0.35,
+      };
+    },
+  },
+  // Planting: down on one knee, the dibber poked into the soil and a seed dropped in.
+  plant: {
+    period: 1400,
+    pose: (u) => {
+      const poke = u < 0.5 ? Math.sin((u / 0.5) * Math.PI) : 0;
+      const drop = u >= 0.5 ? Math.sin(((u - 0.5) / 0.5) * Math.PI) : 0;
+      return {
+        hipsY: -0.3,
+        hipL: -1.5,
+        kneeL: 1.6,
+        hipR: 0.15,
+        kneeR: 1.75,
+        torsoX: 0.6,
+        headX: 0.4,
+        shoulderRx: -0.55 + 0.35 * poke,
+        shoulderRz: -0.1,
+        elbowR: -0.35,
+        shoulderLx: -0.8 + 0.3 * drop,
+        shoulderLz: 0.2,
+        elbowL: -0.8 + 0.3 * drop,
+      };
+    },
+  },
+  // Picking herbs: bent at the waist, a hand down to the plant and back up to the bunch.
+  pick: {
+    period: 1300,
+    pose: (u) => {
+      const reach = Math.sin(u * Math.PI);
+      return {
+        torsoX: 0.75,
+        hipsY: -0.08,
+        hipL: -0.45,
+        hipR: -0.3,
+        kneeL: 0.7,
+        kneeR: 0.55,
+        headX: 0.3,
+        shoulderRx: -0.55 - 0.2 * reach,
+        elbowR: -1.3 + 1.1 * reach,
+        shoulderRz: -0.15,
+        shoulderLx: -0.7,
+        shoulderLz: 0.35,
+        elbowL: -1.4,
+      };
+    },
+  },
   // Feeding the furnace: lean in and push the ore forward with both hands.
   smelt: {
     period: 1800,
@@ -1221,6 +1368,24 @@ const ONE_SHOTS: Record<string, { ms: number; pose: (u: number) => Pose }> = {
       };
     },
   },
+  // Compost: the bucket swung forward and tipped out over the soil.
+  spread: {
+    ms: 1300,
+    pose: (u) => {
+      const k = Math.min(1, Math.sin(u * Math.PI) * 1.6);
+      const tip = u > 0.35 ? Math.sin(Math.min(1, (u - 0.35) / 0.4) * Math.PI * 0.5) : 0;
+      return { shoulderRx: (-0.7 - 0.4 * tip) * k, shoulderLx: (-0.7 - 0.5 * tip) * k, shoulderLz: 0.3 * k, elbowR: -0.6 * k, elbowL: (-0.6 + 0.4 * tip) * k, torsoX: 0.35 * k, headX: 0.3 * k };
+    },
+  },
+  // Plant cure: crouched over the plants, the vial tipped out in a slow circle.
+  pour: {
+    ms: 1500,
+    pose: (u) => {
+      const k = Math.min(1, Math.sin(u * Math.PI) * 1.8);
+      const circle = Math.sin(u * Math.PI * 4) * 0.12;
+      return { shoulderRx: (-0.95 + circle) * k, shoulderRz: (0.15 + circle) * k, elbowR: -0.5 * k, torsoX: 0.45 * k, hipL: -0.3 * k, kneeL: 0.5 * k, hipR: -0.2 * k, kneeR: 0.4 * k, hipsY: -0.06 * k, headX: 0.35 * k };
+    },
+  },
   // Food to the mouth, a couple of chews.
   eat: {
     ms: 1100,
@@ -1230,6 +1395,109 @@ const ONE_SHOTS: Record<string, { ms: number; pose: (u: number) => Pose }> = {
     },
   },
 };
+
+/** 0 at the ends of a crossing, 1 in the middle, easing on and off over `edge`. */
+const onTop = (u: number, edge: number) => Math.min(1, u / edge, (1 - u) / edge);
+/** Legs and arms going step by step, `n` steps over the crossing. */
+const steps = (u: number, n: number) => Math.sin(u * Math.PI * n);
+
+/**
+ * How someone looks crossing an agility obstacle, `u` (0..1) of the way
+ * over: the pose, and how far above the ground they are. A fall plays the
+ * first half of the crossing, then a tumble off the side.
+ */
+export function crossingPose(obstacle: string, u: number, fall = false): { pose: Pose; lift: number; roll: number } {
+  if (fall && u > 0.55) {
+    const f = Math.min(1, (u - 0.55) / 0.3);
+    const { lift } = crossingPose(obstacle, 0.5);
+    return {
+      pose: { shoulderRx: -2.4 * f, shoulderLx: -1.6 * f, shoulderRz: 0.9 * f, shoulderLz: -1.1 * f, elbowR: -0.3, elbowL: -0.5, hipL: -0.8 * f, kneeL: 1.0 * f, hipR: 0.3 * f, kneeR: 0.4 * f, headX: -0.3 * f, torsoX: -0.2 * f },
+      lift: lift * (1 - f * f),
+      roll: 0.9 * Math.sin(f * Math.PI * 0.5) * (1 - Math.max(0, (u - 0.9) / 0.1)),
+    };
+  }
+  switch (obstacle) {
+    // Arms out wide for balance, small careful steps along the log, a wobble now and then.
+    case 'log': {
+      const wobble = Math.sin(u * Math.PI * 7) * 0.12;
+      const step = steps(u, 6);
+      return {
+        pose: { shoulderRz: 1.25 + wobble, shoulderLz: -1.25 + wobble, shoulderRx: -0.2, shoulderLx: -0.2, elbowR: -0.2, elbowL: -0.2, hipL: -0.28 * step, hipR: 0.28 * step, kneeL: 0.2 + 0.25 * Math.max(0, step), kneeR: 0.2 + 0.25 * Math.max(0, -step), torsoY: wobble, headX: 0.25 },
+        lift: 0.42 * onTop(u, 0.15),
+        roll: wobble * 0.5,
+      };
+    }
+    // A run-up, then a leap with the lead knee tucked and the arms thrown forward.
+    case 'hurdle': {
+      const air = u > 0.25 && u < 0.85 ? Math.sin(((u - 0.25) / 0.6) * Math.PI) : 0;
+      const run = u <= 0.25 ? steps(u, 2) : 0;
+      return {
+        pose: { hipL: -1.1 * air - 0.4 * run, kneeL: 1.2 * air + 0.3, hipR: 0.55 * air + 0.4 * run, kneeR: 0.6 * air + 0.2, shoulderRx: -1.2 * air + 0.4 * run, shoulderLx: -1.0 * air - 0.4 * run, elbowR: -0.6, elbowL: -0.6, torsoX: 0.3 * air + 0.1 },
+        lift: 0.6 * air,
+        roll: 0,
+      };
+    }
+    // Hand over hand up one side of the net and down the other.
+    case 'net': {
+      const climb = steps(u, 8);
+      const height = 1.35 * (u < 0.5 ? u / 0.5 : (1 - u) / 0.5);
+      return {
+        pose: { shoulderRx: -2.4 - 0.5 * climb, shoulderLx: -2.4 + 0.5 * climb, shoulderRz: -0.2, shoulderLz: 0.2, elbowR: -0.6 - 0.4 * Math.max(0, climb), elbowL: -0.6 - 0.4 * Math.max(0, -climb), hipL: -0.9 - 0.5 * Math.max(0, climb), kneeL: 1.1 + 0.5 * Math.max(0, climb), hipR: -0.9 - 0.5 * Math.max(0, -climb), kneeR: 1.1 + 0.5 * Math.max(0, -climb), torsoX: 0.2, headX: -0.2 },
+        lift: height,
+        roll: 0,
+      };
+    }
+    // Both hands high on the rope, feet tucked, swinging across the pit.
+    case 'rope': {
+      const hang = onTop(u, 0.12);
+      return {
+        pose: { shoulderRx: -2.9 * hang, shoulderLx: -2.9 * hang, shoulderRz: -0.15, shoulderLz: 0.15, elbowR: -0.25, elbowL: -0.25, hipL: -0.6 * hang, hipR: -0.5 * hang, kneeL: 0.9 * hang, kneeR: 0.8 * hang, torsoX: -0.1 * hang, headX: -0.15 * hang },
+        lift: 0.55 * Math.sin(u * Math.PI),
+        roll: 0,
+      };
+    }
+    // Three hops from stump to stump, arms out a little.
+    case 'stones': {
+      const hop = Math.abs(Math.sin(u * Math.PI * 3));
+      const land = 1 - hop;
+      return {
+        pose: { shoulderRz: 0.6, shoulderLz: -0.6, shoulderRx: -0.4 - 0.4 * hop, shoulderLx: -0.4 - 0.4 * hop, elbowR: -0.3, elbowL: -0.3, hipL: -0.6 * hop - 0.3 * land, hipR: -0.2 * hop - 0.3 * land, kneeL: 0.6 * hop + 0.5 * land, kneeR: 0.3 * hop + 0.5 * land, torsoX: 0.15 + 0.15 * land },
+        lift: 0.3 * onTop(u, 0.1) + 0.28 * hop,
+        roll: 0,
+      };
+    }
+    // Down on hands and knees, crawling through.
+    case 'pipe': {
+      const crawl = steps(u, 6);
+      const low = onTop(u, 0.15);
+      return {
+        pose: { hipsY: -0.42 * low, torsoX: 1.35 * low, headX: -0.9 * low, hipL: (-1.35 - 0.3 * crawl) * low, hipR: (-1.35 + 0.3 * crawl) * low, kneeL: 1.65 * low, kneeR: 1.65 * low, shoulderRx: (-1.45 + 0.35 * crawl) * low, shoulderLx: (-1.45 - 0.35 * crawl) * low, elbowR: -0.15, elbowL: -0.15 },
+        lift: 0,
+        roll: 0,
+      };
+    }
+    // Hanging from the bars, hand over hand, the legs swinging below.
+    case 'bars': {
+      const hand = steps(u, 6);
+      const hang = onTop(u, 0.15);
+      return {
+        pose: { shoulderRx: (-3.0 - 0.25 * hand) * hang, shoulderLx: (-3.0 + 0.25 * hand) * hang, shoulderRz: -0.1, shoulderLz: 0.1, elbowR: -0.15 - 0.3 * Math.max(0, hand), elbowL: -0.15 - 0.3 * Math.max(0, -hand), hipL: (-0.35 + 0.2 * hand) * hang, hipR: (-0.35 + 0.2 * hand) * hang, kneeL: 0.5 * hang, kneeR: 0.4 * hang, headX: -0.25 * hang },
+        lift: 0.85 * hang,
+        roll: 0,
+      };
+    }
+    // Hands on top, a knee up, over, and down the far side.
+    case 'wall': {
+      const up = Math.sin(u * Math.PI);
+      return {
+        pose: { shoulderRx: -1.6 * up, shoulderLx: -1.6 * up, elbowR: -0.5, elbowL: -0.5, hipL: -1.3 * up, kneeL: 1.5 * up, hipR: -0.4 * up, kneeR: 0.8 * up, torsoX: 0.5 * up, hipsY: -0.05 * up },
+        lift: 0.72 * up,
+        roll: 0,
+      };
+    }
+  }
+  return { pose: {}, lift: 0, roll: 0 };
+}
 
 /** Starts a one-off animation. Unknown kinds (a monster's bite on a humanoid rig) fall back to a swing. */
 export function playCharacter(rig: CharacterRig, kind: string, now: number): void {
@@ -1247,7 +1515,7 @@ export function characterBusy(rig: CharacterRig, now: number): boolean {
  * frame; `speed` scales the stride (diagonal steps cover more ground).
  * `turn` is how far it still has to turn to face where it's going.
  */
-export function animateCharacter(rig: CharacterRig, dt: number, now: number, moving: boolean, speed = 1, activity: string | null = null, dead = false, turn = 0): void {
+export function animateCharacter(rig: CharacterRig, dt: number, now: number, moving: boolean, speed = 1, activity: string | null = null, dead = false, turn = 0, override: Pose | null = null): void {
   rig.walk += ((moving ? 1 : 0) - rig.walk) * Math.min(1, dt * 7);
   rig.turn += (turn - rig.turn) * Math.min(1, dt * 10);
   // Turning on the spot: a couple of small steps rather than spinning on a pin.
@@ -1259,20 +1527,24 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
   const t = now / 1000 + rig.seed;
   const s = Math.sin(rig.phase);
   const c = Math.cos(rig.phase);
+  // Running (two tiles a tick): longer strides, knees higher, arms pumping, a lean and a bounce.
+  rig.run += ((moving && speed > 1.6 ? 1 : 0) - rig.run) * Math.min(1, dt * 8);
+  const r = rig.run;
+  const stride = 0.48 + 0.24 * r;
 
   // Legs swing opposite each other. A leg bends most as it swings through,
   // a little as it takes the weight, and the hips dip as the legs part.
-  rig.hipL.rotation.set(-s * 0.48 * w, 0, 0);
-  rig.hipR.rotation.set(s * 0.48 * w, 0, 0);
-  rig.kneeL.rotation.x = (Math.pow(Math.max(0, c), 1.4) * 1.0 + Math.max(0, -c) * 0.12) * w + 0.03;
-  rig.kneeR.rotation.x = (Math.pow(Math.max(0, -c), 1.4) * 1.0 + Math.max(0, c) * 0.12) * w + 0.03;
+  rig.hipL.rotation.set(-s * stride * w - 0.12 * r, 0, 0);
+  rig.hipR.rotation.set(s * stride * w - 0.12 * r, 0, 0);
+  rig.kneeL.rotation.x = (Math.pow(Math.max(0, c), 1.4) * (1.0 + 0.7 * r) + Math.max(0, -c) * 0.12) * w + 0.03 + 0.15 * r;
+  rig.kneeR.rotation.x = (Math.pow(Math.max(0, -c), 1.4) * (1.0 + 0.7 * r) + Math.max(0, c) * 0.12) * w + 0.03 + 0.15 * r;
   // Push off the toes as a leg leaves the ground; land on the heel.
   const toeL = Math.max(0, -s) * Math.max(0, c + 0.3) * 0.7 * w - Math.max(0, s) * Math.max(0, 0.3 - c) * 0.25 * w;
   const toeR = Math.max(0, s) * Math.max(0, -c + 0.3) * 0.7 * w - Math.max(0, -s) * Math.max(0, 0.3 + c) * 0.25 * w;
 
   // Weight shifts from foot to foot at rest, slowly; side to side when walking.
   const shift = Math.sin(t * 0.55) * idle;
-  rig.hips.position.set(0.012 * c * w + 0.014 * shift, BODY.hipsY - (0.008 + 0.034 * s * s) * w - 0.004 * Math.abs(shift), 0);
+  rig.hips.position.set(0.012 * c * w + 0.014 * shift, BODY.hipsY - (0.008 + 0.034 * s * s) * w - 0.004 * Math.abs(shift) + 0.03 * r * Math.abs(c) - 0.03 * r, 0);
   rig.hips.rotation.set(0, s * 0.14 * w, 0.05 * c * w + 0.035 * shift);
   rig.kneeL.rotation.x += 0.1 * Math.max(0, shift);
   rig.kneeR.rotation.x += 0.1 * Math.max(0, -shift);
@@ -1281,14 +1553,16 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
 
   // Chest counter-twists, leans into the walk and breathes at rest.
   const breathe = Math.sin(t * 1.7);
-  rig.torso.rotation.set(0.07 * w * Math.min(speed, 1.2) + breathe * 0.012 * idle, -s * 0.26 * w + rig.turn * 0.12, -0.07 * c * w - 0.04 * shift);
+  rig.torso.rotation.set(0.07 * w * Math.min(speed, 1.2) + 0.16 * r + breathe * 0.012 * idle, -s * 0.26 * w + rig.turn * 0.12, -0.07 * c * w - 0.04 * shift);
   rig.neck.rotation.set(-0.03 * w, 0, 0.03 * shift);
 
   // Arms counter-swing; elbows bend more as the arm comes forward.
   rig.shoulderL.rotation.set(s * 0.42 * w + breathe * 0.02 * idle, 0, -0.07 - 0.02 * idle);
   rig.shoulderR.rotation.set(-s * 0.42 * w + breathe * 0.02 * idle, 0, 0.07 + 0.02 * idle);
-  rig.elbowL.rotation.x = -0.14 - 0.25 * w - Math.max(0, -s) * 0.4 * w;
-  rig.elbowR.rotation.x = -0.14 - 0.25 * w - Math.max(0, s) * 0.4 * w;
+  rig.elbowL.rotation.x = -0.14 - 0.25 * w - Math.max(0, -s) * 0.4 * w - 0.9 * r;
+  rig.elbowR.rotation.x = -0.14 - 0.25 * w - Math.max(0, s) * 0.4 * w - 0.9 * r;
+  rig.shoulderL.rotation.x += s * 0.25 * r * w;
+  rig.shoulderR.rotation.x -= s * 0.25 * r * w;
   rig.handL.rotation.set(-0.1 * w, 0, 0);
   rig.handR.rotation.set(-0.1 * w, 0, 0);
 
@@ -1314,6 +1588,10 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
     const u = ((now + rig.seed * 1000) % anim.period) / anim.period;
     applyPose(rig, anim.pose(u), rig.work);
   } else if (rig.work <= 0.01) rig.activity = null;
+
+  // Crossing an obstacle: its pose takes over completely, eased in.
+  rig.cross += ((override ? 1 : 0) - rig.cross) * Math.min(1, dt * 12);
+  if (override) applyPose(rig, override, rig.cross);
 
   // A one-off move on top, eased in and out over its first and last fifth.
   if (rig.oneShot) {

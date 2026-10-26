@@ -61,6 +61,8 @@
     { "id": "cook_perch", "station": "range", "skill": "cooking", "level": 15, "xp": 70, "ticks": 4, "stopBurn": 40, "burnt": "burnt_fish", "inputs": [{ "itemId": "raw_perch", "qty": 1 }], "output": "perch" },
     { "id": "cook_pike", "station": "range", "skill": "cooking", "level": 30, "xp": 90, "ticks": 4, "stopBurn": 55, "burnt": "burnt_fish", "inputs": [{ "itemId": "raw_pike", "qty": 1 }], "output": "pike" },
     { "id": "cook_beef", "station": "range", "skill": "cooking", "level": 1, "xp": 30, "ticks": 4, "stopBurn": 20, "burnt": "burnt_meat", "inputs": [{ "itemId": "raw_beef", "qty": 1 }], "output": "beef" },
+    { "id": "bake_potato", "station": "range", "skill": "cooking", "level": 7, "xp": 15, "ticks": 4, "inputs": [{ "itemId": "potato", "qty": 1 }], "output": "baked_potato" },
+    { "id": "cook_sweetcorn", "station": "range", "skill": "cooking", "level": 28, "xp": 104, "ticks": 4, "inputs": [{ "itemId": "sweetcorn", "qty": 1 }], "output": "cooked_sweetcorn" },
 
     { "id": "mix_sunleaf_unf", "station": "herblore", "skill": "herblore", "level": 3, "xp": 0, "ticks": 2, "inputs": [{ "itemId": "sunleaf", "qty": 1 }, { "itemId": "vial_of_water", "qty": 1 }], "output": "sunleaf_potion_unf" },
     { "id": "mix_attack_potion", "station": "herblore", "skill": "herblore", "level": 3, "xp": 25, "ticks": 3, "inputs": [{ "itemId": "sunleaf_potion_unf", "qty": 1 }, { "itemId": "crimson_feathers", "qty": 1 }], "output": "attack_potion3" },

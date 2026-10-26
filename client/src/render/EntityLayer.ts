@@ -1,12 +1,13 @@
 import * as THREE from 'three';
-import { isBow, type EntityId, type MapData, type WorldGrid } from '@rpg/shared';
+import { PATCH_KINDS, areaAt, glyphForArea, isBow, obstacleAt, type EntityId, type MapData, type WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView } from '../state/ClientState';
-import { CHARACTER_STYLES, SHOOT_MS, SHOOT_RELEASE, activityPhase, animateCharacter, buildCharacter, characterBusy, playCharacter, styleForNpc, withGear, type CharacterRig } from './character';
+import { CHARACTER_STYLES, SHOOT_MS, SHOOT_RELEASE, activityPhase, animateCharacter, buildCharacter, characterBusy, crossingPose, playCharacter, styleForNpc, withGear, type CharacterRig } from './character';
 import { animateCreature, buildCreature, creatureBusy, isCreature, playCreature, shotMs, type CreatureRig } from './creatures';
 import { disposeModel } from './dispose';
 import { Effects } from './effects';
 import { FLICKER, RESOURCE_STYLES, buildGroundItem, buildStation, type PartStyle } from './models';
 import type { Heightmap } from './heightmap';
+import { GLYPH_COLOURS, ROPE, buildObstacle, buildPatch, buildSkillItem } from './skillModels';
 import { hash2, shade, type TileInfo } from './palette';
 
 /** One InstancedMesh per part of a resource model, shared by every node of that type. */
@@ -36,6 +37,8 @@ export class EntityLayer {
   /** Called as a working player's tool lands (axe bites, hammer rings), for sound. */
   onImpact: ((id: EntityId, activity: string) => void) | null = null;
   private readonly workPhase = new Map<EntityId, number>();
+  /** Rope swings by tile, so the rope can swing with whoever is on it. */
+  private readonly ropes = new Map<string, THREE.Object3D>();
 
   constructor(
     private readonly state: ClientState,
@@ -79,7 +82,8 @@ export class EntityLayer {
     state.on('changed', (v) => {
       // A tree felled or grown back swaps models; a player changing gear is rebuilt in it.
       const gearChanged = v.data.kind === 'player' && this.meshes.get(v.data.id)?.userData.gear !== JSON.stringify(v.data.gear ?? {});
-      if (v.data.kind !== 'resource' && !gearChanged) return;
+      // A patch is rebuilt as its crop grows.
+      if (v.data.kind !== 'resource' && !gearChanged && !v.data.patch) return;
       const yaw = this.meshes.get(v.data.id)?.rotation.y;
       this.remove(v.data.id);
       this.add(v);
@@ -129,6 +133,8 @@ export class EntityLayer {
       if (view.data.kind === 'player' || view.data.kind === 'npc' || view.data.kind === 'monster') this.placeCharacter(id, obj, view, now, dt);
     }
     for (const pool of this.pools.values()) if (pool.ripple && pool.slotOf.size) this.animateRipples(pool, now);
+    // Ropes nobody is swinging on settle back to hanging straight.
+    for (const rope of this.ropes.values()) if (!rope.userData.swungAt || now - rope.userData.swungAt > 100) rope.rotation.x *= Math.max(0, 1 - dt * 3);
     this.effects.update(now, dt);
     this.flickers.forEach((f, i) => {
       const k = 0.8 + Math.sin(now * 0.02 + i) * 0.12 + Math.sin(now * 0.053 + i * 3) * 0.08;
@@ -150,10 +156,26 @@ export class EntityLayer {
       return;
     }
     let obj: THREE.Object3D;
+    const obstacle = data.defKey === 'agility_obstacle' ? obstacleAt(data.x, data.y) : undefined;
     if (data.kind === 'item') {
-      obj = buildGroundItem(data.defKey ?? '');
+      obj = buildSkillItem(data.defKey ?? '') ?? buildGroundItem(data.defKey ?? '');
       obj.rotation.y = hash2(data.id, 11) * Math.PI * 2;
-    } else if (data.kind === 'station' || data.kind === 'scenery') obj = buildStation(data.defKey ?? '', (dx, dy) => this.objectAt(data.x + dx, data.y + dy), hash2(data.x, data.y, 5));
+    } else if (obstacle) {
+      // Laid along the way it is crossed.
+      obj = buildObstacle(obstacle.type);
+      obj.rotation.y = Math.atan2(obstacle.dir.x, obstacle.dir.y);
+      obj.userData.span = [1, 1];
+      const rope = obj.getObjectByName(ROPE);
+      if (rope) {
+        obj.userData.rope = `${data.x},${data.y}`;
+        this.ropes.set(obj.userData.rope, rope);
+      }
+    } else if (data.patch) {
+      obj = buildPatch(data.name === PATCH_KINDS.allotment.name ? 'allotment' : 'herb', data.patch, hash2(data.x, data.y, 5));
+    } else if (data.defKey === 'glyph_shrine') {
+      const glyph = glyphForArea(areaAt(this.map, data.x, data.y)?.name);
+      obj = buildStation('glyph_shrine', undefined, 0, glyph ? GLYPH_COLOURS[glyph.id] : undefined);
+    } else if (data.kind === 'station' || data.kind === 'scenery' || data.kind === 'resource') obj = buildStation(data.defKey ?? '', (dx, dy) => this.objectAt(data.x + dx, data.y + dy), hash2(data.x, data.y, 5));
     else if (data.kind === 'monster' && isCreature(data.defKey ?? '')) {
       const rig = buildCreature(data.defKey as Parameters<typeof buildCreature>[0], hash2(data.id, 3) * 100);
       this.creatures.set(data.id, rig);
@@ -185,6 +207,8 @@ export class EntityLayer {
   }
 
   private remove(id: EntityId): void {
+    const rope = this.meshes.get(id)?.userData.rope as string | undefined;
+    if (rope) this.ropes.delete(rope);
     this.facing.delete(id);
     this.workPhase.delete(id);
     const obj = this.meshes.get(id);
@@ -268,6 +292,18 @@ export class EntityLayer {
     // Keep the legs going a little past the step, so a tick that lands late doesn't stutter the walk.
     const moving = (dx !== 0 || dy !== 0) && now - view.movedAt < this.state.tickMs * 1.2;
     if (moving) this.facing.set(id, Math.atan2(dx, dy));
+    const crossing = view.data.crossing;
+    const cross = crossing ? crossingPose(crossing.obstacle, this.state.crossProgress(view, now), crossing.fall) : null;
+    if (crossing) {
+      const sx = Math.sign(crossing.to.x - crossing.from.x);
+      const sy = Math.sign(crossing.to.y - crossing.from.y);
+      this.facing.set(id, Math.atan2(sx, sy));
+      const rope = this.ropes.get(`${crossing.from.x + sx},${crossing.from.y + sy}`);
+      if (rope) {
+        rope.rotation.x = 0.55 * (1 - 2 * this.state.crossProgress(view, now));
+        rope.userData.swungAt = now;
+      }
+    }
     const work = view.data.workingOn;
     // Work in hand (fletching) is on your own tile: keep facing whichever way you were.
     if (work && !moving && (work.x !== view.toX || work.y !== view.toY)) this.facing.set(id, Math.atan2(work.x - view.toX, work.y - view.toY));
@@ -282,11 +318,16 @@ export class EntityLayer {
     const targetYaw = this.facing.get(id) ?? obj.rotation.y;
     const turn = shortestAngle(obj.rotation.y, targetYaw);
     obj.rotation.y += Math.sign(turn) * Math.min(Math.abs(turn), dt * 9, Math.abs(turn) * dt * 14);
-    obj.position.set(pos.x + 0.5, this.hm.groundAt(pos.x + 0.5, pos.y + 0.5), pos.y + 0.5);
-    const speed = Math.min(1.4, Math.hypot(dx, dy));
+    obj.position.set(pos.x + 0.5, this.hm.groundAt(pos.x + 0.5, pos.y + 0.5) + (cross?.lift ?? 0), pos.y + 0.5);
+    // Two tiles in a tick is a run.
+    const step = Math.hypot(dx, dy);
+    const speed = view.via || step >= 1.5 ? 2 : Math.min(1.4, step);
     const dead = !!view.data.dead;
     const rig = this.rigs.get(id);
-    if (rig) animateCharacter(rig, dt, now, moving, speed, work ? (view.data.activity ?? 'chop') : fighting ? (rig.archer ? 'aim' : 'fight') : null, dead, turn);
+    if (rig) {
+      animateCharacter(rig, dt, now, moving, speed, work ? (view.data.activity ?? 'chop') : fighting ? (rig.archer ? 'aim' : 'fight') : null, dead, turn, cross?.pose ?? null);
+      rig.body.rotation.z = cross?.roll ?? 0;
+    }
     if (rig && work && !moving && view.data.activity) {
       const u = activityPhase(rig, view.data.activity, now);
       const was = this.workPhase.get(id);
@@ -365,6 +406,11 @@ const IMPACT: Record<string, number[]> = {
   clean: [0.4, 0.85],
   mix: [0.2, 0.6],
   offer: [0.85],
+  inscribe: [0.5],
+  rake: [0.85],
+  dig: [0.2],
+  plant: [0.25],
+  pick: [0.5],
 };
 
 function shortestAngle(from: number, to: number): number {

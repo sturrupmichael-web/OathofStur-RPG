@@ -1,0 +1,19 @@
+{
+  "comment": "Glyphcraft. Aether shards, mined from aether stone, are inscribed at a shrine into that shrine's glyphs, all at once. Each glyph needs a Glyphcraft level and gives xp per shard. At every multiple of `every` levels (from `every` itself) each shard makes one more glyph. The shrine's glyph comes from the name of the area it stands in (\"Wind Shrine\").",
+  "shard": "aether_shard",
+  "ticks": 3,
+  "glyphs": {
+    "wind": { "level": 1, "xp": 5, "every": 11 },
+    "thought": { "level": 2, "xp": 5.5, "every": 14 },
+    "tide": { "level": 5, "xp": 6, "every": 19 },
+    "root": { "level": 9, "xp": 6.5, "every": 26 },
+    "ember": { "level": 14, "xp": 7, "every": 35 },
+    "vigour": { "level": 20, "xp": 7.5, "every": 46 },
+    "bloom": { "level": 27, "xp": 8, "every": 59 },
+    "star": { "level": 35, "xp": 8.5, "every": 70 },
+    "storm": { "level": 44, "xp": 9, "every": 74 },
+    "dusk": { "level": 54, "xp": 9.5, "every": 91 },
+    "oath": { "level": 65, "xp": 10 },
+    "crimson": { "level": 77, "xp": 11.5 }
+  }
+}

@@ -1,6 +1,7 @@
 import type { Point } from '../map/types';
 import { ATTACK_STYLES, type AttackStyle } from './combat';
 import { QUESTS, QUEST_IDS, doneStage } from './quests';
+import { CROPS, MAX_WEEDS, type PatchState } from './farming';
 import { EQUIP_SLOTS, INVENTORY_SIZE, ITEMS, type Equipment, type Inventory, type ItemStack } from './items';
 import { MAX_XP, SKILLS, startingXp, type SkillXp } from './skills';
 
@@ -30,6 +31,11 @@ export interface SaveData {
   attackStyle?: AttackStyle;
   /** Prayer points left. Left out means full. */
   prayer?: number;
+  /** Run energy (left out means full) and whether running is on. */
+  energy?: number;
+  run?: boolean;
+  /** Farming patches the character has worked, by tile ("x,y"). They keep growing from `updatedAt`. */
+  farm?: Record<string, PatchState>;
   bank: ItemStack[];
   quests: Record<string, number>;
   createdAt: string;
@@ -86,6 +92,8 @@ export function parseSave(raw: unknown): SaveData | null {
   const hp = Number(s.hp);
   const prayer = Number(s.prayer);
   const style = typeof s.attackStyle === 'string' && s.attackStyle in ATTACK_STYLES ? s.attackStyle : undefined;
+  const energy = Number(s.energy);
+  const farm = parseFarm(s.farm);
   const quests: Record<string, number> = {};
   const saved = (s.quests ?? {}) as Record<string, unknown>;
   for (const id of QUEST_IDS) {
@@ -104,9 +112,39 @@ export function parseSave(raw: unknown): SaveData | null {
     ...(Number.isInteger(hp) && hp >= 1 && { hp }),
     ...(Number.isInteger(prayer) && prayer >= 0 && { prayer }),
     ...(style && { attackStyle: style }),
+    ...(Number.isFinite(energy) && energy >= 0 && energy <= 100 && { energy }),
+    ...(s.run === true && { run: true }),
+    ...(farm && { farm }),
     bank,
     quests,
     createdAt: typeof s.createdAt === 'string' ? s.createdAt : now,
     updatedAt: typeof s.updatedAt === 'string' ? s.updatedAt : now,
   };
+}
+
+/** Keeps only patches that make sense: a known crop at a real stage, weeds 0 to 3. */
+function parseFarm(raw: unknown): Record<string, PatchState> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const out: Record<string, PatchState> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!/^\d+,\d+$/.test(key) || !value || typeof value !== 'object') continue;
+    const v = value as Partial<PatchState>;
+    const weeds = Number(v.weeds);
+    const timer = Number(v.timer);
+    if (!Number.isInteger(weeds) || weeds < 0 || weeds > MAX_WEEDS || !Number.isFinite(timer) || timer < 0) continue;
+    const patch: PatchState = { weeds, timer };
+    if (v.compost === true) patch.compost = true;
+    if (v.crop !== undefined) {
+      const crop = typeof v.crop === 'string' ? CROPS[v.crop] : undefined;
+      const stage = Number(v.stage);
+      if (!crop || !Number.isInteger(stage) || stage < 0 || stage > crop.stages) continue;
+      Object.assign(patch, { weeds: 0, crop: crop.id, stage });
+      if (v.diseased === true) patch.diseased = true;
+      if (v.dead === true) patch.dead = true;
+      const left = Number(v.left);
+      if (stage === crop.stages && Number.isInteger(left) && left > 0) patch.left = left;
+    }
+    out[key] = patch;
+  }
+  return Object.keys(out).length ? out : null;
 }

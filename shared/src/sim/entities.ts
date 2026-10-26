@@ -1,6 +1,7 @@
 import type { Point } from '../map/types';
 import type { AttackStyle } from './combat';
 import type { StationKind } from './crafting';
+import type { PatchKind, PatchState } from './farming';
 import type { Equipment, Inventory, ItemStack } from './items';
 import type { DialoguePage } from './quests';
 import type { PrayerId } from './prayer';
@@ -30,8 +31,16 @@ export type PlayerAction =
   | { kind: 'offer'; targetId: EntityId; nextAttempt: number; started?: boolean }
   /** Lighting logs on the spot with a tinderbox; a try every tick until it catches. */
   | { kind: 'light'; itemId: string; nextAttempt: number }
+  /** Crossing an agility obstacle: walk to its start, then cross until `endsAt`, landing on `landing`. */
+  | { kind: 'cross'; targetId: EntityId; started?: boolean; endsAt: number; fall?: boolean; landing?: Point }
+  /** Inscribing every aether shard in the pack at a shrine, once there. */
+  | { kind: 'inscribe'; targetId: EntityId; nextAttempt: number; started?: boolean }
+  /** Tending a farming patch: the task is picked on arrival (or by the item used on it), then done every `nextAttempt`. */
+  | { kind: 'farm'; targetId: EntityId; itemId?: string; task?: FarmTask; nextAttempt: number }
   /** Fighting a monster: chase it into reach, then swing whenever the weapon is ready. */
   | { kind: 'attack'; targetId: EntityId; chasing?: Point };
+
+export type FarmTask = 'rake' | 'plant' | 'compost' | 'cure' | 'harvest' | 'clear';
 
 /** The window a player has open. Walking away closes it. */
 export type OpenUi =
@@ -88,6 +97,15 @@ export interface PlayerEntity {
   nextBury: number;
   /** Set while a fireward potion works: the tick it runs out. */
   firewardUntil?: number;
+  /** Run energy, 0 to 100, and whether they run when they can. */
+  energy: number;
+  run: boolean;
+  /** Set on a tick they ran two tiles: the one in between. */
+  via?: Point;
+  /** How far round an agility course they are, for the lap bonus. */
+  lap?: { course: string; next: number };
+  /** Their own crops, by patch tile ("x,y"). Patches they never touched are overgrown. */
+  farm: Record<string, PatchState>;
 }
 
 /** A monster at its spawn point. Dead monsters stay in the world, hidden, until they respawn. */
@@ -132,6 +150,8 @@ export interface ObjectEntity {
   depletedUntil?: number;
   /** Fires players light: the tick it burns out, leaving ashes. */
   burnsUntil?: number;
+  /** Farming patches: which kind. */
+  patch?: PatchKind;
 }
 
 /** An item lying on the ground. It vanishes at `despawnAt`. */

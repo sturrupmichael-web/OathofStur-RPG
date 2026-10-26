@@ -8,6 +8,13 @@ export interface EntityView {
   toX: number;
   toY: number;
   movedAt: number;
+  /** A running step goes through this tile on its way. */
+  via?: { x: number; y: number };
+  /** When the current agility crossing began (ms). */
+  crossAt?: number;
+  /** Which crossing has had its sound played, and whether its fall has. */
+  crossSound?: string;
+  fellSound?: boolean;
   /** When it last took a hit (ms), for showing its health bar. */
   hitAt: number;
 }
@@ -119,8 +126,25 @@ export class ClientState {
 
   /** Interpolated tile-space position of an entity at time `now`. */
   renderPosition(view: EntityView, now: number): { x: number; y: number } {
+    const crossing = view.data.crossing;
+    if (crossing && view.crossAt !== undefined) {
+      const t = this.crossProgress(view, now);
+      return { x: crossing.from.x + (crossing.to.x - crossing.from.x) * t, y: crossing.from.y + (crossing.to.y - crossing.from.y) * t };
+    }
     const t = Math.min(1, Math.max(0, (now - view.movedAt) / this.tickMs));
+    // A run covers two tiles in a tick: half the time to the middle one, half on to the end.
+    if (view.via) {
+      const [a, b, k] = t < 0.5 ? [{ x: view.fromX, y: view.fromY }, view.via, t * 2] : [view.via, { x: view.toX, y: view.toY }, (t - 0.5) * 2];
+      return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+    }
     return { x: view.fromX + (view.toX - view.fromX) * t, y: view.fromY + (view.toY - view.fromY) * t };
+  }
+
+  /** How far through its crossing an entity is (0..1). */
+  crossProgress(view: EntityView, now: number): number {
+    const crossing = view.data.crossing;
+    if (!crossing || view.crossAt === undefined) return 0;
+    return Math.min(1, Math.max(0, (now - view.crossAt) / crossing.ms));
   }
 
   get player(): EntityView | undefined {
@@ -136,6 +160,7 @@ export class ClientState {
   private update(data: PublicEntity, now: number): void {
     const view = this.entities.get(data.id);
     if (!view) return this.add(data, now);
+    if (data.crossing && !view.data.crossing) view.crossAt = now;
     if (data.x !== view.toX || data.y !== view.toY) {
       const current = this.renderPosition(view, now);
       // Teleports (respawn etc.) snap instead of sliding across the map.
@@ -145,12 +170,16 @@ export class ClientState {
       view.toX = data.x;
       view.toY = data.y;
       view.movedAt = now;
+      // Only a straight-on run of two tiles goes without a bend in the middle.
+      view.via = data.via && !far && (data.via.x - current.x) * (data.y - data.via.y) !== (data.via.y - current.y) * (data.x - data.via.x) ? { ...data.via } : undefined;
     }
+    if (!data.crossing) delete view.crossAt;
     const changed =
       data.depleted !== view.data.depleted ||
       data.dead !== view.data.dead ||
       JSON.stringify(data.workingOn) !== JSON.stringify(view.data.workingOn) ||
-      JSON.stringify(data.gear) !== JSON.stringify(view.data.gear);
+      JSON.stringify(data.gear) !== JSON.stringify(view.data.gear) ||
+      JSON.stringify(data.patch) !== JSON.stringify(view.data.patch);
     view.data = data;
     if (changed) this.emit('changed', view);
   }

@@ -1,7 +1,9 @@
 import type { Point } from '../map/types';
 import type { EntityId } from '../sim/entities';
 import type { AttackStyle, Bonuses } from '../sim/combat';
+import type { ObstacleType } from '../sim/agility';
 import type { PackStation } from '../sim/crafting';
+import type { PatchView } from '../sim/farming';
 import type { EquipSlot, Equipment, Inventory, ItemStack } from '../sim/items';
 import type { PrayerId } from '../sim/prayer';
 import type { QuestView } from '../sim/quests';
@@ -9,7 +11,7 @@ import type { SaveData } from '../sim/save';
 import type { SkillId, SkillXp } from '../sim/skills';
 
 /** Bumped whenever a message shape changes, so client and server can refuse a mismatch. */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 // ---------------------------------------------------------------------------
 // Client -> server. Intents only: the simulation validates and decides outcomes.
@@ -21,9 +23,14 @@ export type ClientMessage =
   /**
    * Use a world object: gather from a tree, rock or fishing spot, take a
    * ground item, use a station, bank or shopkeeper (opens its window), talk
-   * to someone, or offer bones at an altar.
+   * to someone, offer bones at an altar, cross an agility obstacle, inscribe
+   * glyphs at a shrine, or tend a farming patch (rake, harvest, clear...).
    */
-  | { type: 'interact'; targetId: EntityId; action: 'gather' | 'take' | 'use' | 'talk' | 'offer' }
+  | { type: 'interact'; targetId: EntityId; action: InteractAction }
+  /** Use an item from the pack on something in the world: seeds on a patch, shards on a shrine. */
+  | { type: 'useOn'; slot: number; targetId: EntityId }
+  /** Turn running on or off. */
+  | { type: 'setRun'; on: boolean }
   /** In a conversation: pick an option, or (option 0 on a page without options) carry on. */
   | { type: 'dialogueChoice'; option: number }
   | { type: 'examine'; targetId: EntityId }
@@ -55,6 +62,8 @@ export type ClientMessage =
   | { type: 'equip'; slot: number }
   | { type: 'unequip'; slot: EquipSlot }
   | { type: 'setAttackStyle'; style: AttackStyle };
+
+export type InteractAction = 'gather' | 'take' | 'use' | 'talk' | 'offer' | 'cross' | 'inscribe' | 'farm';
 
 // ---------------------------------------------------------------------------
 // Server -> client.
@@ -90,9 +99,15 @@ export interface PublicEntity {
   dead?: boolean;
   /** Players: a ward prayer that is on, shown over their head. */
   overhead?: 'ward_of_blades' | 'ember_ward';
+  /** Players: the tile they ran through this tick, when they moved two. */
+  via?: Point;
+  /** Players: crossing an agility obstacle, from one tile to another over `ms`. A fall ends on the obstacle and drops off its side. */
+  crossing?: { obstacle: ObstacleType; from: Point; to: Point; ms: number; fall?: boolean };
+  /** Farming patches: what is growing, as the viewer's own patch. */
+  patch?: PatchView;
 }
 
-export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith' | 'fletch' | 'light' | 'clean' | 'mix' | 'offer';
+export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith' | 'fletch' | 'light' | 'clean' | 'mix' | 'offer' | 'inscribe' | 'rake' | 'plant' | 'dig' | 'pick';
 
 /**
  * One-off animations, sent as they happen. Players: punch, stab, slash, block, eat, death.
@@ -139,6 +154,9 @@ export interface SelfState {
   boosts: Partial<Record<SkillId, number>>;
   /** Minutes of fireward potion left (rounded up), when one is working. */
   fireward?: number;
+  /** Run energy, 0 to 100 (rounded down), and whether running is on. */
+  energy: number;
+  run: boolean;
 }
 
 export type GameMessageKind = 'info' | 'warn' | 'examine' | 'quest' | 'levelup';

@@ -1,4 +1,5 @@
 import { MONSTERS, type EntityId } from '@rpg/shared';
+import { arrowFlight } from '../render/EntityLayer';
 import type { Renderer } from '../render/Renderer';
 import type { ClientState } from '../state/ClientState';
 
@@ -24,15 +25,22 @@ export class CombatOverlay {
     private readonly state: ClientState,
     private readonly renderer: Renderer,
   ) {
-    state.on('hit', ({ targetId, damage }) => {
-      const el = document.createElement('div');
-      el.className = `splat${damage === 0 ? ' miss' : ''}`;
-      el.textContent = String(damage);
-      this.layer.appendChild(el);
-      // Splats landing close together fan out instead of stacking.
-      const recent = this.splats.filter((s) => s.target === targetId).length;
-      this.splats.push({ el, target: targetId, at: performance.now(), offset: [0, -14, 14][recent % 3] });
+    state.on('hit', ({ attackerId, targetId, damage }) => {
+      // An arrow's splat shows when it lands.
+      const flight = arrowFlight(state, attackerId, targetId);
+      if (flight) setTimeout(() => this.splat(targetId, damage), flight.loose + flight.ms);
+      else this.splat(targetId, damage);
     });
+  }
+
+  private splat(targetId: EntityId, damage: number): void {
+    const el = document.createElement('div');
+    el.className = `splat${damage === 0 ? ' miss' : ''}`;
+    el.textContent = String(damage);
+    this.layer.appendChild(el);
+    // Splats landing close together fan out instead of stacking.
+    const recent = this.splats.filter((s) => s.target === targetId).length;
+    this.splats.push({ el, target: targetId, at: performance.now(), offset: [0, -14, 14][recent % 3] });
   }
 
   private height(id: EntityId): number {

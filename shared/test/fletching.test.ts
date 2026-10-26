@@ -158,6 +158,19 @@ describe('Ranged', () => {
     expect(countItem(p.inventory, 'steel_arrow')).toBe(5);
   });
 
+  it('takes both hands: a bow and a shield push each other off', () => {
+    const sim = new Simulation({ map, seed: 3 });
+    const p = addPlayer(sim, { at: TOWN, items: [['shortbow', 1], ['bronze_shield', 1]], equipment: { weapon: 'bronze_sword', shield: 'iron_shield' } });
+    sim.queueIntent(p.id, { type: 'equip', slot: 0 });
+    run(sim, 1);
+    expect(p.equipment).toEqual({ weapon: 'shortbow' });
+    expect(countItem(p.inventory, 'bronze_sword') + countItem(p.inventory, 'iron_shield')).toBe(2);
+    sim.queueIntent(p.id, { type: 'equip', slot: 1 });
+    run(sim, 1);
+    expect(p.equipment).toEqual({ shield: 'bronze_shield' });
+    expect(countItem(p.inventory, 'shortbow')).toBe(1);
+  });
+
   it('walks closer when a wall is in the way', () => {
     const sim = new Simulation({ map, seed: 3 });
     const goblin = monsters(sim, 'goblin')[0];

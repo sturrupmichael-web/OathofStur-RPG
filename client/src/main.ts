@@ -7,6 +7,7 @@ import {
   WorldGrid,
   areaAt,
   isBanker,
+  opensFletching,
   shopForNpc,
   type EntityId,
   type JsonMapFile,
@@ -20,6 +21,7 @@ import vellReaches from '@rpg/shared/data/maps/vell-reaches.json';
 import { Sound, type SoundName } from './audio/Sound';
 import { LocalServer } from './net/LocalServer';
 import type { ServerConnection } from './net/ServerConnection';
+import { arrowFlight } from './render/EntityLayer';
 import { Renderer, type PickResult } from './render/Renderer';
 import { ClientState } from './state/ClientState';
 import { CombatOverlay } from './ui/CombatOverlay';
@@ -112,6 +114,7 @@ async function start(): Promise<void> {
     butt: 'moo',
     wail: 'wail',
     breath: 'breath',
+    shoot: 'shoot',
   };
   state.on('animation', ({ entityId, kind }) => {
     const e = state.entities.get(entityId)?.data;
@@ -121,9 +124,12 @@ async function start(): Promise<void> {
     else if (ANIM_SOUNDS[kind]) sound.play(ANIM_SOUNDS[kind], near(entityId));
   });
   // Bigger hits land with a deeper thud.
-  state.on('hit', ({ targetId, damage, maxHp }) =>
-    damage > 0 ? sound.play('hit', near(targetId), 1.15 - Math.min(0.45, damage / Math.max(1, maxHp))) : sound.play('miss', near(targetId)),
-  );
+  state.on('hit', ({ attackerId, targetId, damage, maxHp }) => {
+    const land = () => (damage > 0 ? sound.play('hit', near(targetId), 1.15 - Math.min(0.45, damage / Math.max(1, maxHp))) : sound.play('miss', near(targetId)));
+    const flight = arrowFlight(state, attackerId, targetId);
+    if (flight) setTimeout(land, flight.loose + flight.ms);
+    else land();
+  });
   renderer.entities.onImpact = (id, activity) => sound.play(activity as SoundName, near(id) * (id === state.playerId ? 0.8 : 0.5));
   state.on('levelUp', () => sound.play('levelup'));
   state.on('questComplete', () => sound.play('quest_complete'));
@@ -297,6 +303,7 @@ async function start(): Promise<void> {
           : item?.equip
             ? [{ label: item.equip.slot === 'weapon' ? 'Wield' : 'Wear', target: name, action: () => server.send({ type: 'equip', slot }) }]
             : [];
+        if (opensFletching(stack.itemId)) use.unshift({ label: 'Fletch', target: name, action: () => server.send({ type: 'useItem', slot }) });
         hud.showMenu(x, y, [...use, { label: 'Drop', target: name, action: () => server.send({ type: 'invDrop', slot }) }, examine]);
       }
     },

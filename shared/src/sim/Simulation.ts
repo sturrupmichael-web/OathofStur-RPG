@@ -762,6 +762,13 @@ export class Simulation {
     this.landPlayerHit(player, monster, damage, player.attackStyle === 'defensive' ? [['ranged', 0.5], ['defence', 0.5]] : [['ranged', 1]]);
   }
 
+  /** How a player fights right now: with a bow and their best arrows, or hand to hand. */
+  private fighterFor(player: PlayerEntity) {
+    if (!isBow(player.equipment.weapon)) return playerFighter(player.skills, player.equipment, player.attackStyle);
+    const arrow = bestArrows(player.inventory, levelForXp(player.skills.ranged));
+    return rangedFighter(player.skills, player.equipment, player.attackStyle, arrow?.ammo?.strength ?? 0);
+  }
+
   /** Arrows that fall on the same tile pile up rather than lying about one by one. */
   private dropArrow(itemId: string, at: Point, owner: EntityId): void {
     for (const e of this.entities.values()) {
@@ -950,9 +957,20 @@ export class Simulation {
       this.message(player.id, `You need ${aOrSome(this.skillName(skill))} level of ${need} to ${equip.slot === 'weapon' ? 'wield' : 'wear'} this.`, 'warn');
       return;
     }
+    // Bows take both hands: a bow and a shield push each other off.
+    const clash = equip.style === 'shoot' ? 'shield' : equip.slot === 'shield' && isBow(player.equipment.weapon) ? 'weapon' : null;
+    const other = clash ? player.equipment[clash] : undefined;
     const old = player.equipment[equip.slot];
+    if (other && old && !player.inventory.some((s, i) => !s && i !== slot)) {
+      this.message(player.id, "You don't have enough inventory space.", 'warn');
+      return;
+    }
     player.equipment[equip.slot] = stack.itemId;
     player.inventory[slot] = old ? { itemId: old, qty: 1 } : null;
+    if (other) {
+      delete player.equipment[clash!];
+      addItem(player.inventory, other);
+    }
   }
 
   private unequip(player: PlayerEntity, slot: EquipSlot): void {
@@ -1299,6 +1317,8 @@ export class Simulation {
       recipes: RECIPES.filter((r) => r.station === ui.station).map((r) => ({
         id: r.id,
         output: r.output,
+        outputQty: r.outputQty ?? 1,
+        ...(r.tool ? { tool: r.tool } : {}),
         level: r.level,
         skill: r.skill,
         xp: r.xp,
@@ -1565,7 +1585,7 @@ export class Simulation {
       equipment: player.equipment,
       attackStyle: player.attackStyle,
       bonuses: equipmentBonuses(player.equipment),
-      maxHit: playerMaxHit(playerFighter(player.skills, player.equipment, player.attackStyle)),
+      maxHit: playerMaxHit(this.fighterFor(player)),
       ui: this.uiView(player),
       quests: QUEST_IDS.map((id) => questView(id, player.quests[id] ?? 0)),
       questPoints: this.questPoints(player),

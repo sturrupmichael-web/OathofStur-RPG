@@ -12,6 +12,8 @@ export type SoundName =
   | 'cook'
   | 'smelt'
   | 'smith'
+  | 'fletch'
+  | 'shoot'
   | 'swing'
   | 'punch'
   | 'hit'
@@ -187,6 +189,18 @@ const RECIPES: Record<SoundName, (v: Voice) => void> = {
     v.tone('sine', 1180, 1170, 0.45, 0, 0.002, 0.5);
     v.tone('sine', 3230, 3200, 0.18, 0, 0.002, 0.3);
     v.hiss('highpass', 3000, 2000, 0.4, 0, 0.002, 0.04);
+  },
+  // Knife shaving wood: a short dry scrape.
+  fletch: (v) => {
+    v.hiss('bandpass', 3200, 1900, 0.4, 0, 0.03, 0.22, 2.5);
+    v.hiss('highpass', 5000, 4000, 0.12, 0.05, 0.02, 0.18);
+  },
+  // Bow: the creak of the draw, then the string's twang and the arrow's whoosh as it's loosed.
+  shoot: (v) => {
+    v.hiss('bandpass', 400, 700, 0.12, 0.1, 0.2, 0.5, 4);
+    v.tone('triangle', 210, 150, 0.5, 0.54, 0.002, 0.8, 9);
+    v.tone('sine', 420, 300, 0.2, 0.54, 0.002, 0.7);
+    v.hiss('bandpass', 2400, 900, 0.3, 0.55, 0.01, 0.8, 1.2);
   },
   swing: (v) => v.hiss('bandpass', 700, 2600, 0.45, 0, 0.06, 0.2, 1.5),
   punch: (v) => v.hiss('bandpass', 500, 1400, 0.35, 0, 0.04, 0.15, 1.2),

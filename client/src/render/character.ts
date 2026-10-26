@@ -52,7 +52,10 @@ export interface CharacterStyle {
   legsMetal?: boolean;
 }
 
-type WeaponKind = 'dagger' | 'sword' | 'scimitar' | 'axe' | 'pickaxe';
+type WeaponKind = 'dagger' | 'sword' | 'scimitar' | 'axe' | 'pickaxe' | 'shortbow' | 'longbow';
+
+/** Bow wood by the log it was carved from. */
+const BOW_WOOD: Record<string, number> = { oak: 0xa87a44, willow: 0xc2a265, yew: 0x7a3f22 };
 
 /** Colours for each metal tier, used on worn gear. */
 export const METALS: Record<string, number> = { bronze: 0xb8793a, iron: 0x7d7f86, steel: 0xb4bec8, cinder: 0x6a2418, drakescale: 0xa8401e };
@@ -69,11 +72,17 @@ export function withGear(base: CharacterStyle, gear: Partial<Record<string, stri
   if (gear.shield) s.shield = metal(gear.shield);
   if (gear.body) [s.tunic, s.trim, s.bodyMetal] = [shadeHex(metal(gear.body)!, 0.82), metal(gear.body), true];
   if (gear.legs) [s.trousers, s.bootCuff, s.legsMetal] = [shadeHex(metal(gear.legs)!, 0.9), undefined, true];
-  if (gear.weapon) s.weapon = { kind: weaponKind(gear.weapon), color: metal(gear.weapon) ?? 0x9a9ca4 };
+  if (gear.weapon) {
+    const kind = weaponKind(gear.weapon);
+    const bow = kind === 'shortbow' || kind === 'longbow';
+    s.weapon = { kind, color: bow ? (BOW_WOOD[gear.weapon.split('_')[0]] ?? 0x8a5a2e) : (metal(gear.weapon) ?? 0x9a9ca4) };
+  }
   return s;
 }
 
 function weaponKind(itemId: string): WeaponKind {
+  if (itemId.endsWith('shortbow')) return 'shortbow';
+  if (itemId.endsWith('longbow')) return 'longbow';
   if (itemId.endsWith('pickaxe')) return 'pickaxe';
   if (itemId.endsWith('axe')) return 'axe';
   return itemId.endsWith('dagger') ? 'dagger' : 'sword';
@@ -422,6 +431,8 @@ export interface CharacterRig {
   seed: number;
   /** Wielded weapon, hidden while a tool is out. */
   weapon: THREE.Object3D | null;
+  /** Holds a bow, so fights from a drawn stance. */
+  archer: boolean;
   /** A one-off animation (attack, block, eat) playing over everything else. */
   oneShot: { kind: string; start: number } | null;
   /** 0 = standing, 1 = lying dead. */
@@ -482,7 +493,13 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
     grip.add(club);
   }
   let weapon: THREE.Object3D | null = null;
-  if (s.weapon) {
+  const archer = s.weapon?.kind === 'shortbow' || s.weapon?.kind === 'longbow';
+  if (s.weapon && archer) {
+    // A bow rides in the left hand, with a quiver of arrows on the back.
+    weapon = buildBow(s.weapon.kind === 'longbow' ? 0.56 : 0.4, s.weapon.color);
+    bones.handL.add(weapon);
+    bones.torso.add(buildQuiver(s.bulk ?? 1));
+  } else if (s.weapon) {
     weapon = buildBlade(s.weapon.kind, s.weapon.color);
     grip.add(weapon);
   }
@@ -500,7 +517,7 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
     for (const [key, build] of Object.entries(TOOL_MODELS)) {
       const tool = build();
       tool.visible = false;
-      grip.add(tool);
+      (OFFHAND_TOOLS.has(key) ? bones.handL : grip).add(tool);
       tools.set(key, tool);
     }
   }
@@ -554,10 +571,64 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
     blinkAt: 1500 + (seed % 1) * 3000,
     seed,
     weapon,
+    archer,
     oneShot: null,
     fallen: 0,
     ghost,
   };
+}
+
+/**
+ * A bow in the left hand. Its stave runs along the hand's z axis, so it
+ * stands upright once the arm is raised to aim; the tips sweep back toward
+ * the archer and the string runs straight between them.
+ */
+function buildBow(half: number, wood: number): THREE.Group {
+  const g = new THREE.Group();
+  const points: THREE.Vector3[] = [];
+  for (let i = 0; i <= 16; i++) {
+    const t = i / 8 - 1;
+    points.push(new THREE.Vector3(0, 0.16 * half * t * t + 0.04 * half * Math.pow(Math.abs(t), 4), t * half));
+  }
+  const stave = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 24, 0.013, 6);
+  // Thicker at the grip, fine at the tips.
+  const pos = stave.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const k = 1 - 0.45 * Math.min(1, Math.abs(pos.getZ(i)) / half);
+    pos.setX(i, pos.getX(i) * k);
+    const y0 = 0.16 * half * (pos.getZ(i) / half) ** 2;
+    pos.setY(i, y0 + (pos.getY(i) - y0) * k);
+  }
+  stave.computeVertexNormals();
+  g.add(part(stave, wood));
+  g.add(part(new THREE.CylinderGeometry(0.018, 0.018, 0.09, 8).rotateX(Math.PI / 2), 0x4a3020));
+  const tipY = 0.2 * half;
+  const string = new THREE.Mesh(new THREE.CylinderGeometry(0.0025, 0.0025, half * 2, 3).rotateX(Math.PI / 2), mat(0xe8e2cc));
+  string.position.set(0, tipY, 0);
+  string.name = 'bowstring';
+  g.add(string);
+  g.position.set(0, -0.06, 0.01);
+  // Tipped a little so it hangs forward and down at rest, and stands near upright when drawn.
+  g.rotation.x = 0.3;
+  return g;
+}
+
+/** A leather quiver slung over the right shoulder, a few fletchings showing. */
+function buildQuiver(bulk: number): THREE.Group {
+  const g = new THREE.Group();
+  g.add(part(new THREE.CylinderGeometry(0.045, 0.036, 0.38, 10, 1, true), 0x6b4428));
+  g.add(part(new THREE.CylinderGeometry(0.036, 0.036, 0.01, 10).translate(0, -0.19, 0), 0x4e301c));
+  g.add(part(new THREE.TorusGeometry(0.045, 0.007, 4, 12).rotateX(Math.PI / 2).translate(0, 0.17, 0), 0x3e2616));
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const x = Math.cos(a) * 0.022;
+    const z = Math.sin(a) * 0.022;
+    g.add(part(new THREE.CylinderGeometry(0.004, 0.004, 0.1, 4).translate(0, 0.22, 0), 0xb08a5a, x, 0, z));
+    g.add(part(new THREE.BoxGeometry(0.003, 0.06, 0.024).translate(0, 0.25, 0), i % 2 ? 0xd8d2c4 : 0xa83a2a, x, 0, z));
+  }
+  g.position.set(0.07, BODY.shoulderY - 0.2, -0.1 * bulk);
+  g.rotation.set(-0.12, 0, -0.42);
+  return g;
 }
 
 /** A blade held in the right hand, pointing forward and a little down at rest. */
@@ -656,6 +727,21 @@ const TOOL_MODELS: Record<string, () => THREE.Group> = {
     g.rotation.x = Math.PI / 2 - 0.55;
     return g;
   },
+  knife: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.011, 0.012, 0.08, 6), 0x5a3a20, 0, -0.01, 0.02));
+    g.add(metalPart(new THREE.BoxGeometry(0.006, 0.09, 0.022).translate(0, 0.075, 0.025), 0xc8ccd2));
+    g.rotation.x = Math.PI / 2 + 0.3;
+    return g;
+  },
+  // The piece being whittled, held in the left hand.
+  stave: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.02, 0.024, 0.34, 7), 0xa07444, 0, 0.06, 0.02));
+    g.add(part(new THREE.CylinderGeometry(0.0205, 0.0205, 0.01, 7).translate(0, 0.23, 0), 0xe0c08a, 0, 0, 0.02));
+    g.rotation.set(Math.PI / 2, 0, -1.5);
+    return g;
+  },
   pan: () => {
     const g = new THREE.Group();
     g.add(part(new THREE.CylinderGeometry(0.01, 0.012, 0.2, 6), 0x2a2a2a, 0, 0.02, 0.02));
@@ -667,7 +753,10 @@ const TOOL_MODELS: Record<string, () => THREE.Group> = {
 };
 
 /** Which tool each activity shows in the hand. */
-const ACTIVITY_TOOL: Record<string, string | undefined> = { chop: 'axe', mine: 'pickaxe', smith: 'hammer', net: 'net', rod: 'rod', cook: 'pan' };
+const ACTIVITY_TOOL: Record<string, string | undefined> = { chop: 'axe', mine: 'pickaxe', smith: 'hammer', net: 'net', rod: 'rod', cook: 'pan', fletch: 'knife' };
+/** What each activity holds in the left hand too, if anything. */
+const ACTIVITY_OFFHAND: Record<string, string | undefined> = { fletch: 'stave' };
+const OFFHAND_TOOLS = new Set(Object.values(ACTIVITY_OFFHAND));
 
 type Pose = Partial<{
   shoulderLx: number;
@@ -780,6 +869,32 @@ const ACTIVITIES: Record<string, { period: number; pose: (u: number) => Pose }> 
       return { shoulderRx: -0.75 + sway, elbowR: -0.95, shoulderRz: 0.15, shoulderLx: -0.6 - sway, elbowL: -1.25, shoulderLz: -0.1, hipL: -0.22, hipR: 0.12, kneeL: 0.22, kneeR: 0.16, hipsY: -0.02, torsoY: -0.12 };
     },
   },
+  // Whittling: head down over the work, the knife drawn along it in short strokes, shavings away from the body.
+  fletch: {
+    period: 1200,
+    pose: (u) => {
+      const stroke = u < 0.7 ? u / 0.7 : 1 - (u - 0.7) / 0.3;
+      return {
+        shoulderRx: -0.5 - 0.2 * stroke,
+        shoulderRz: -0.3 + 0.15 * stroke,
+        elbowR: -1.45 + 0.4 * stroke,
+        shoulderLx: -0.55,
+        shoulderLz: 0.35,
+        elbowL: -1.35,
+        torsoX: 0.22,
+        headX: 0.42,
+        hipsY: -0.01,
+      };
+    },
+  },
+  // Bow up and half drawn between shots, the eyes on the target.
+  aim: {
+    period: 2000,
+    pose: (u) => {
+      const sway = Math.sin(u * Math.PI * 2) * 0.03;
+      return { shoulderLx: -1.4 + sway, shoulderLz: 0.1, elbowL: -0.1, shoulderRx: -0.15 + sway, shoulderRz: 1.45, elbowR: -2.5, torsoY: 0.5, hipL: -0.15, kneeL: 0.12, hipR: 0.1, headX: 0.04 };
+    },
+  },
   // Feeding the furnace: lean in and push the ore forward with both hands.
   smelt: {
     period: 1800,
@@ -795,6 +910,10 @@ export function activityPhase(rig: CharacterRig, activity: string, now: number):
   const anim = ACTIVITIES[activity];
   return anim ? ((now + rig.seed * 1000) % anim.period) / anim.period : null;
 }
+
+/** How long a bow shot takes, and where in it the arrow leaves the string. */
+export const SHOOT_MS = 900;
+export const SHOOT_RELEASE = 0.6;
 
 /**
  * One-off moves, `u` running 0..1 over `ms`. Poses blend in and out at the
@@ -841,6 +960,29 @@ const ONE_SHOTS: Record<string, { ms: number; pose: (u: number) => Pose }> = {
         elbowL: -0.7,
         torsoY: -0.45 * lift + 0.4 * cut * Math.sin(u * Math.PI),
         torsoX: 0.25 * cut * Math.sin(u * Math.PI),
+      };
+    },
+  },
+  // Bow: raise it, draw the string back to the cheek, hold, loose, and the hand flies back.
+  shoot: {
+    ms: SHOOT_MS,
+    pose: (u) => {
+      const raise = Math.min(1, u / 0.25);
+      // Hand to the string at the bow, then back to the cheek.
+      const draw = u < SHOOT_RELEASE ? Math.min(1, Math.max(0, (u - 0.2) / 0.3)) : 1;
+      const follow = u >= SHOOT_RELEASE ? Math.sin(((u - SHOOT_RELEASE) / (1 - SHOOT_RELEASE)) * Math.PI * 0.5) : 0;
+      const mix = (a: number, b: number) => a + (b - a) * draw;
+      return {
+        shoulderLx: -0.4 - 1.0 * raise,
+        shoulderLz: 0.1 * raise,
+        elbowL: -0.1,
+        shoulderRx: mix(-0.4 - 0.95 * raise, -0.15),
+        shoulderRz: mix(0.2 * raise, 1.45) + 0.2 * follow,
+        elbowR: mix(-0.4, -2.5) + 0.7 * follow,
+        torsoY: 0.5 * raise,
+        headX: 0.04,
+        hipL: -0.15 * raise,
+        kneeL: 0.12 * raise,
       };
     },
   },
@@ -969,7 +1111,7 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
   if (target) rig.activity = target;
   rig.work += ((target ? 1 : 0) - rig.work) * Math.min(1, dt * 10);
   const shown = rig.work > 0.05 ? rig.activity : null;
-  for (const [key, tool] of rig.tools) tool.visible = !!shown && ACTIVITY_TOOL[shown] === key;
+  for (const [key, tool] of rig.tools) tool.visible = !!shown && (ACTIVITY_TOOL[shown] === key || ACTIVITY_OFFHAND[shown] === key);
   if (rig.weapon) rig.weapon.visible = !(shown && ACTIVITY_TOOL[shown]);
   const anim = rig.activity ? ACTIVITIES[rig.activity] : undefined;
   if (anim && rig.work > 0.01) {

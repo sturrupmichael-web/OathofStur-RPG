@@ -573,6 +573,24 @@ export function buildGroundItem(itemId: string): THREE.Group {
       g.add(mesh(log, bark, x, y, z));
       g.add(mesh(new THREE.CircleGeometry(0.066, 7).rotateY(Math.PI / 2), wood, x + 0.211, y, z));
     }
+  } else if (itemId.endsWith('_arrow') || itemId === 'arrow_shaft') {
+    // A few arrows scattered where they fell.
+    const head = { bronze_arrow: 0xb8793a, iron_arrow: 0x7d7f86, steel_arrow: 0xb4bec8 }[itemId];
+    for (const [x, z, r] of [[0, 0, 0.3], [0.04, 0.07, -0.4], [-0.05, -0.06, 0.9]] as const) {
+      const arrow = new THREE.Group();
+      arrow.add(mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.42, 4).rotateZ(Math.PI / 2), 0xb08a5a, 0, 0, 0));
+      if (head) arrow.add(mesh(new THREE.ConeGeometry(0.018, 0.05, 4).rotateZ(-Math.PI / 2), head, 0.23, 0, 0));
+      if (itemId !== 'arrow_shaft') arrow.add(mesh(new THREE.BoxGeometry(0.08, 0.03, 0.004), 0xe8e2d4, -0.17, 0, 0));
+      arrow.position.set(x, 0.015, z);
+      arrow.rotation.y = r;
+      g.add(arrow);
+    }
+  } else if (/(short|long)bow/.test(itemId)) {
+    const wood = { oak: 0xa87a44, willow: 0xc2a265, yew: 0x7a3f22 }[itemId.split('_')[0]] ?? 0x8a5a2e;
+    const half = itemId.includes('longbow') ? 0.3 : 0.22;
+    const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(-half, 0.02, 0.05), new THREE.Vector3(0, 0.02, -0.08), new THREE.Vector3(half, 0.02, 0.05));
+    g.add(mesh(new THREE.TubeGeometry(curve, 12, 0.012, 5), wood, 0, 0, 0));
+    if (!itemId.endsWith('_u')) g.add(mesh(new THREE.CylinderGeometry(0.003, 0.003, half * 2, 3).rotateZ(Math.PI / 2), 0xe8e2cc, 0, 0.02, 0.05));
   } else if (itemId.endsWith('axe')) {
     const head = itemId === 'iron_axe' ? 0x7d7f86 : itemId === 'steel_axe' ? 0xa9b3bd : 0xb8793a;
     g.add(mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.5, 6).rotateZ(Math.PI / 2), 0x7a5230, 0, 0.03, 0));

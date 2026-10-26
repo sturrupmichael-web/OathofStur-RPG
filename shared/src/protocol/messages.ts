@@ -94,7 +94,7 @@ export type UiView =
   | {
       kind: 'craft';
       title: string;
-      recipes: { id: string; output: string; level: number; skill: SkillId; xp: number; inputs: { itemId: string; qty: number }[] }[];
+      recipes: { id: string; output: string; outputQty: number; tool?: string; level: number; skill: SkillId; xp: number; inputs: { itemId: string; qty: number }[] }[];
     }
   /** One page of a conversation. `npcId` is who you are talking to; `speaker` says whose words these are. */
   | { kind: 'dialogue'; npcId: EntityId; speaker: 'npc' | 'player'; name: string; text: string; options?: string[] };

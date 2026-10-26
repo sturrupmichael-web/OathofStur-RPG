@@ -15,6 +15,15 @@ export type SoundName =
   | 'fletch'
   | 'light'
   | 'ignite'
+  | 'clean'
+  | 'mix'
+  | 'drink'
+  | 'bury'
+  | 'scatter'
+  | 'pray'
+  | 'offer'
+  | 'prayer_on'
+  | 'prayer_off'
   | 'shoot'
   | 'swing'
   | 'punch'
@@ -207,6 +216,40 @@ const RECIPES: Record<SoundName, (v: Voice) => void> = {
     v.hiss('lowpass', 400, 1600, 0.6, 0, 0.12, 0.6);
     for (const s of [0.15, 0.27, 0.42, 0.5]) v.hiss('bandpass', 3500, 2500, 0.3, s, 0.002, s + 0.03, 3);
   },
+  // Rubbing dirt off a herb: a soft papery rustle.
+  clean: (v) => {
+    v.hiss('bandpass', 2600, 3400, 0.18, 0, 0.03, 0.18, 1.5);
+    v.hiss('bandpass', 3000, 2400, 0.14, 0.16, 0.03, 0.32, 1.5);
+  },
+  // Mixing: a clink of glass, then a little bubbling.
+  mix: (v) => {
+    v.tone('sine', 3100, 3050, 0.16, 0, 0.002, 0.18);
+    v.tone('sine', 4650, 4600, 0.07, 0, 0.002, 0.12);
+    for (const s of [0.12, 0.2, 0.31]) v.tone('sine', 380 + Math.random() * 200, 900, 0.12, s, 0.005, s + 0.05);
+  },
+  // Three gulps.
+  drink: (v) => {
+    for (const s of [0.35, 0.6, 0.85]) v.tone('sine', 260, 140, 0.4, s, 0.01, s + 0.11);
+  },
+  // Soil scraped and patted down.
+  bury: (v) => {
+    for (const s of [0, 0.2, 0.4]) v.hiss('lowpass', 900, 350, 0.4, s, 0.01, s + 0.12);
+    for (const s of [0.8, 1.0]) v.tone('sine', 120, 80, 0.4, s, 0.005, s + 0.09);
+  },
+  // Ashes on the wind.
+  scatter: (v) => v.hiss('bandpass', 600, 2400, 0.3, 0.2, 0.15, 0.8, 0.7),
+  // Kneeling at an altar: a soft, rising chord.
+  pray: (v) => {
+    v.tune('sine', [[392, 0, 1.6], [494, 0.12, 1.5], [587, 0.24, 1.4], [784, 0.5, 1.1]], 0.12);
+    v.hiss('highpass', 7000, 6000, 0.04, 0.2, 0.4, 1.4);
+  },
+  // Bones laid on the altar: a single bell.
+  offer: (v) => {
+    v.tone('sine', 880, 878, 0.18, 0, 0.003, 1.0);
+    v.tone('sine', 2210, 2200, 0.06, 0, 0.003, 0.6);
+  },
+  prayer_on: (v) => v.tune('sine', [[659, 0, 0.12], [988, 0.08, 0.3]], 0.16),
+  prayer_off: (v) => v.tune('sine', [[784, 0, 0.1], [523, 0.07, 0.22]], 0.12),
   // Bow: the creak of the draw, then the string's twang and the arrow's whoosh as it's loosed.
   shoot: (v) => {
     v.hiss('bandpass', 400, 700, 0.12, 0.1, 0.2, 0.5, 4);

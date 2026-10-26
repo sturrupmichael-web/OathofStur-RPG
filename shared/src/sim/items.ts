@@ -18,8 +18,28 @@ export interface ItemDef {
   ammo?: { strength: number; level: number };
   /** Logs: the Firemaking level needed to light them, and the XP for it. */
   burn?: { level: number; xp: number };
+  /** Grimy herbs: the Herblore level to clean one, the XP for it, and the clean herb it becomes. */
+  clean?: { level: number; xp: number; into: string };
+  /** Bones (and ashes): Prayer XP for burying (or scattering) them. */
+  bury?: { xp: number };
+  /** A potion dose: what it does, and what is left in the hand after (a smaller dose, or an empty vial). */
+  drink?: PotionEffect;
   /** Set on tools: the skill it is used for, the level needed, and its success bonus. */
   tool?: { skill: SkillId; level: number; bonus: number };
+}
+
+/**
+ * What a dose of potion does. `boost` raises each skill by base + pct% of its
+ * level (for a while); `prayer` restores base + pct% of the Prayer level;
+ * `fireward` softens dragonfire for that many ticks.
+ */
+export interface PotionEffect {
+  boost?: SkillId[];
+  prayer?: boolean;
+  base?: number;
+  pct?: number;
+  fireward?: number;
+  next: string;
 }
 
 export type EquipSlot = 'helmet' | 'weapon' | 'body' | 'shield' | 'legs';

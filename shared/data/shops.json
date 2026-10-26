@@ -41,6 +41,12 @@
       "stock": ["knife", "feathers", "bowstring", "bronze_arrow"] },
     "net_and_tackle": { "name": "Net & Tackle", "npc": "gerrick",
       "buys": ["raw_minnows", "raw_perch", "raw_pike", "small_net", "fishing_rod", "fishing_bait"],
-      "stock": ["small_net", "fishing_rod", "fishing_bait"] }
+      "stock": ["small_net", "fishing_rod", "fishing_bait"] },
+    "wrens_apothecary": { "name": "Wren's Apothecary", "npc": "wren",
+      "buys": ["grimy_sunleaf", "grimy_marshwort", "grimy_duskroot", "grimy_silverfern", "grimy_hawkweed", "grimy_emberbloom", "sunleaf", "marshwort", "duskroot", "silverfern", "hawkweed", "emberbloom", "vial", "vial_of_water", "cow_horn", "spirit_dust", "scorpion_stinger", "crimson_feathers", "lizard_scales", "ashes", "sunleaf_potion_unf", "marshwort_potion_unf", "duskroot_potion_unf", "silverfern_potion_unf", "hawkweed_potion_unf", "emberbloom_potion_unf", "attack_potion3", "attack_potion2", "attack_potion1", "strength_potion3", "strength_potion2", "strength_potion1", "devotion_potion3", "devotion_potion2", "devotion_potion1", "defence_potion3", "defence_potion2", "defence_potion1", "ranging_potion3", "ranging_potion2", "ranging_potion1", "fireward_potion3", "fireward_potion2", "fireward_potion1"],
+      "stock": ["vial_of_water", "vial", "grimy_sunleaf", "grimy_marshwort", "attack_potion3", "strength_potion3"] },
+    "witchs_hut": { "name": "Nessa's Hut", "npc": "old_nessa",
+      "buys": ["grimy_sunleaf", "grimy_marshwort", "grimy_duskroot", "grimy_silverfern", "grimy_hawkweed", "grimy_emberbloom", "sunleaf", "marshwort", "duskroot", "silverfern", "hawkweed", "emberbloom", "vial", "vial_of_water", "cow_horn", "spirit_dust", "scorpion_stinger", "crimson_feathers", "lizard_scales", "ashes", "sunleaf_potion_unf", "marshwort_potion_unf", "duskroot_potion_unf", "silverfern_potion_unf", "hawkweed_potion_unf", "emberbloom_potion_unf", "attack_potion3", "attack_potion2", "attack_potion1", "strength_potion3", "strength_potion2", "strength_potion1", "devotion_potion3", "devotion_potion2", "devotion_potion1", "defence_potion3", "defence_potion2", "defence_potion1", "ranging_potion3", "ranging_potion2", "ranging_potion1", "fireward_potion3", "fireward_potion2", "fireward_potion1"],
+      "stock": ["vial_of_water", "grimy_sunleaf", "grimy_marshwort", "grimy_duskroot", "cow_horn", "devotion_potion3"] }
   }
 }

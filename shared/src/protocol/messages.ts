@@ -1,13 +1,15 @@
 import type { Point } from '../map/types';
 import type { EntityId } from '../sim/entities';
 import type { AttackStyle, Bonuses } from '../sim/combat';
+import type { PackStation } from '../sim/crafting';
 import type { EquipSlot, Equipment, Inventory, ItemStack } from '../sim/items';
+import type { PrayerId } from '../sim/prayer';
 import type { QuestView } from '../sim/quests';
 import type { SaveData } from '../sim/save';
 import type { SkillId, SkillXp } from '../sim/skills';
 
 /** Bumped whenever a message shape changes, so client and server can refuse a mismatch. */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 // ---------------------------------------------------------------------------
 // Client -> server. Intents only: the simulation validates and decides outcomes.
@@ -18,10 +20,10 @@ export type ClientMessage =
   | { type: 'walk'; x: number; y: number }
   /**
    * Use a world object: gather from a tree, rock or fishing spot, take a
-   * ground item, use a station, bank or shopkeeper (opens its window), or
-   * talk to someone.
+   * ground item, use a station, bank or shopkeeper (opens its window), talk
+   * to someone, or offer bones at an altar.
    */
-  | { type: 'interact'; targetId: EntityId; action: 'gather' | 'take' | 'use' | 'talk' }
+  | { type: 'interact'; targetId: EntityId; action: 'gather' | 'take' | 'use' | 'talk' | 'offer' }
   /** In a conversation: pick an option, or (option 0 on a page without options) carry on. */
   | { type: 'dialogueChoice'; option: number }
   | { type: 'examine'; targetId: EntityId }
@@ -39,8 +41,15 @@ export type ClientMessage =
   | { type: 'shopSell'; slot: number; qty: number }
   | { type: 'attack'; targetId: EntityId }
   | { type: 'eat'; slot: number }
-  /** Use an item from the pack on its own: a knife or logs open the fletching window. */
-  | { type: 'useItem'; slot: number }
+  /** Use an item from the pack on its own: a knife or logs open the fletching window, a herb or vial the herblore one. */
+  | { type: 'useItem'; slot: number; station?: PackStation }
+  /** Clean every grimy herb of this kind in the pack, one after another. */
+  | { type: 'clean'; slot: number }
+  /** Bury bones, or scatter ashes, for Prayer XP. */
+  | { type: 'bury'; slot: number }
+  /** Drink a dose of a potion. */
+  | { type: 'drink'; slot: number }
+  | { type: 'togglePrayer'; prayer: PrayerId }
   /** Light the logs in this slot with a tinderbox. */
   | { type: 'light'; slot: number }
   | { type: 'equip'; slot: number }
@@ -79,9 +88,11 @@ export interface PublicEntity {
   gear?: Equipment;
   /** Players and monsters: fallen and playing the death animation. */
   dead?: boolean;
+  /** Players: a ward prayer that is on, shown over their head. */
+  overhead?: 'ward_of_blades' | 'ember_ward';
 }
 
-export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith' | 'fletch' | 'light';
+export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith' | 'fletch' | 'light' | 'clean' | 'mix' | 'offer';
 
 /**
  * One-off animations, sent as they happen. Players: punch, stab, slash, block, eat, death.
@@ -119,6 +130,15 @@ export interface SelfState {
   /** Every quest, with your progress in it. */
   quests: QuestView[];
   questPoints: number;
+  /** Prayer points left (rounded up) and the most there can be (the Prayer level). */
+  prayer: number;
+  prayerMax: number;
+  /** Prayers that are on. */
+  prayers: PrayerId[];
+  /** Levels raised (or lowered) by potions for now, by skill. */
+  boosts: Partial<Record<SkillId, number>>;
+  /** Minutes of fireward potion left (rounded up), when one is working. */
+  fireward?: number;
 }
 
 export type GameMessageKind = 'info' | 'warn' | 'examine' | 'quest' | 'levelup';

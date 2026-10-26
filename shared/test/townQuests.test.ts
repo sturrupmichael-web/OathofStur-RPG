@@ -157,3 +157,23 @@ describe('Town quests', () => {
     expect(self?.type === 'self' && self.state.questPoints).toBe(2);
   });
 });
+
+describe('Teachers', () => {
+  it('Old Nessa teaches brewing and trades once her cauldron is going', () => {
+    const sim = new Simulation({ map, seed: 1 });
+    const p = beside(sim, 'old_nessa', { quests: { nessas_cauldron: 3 } });
+    const pages = talk(sim, p, 'old_nessa');
+    expect(pages.some((t) => t.includes('vial of water'))).toBe(true);
+    sim.queueIntent(p.id, { type: 'interact', targetId: npc(sim, 'old_nessa').id, action: 'talk' });
+    run(sim, 30, () => p.ui?.kind === 'dialogue');
+    sim.queueIntent(p.id, { type: 'dialogueChoice', option: 1 });
+    run(sim, 1);
+    expect(p.ui).toMatchObject({ kind: 'shop', shopId: 'witchs_hut' });
+  });
+
+  it('priests explain Prayer', () => {
+    const sim = new Simulation({ map, seed: 1 });
+    const p = beside(sim, 'brother_aldo');
+    expect(talk(sim, p, 'brother_aldo').some((t) => t.includes('Bury the bones'))).toBe(true);
+  });
+});

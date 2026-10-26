@@ -28,6 +28,8 @@ export interface SaveData {
   /** Current hitpoints. Left out means full. */
   hp?: number;
   attackStyle?: AttackStyle;
+  /** Prayer points left. Left out means full. */
+  prayer?: number;
   bank: ItemStack[];
   quests: Record<string, number>;
   createdAt: string;
@@ -82,6 +84,7 @@ export function parseSave(raw: unknown): SaveData | null {
     if (typeof itemId === 'string' && ITEMS[itemId]?.equip?.slot === slot) equipment[slot] = itemId;
   }
   const hp = Number(s.hp);
+  const prayer = Number(s.prayer);
   const style = typeof s.attackStyle === 'string' && s.attackStyle in ATTACK_STYLES ? s.attackStyle : undefined;
   const quests: Record<string, number> = {};
   const saved = (s.quests ?? {}) as Record<string, unknown>;
@@ -99,6 +102,7 @@ export function parseSave(raw: unknown): SaveData | null {
     inventory,
     equipment,
     ...(Number.isInteger(hp) && hp >= 1 && { hp }),
+    ...(Number.isInteger(prayer) && prayer >= 0 && { prayer }),
     ...(style && { attackStyle: style }),
     bank,
     quests,

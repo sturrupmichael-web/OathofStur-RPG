@@ -26,7 +26,7 @@ import {
   rangedFighter,
   rollQty,
 } from './combat';
-import { RECIPES, RECIPE_BY_ID, SELL_RATE, SHOPS, STATION_TITLES, burnChance, isBanker, opensFletching, shopBuys, shopForNpc, type StationKind } from './crafting';
+import { RECIPES, RECIPE_BY_ID, SELL_RATE, SHOPS, STATION_TITLES, burnChance, isBanker, packStations, shopBuys, shopForNpc, type PackStation, type StationKind } from './crafting';
 import type { Entity, EntityId, GroundItemEntity, MonsterEntity, ObjectEntity, PlayerEntity } from './entities';
 import { ATTEMPT_TICKS, EXAMINE, RESOURCE_DATA, gatherChance, requiredLevel } from './gathering';
 import { WorldGrid } from './grid';
@@ -48,6 +48,7 @@ import {
   type ItemStack,
 } from './items';
 import { findPath } from './pathfinding';
+import { PRAYERS, drainPerTick, withPrayer, type PrayerId } from './prayer';
 import { QUESTS, QUEST_IDS, conversation, doneStage, questView, type QuestId, type TalkActions } from './quests';
 import { SAVE_VERSION, type SaveData } from './save';
 import { MAX_XP, SKILLS, combatLevel, levelForXp, requirementLevel, startingXp, type SkillId } from './skills';
@@ -82,11 +83,20 @@ const STARTING_ITEMS: ItemStack[] = [
   { itemId: 'small_net', qty: 1 },
   { itemId: 'coins', qty: 25 },
 ];
-const STATIONS: readonly string[] = ['furnace', 'anvil', 'range', 'campfire', 'fire'];
+const STATIONS: readonly string[] = ['furnace', 'anvil', 'range', 'campfire', 'fire', 'altar'];
 /** Fires cook like a range. */
 const COOKING_FIRES: readonly string[] = ['campfire', 'fire'];
 /** Chance a defeated desert bandit drops the Emir's seal, during that quest. */
 export const SEAL_CHANCE = 0.34;
+/** Ticks between buried bones, and between bones offered at an altar. */
+const BURY_TICKS = 2;
+const OFFER_TICKS = 3;
+/** Bones offered at an altar give this many times the XP of burying them. */
+export const ALTAR_MULTIPLIER = 2;
+/** Potion boosts wear off a level this often (ticks). */
+const BOOST_FADE_TICKS = 100;
+/** Herblore is taught by Old Nessa: none of it until her cauldron is bubbling. */
+const HERBLORE_QUEST: QuestId = 'nessas_cauldron';
 /** How long a lit fire burns (ticks), at least and at most. */
 export const FIRE_TICKS = [60, 110] as const;
 
@@ -174,6 +184,11 @@ export class Simulation {
       nextEat: 0,
       nextRegen: this.tick + REGEN_TICKS,
       attackedBy: null,
+      prayer: Math.min(levelForXp(skills.prayer), save?.prayer ?? levelForXp(skills.prayer)),
+      prayers: [],
+      boosts: {},
+      nextBoostFade: 0,
+      nextBury: 0,
     };
     this.entities.set(player.id, player);
     const session: Session = { outbox: [], lastSent: new Map(), lastSelf: '' };
@@ -213,6 +228,7 @@ export class Simulation {
       equipment: { ...p.equipment },
       hp: p.hp,
       attackStyle: p.attackStyle,
+      prayer: Math.ceil(p.prayer),
       bank: p.bank.map((s) => ({ ...s })),
       quests: { ...p.quests },
       createdAt: p.createdAt || now,
@@ -255,6 +271,8 @@ export class Simulation {
       else if (e.action?.kind === 'talk') this.arriveToTalk(e);
       else if (e.action?.kind === 'craft') this.craftStep(e);
       else if (e.action?.kind === 'light') this.lightStep(e);
+      else if (e.action?.kind === 'clean') this.cleanStep(e);
+      else if (e.action?.kind === 'offer') this.offerStep(e);
     }
     for (const e of [...this.entities.values()]) {
       if (e.kind === 'player') this.recover(e);
@@ -349,7 +367,19 @@ export class Simulation {
         this.startAttack(player, msg.targetId);
         return;
       case 'useItem':
-        this.useItem(player, msg.slot);
+        this.useItem(player, msg.slot, msg.station);
+        return;
+      case 'clean':
+        this.startClean(player, msg.slot);
+        return;
+      case 'bury':
+        this.bury(player, msg.slot);
+        return;
+      case 'drink':
+        this.drink(player, msg.slot);
+        return;
+      case 'togglePrayer':
+        this.togglePrayer(player, msg.prayer);
         return;
       case 'light':
         this.startLight(player, msg.slot);
@@ -381,7 +411,7 @@ export class Simulation {
     player.ui = null;
   }
 
-  private interact(player: PlayerEntity, targetId: EntityId, action: 'gather' | 'take' | 'use' | 'talk'): void {
+  private interact(player: PlayerEntity, targetId: EntityId, action: 'gather' | 'take' | 'use' | 'talk' | 'offer'): void {
     const target = this.entities.get(targetId);
     this.stopActions(player);
     if (action === 'take' && target?.kind === 'item') {
@@ -396,6 +426,11 @@ export class Simulation {
     }
     if (action === 'talk' && target?.kind === 'npc') {
       player.action = { kind: 'talk', targetId: target.id };
+      this.walkTo(player, target);
+      return;
+    }
+    if (action === 'offer' && target?.kind === 'station' && target.defKey === 'altar') {
+      player.action = { kind: 'offer', targetId: target.id, nextAttempt: 0 };
       this.walkTo(player, target);
       return;
     }
@@ -744,7 +779,7 @@ export class Simulation {
   private playerAttack(player: PlayerEntity, monster: MonsterEntity): void {
     if (isBow(player.equipment.weapon)) return this.playerShoot(player, monster);
     const stats = MONSTERS[monster.defKey];
-    const attacker = playerFighter(player.skills, player.equipment, player.attackStyle);
+    const attacker = playerFighter(player.skills, player.equipment, player.attackStyle, player);
     const landed = this.rng.chance(hitChance(attacker, monsterFighter(stats)));
     const damage = landed ? Math.min(monster.hp, this.rng.int(1, playerMaxHit(attacker))) : 0;
     const weapon = player.equipment.weapon ? ITEMS[player.equipment.weapon]?.equip : undefined;
@@ -764,7 +799,7 @@ export class Simulation {
       return;
     }
     removeItem(player.inventory, arrow.id, 1);
-    const attacker = rangedFighter(player.skills, player.equipment, player.attackStyle, arrow.ammo!.strength);
+    const attacker = rangedFighter(player.skills, player.equipment, player.attackStyle, arrow.ammo!.strength, player);
     const landed = this.rng.chance(hitChance(attacker, monsterFighter(MONSTERS[monster.defKey])));
     const damage = landed ? Math.min(monster.hp, this.rng.int(1, playerMaxHit(attacker))) : 0;
     player.nextAttack = this.tick + (bow.speed ?? WEAPON_SPEED) - (player.attackStyle === 'aggressive' ? 1 : 0);
@@ -775,9 +810,9 @@ export class Simulation {
 
   /** How a player fights right now: with a bow and their best arrows, or hand to hand. */
   private fighterFor(player: PlayerEntity) {
-    if (!isBow(player.equipment.weapon)) return playerFighter(player.skills, player.equipment, player.attackStyle);
+    if (!isBow(player.equipment.weapon)) return playerFighter(player.skills, player.equipment, player.attackStyle, player);
     const arrow = bestArrows(player.inventory, levelForXp(player.skills.ranged));
-    return rangedFighter(player.skills, player.equipment, player.attackStyle, arrow?.ammo?.strength ?? 0);
+    return rangedFighter(player.skills, player.equipment, player.attackStyle, arrow?.ammo?.strength ?? 0, player);
   }
 
   /** Arrows that fall on the same tile pile up rather than lying about one by one. */
@@ -813,23 +848,31 @@ export class Simulation {
   private monsterAttack(monster: MonsterEntity, player: PlayerEntity): void {
     const stats = MONSTERS[monster.defKey];
     if (stats.breath && this.rng.chance(stats.breath.chance)) return this.breathe(monster, player);
-    const defender = playerFighter(player.skills, player.equipment, player.attackStyle);
+    const defender = playerFighter(player.skills, player.equipment, player.attackStyle, player);
     const landed = this.rng.chance(hitChance(monsterFighter(stats), defender));
-    const damage = landed ? Math.min(player.hp, this.rng.int(1, stats.maxHit)) : 0;
+    // The Ward of Blades turns every bite and blow aside.
+    const warded = player.prayers.includes('ward_of_blades');
+    const damage = landed && !warded ? Math.min(player.hp, this.rng.int(1, stats.maxHit)) : 0;
     monster.nextAttack = this.tick + stats.attackSpeed;
     this.animate(monster, stats.attackAnim);
     this.landMonsterHit(monster, player, damage);
   }
 
-  /** Fire: it always lands, armour doesn't help, and only a fireward shield takes the edge off. */
+  /**
+   * Fire: it always lands and armour doesn't help. A fireward shield and a
+   * fireward potion each cut it to a third, and the Ember Ward prayer halves it.
+   */
   private breathe(monster: MonsterEntity, player: PlayerEntity): void {
     const stats = MONSTERS[monster.defKey];
-    const warded = !!(player.equipment.shield && ITEMS[player.equipment.shield]?.fireward);
-    const max = warded ? Math.floor(stats.breath!.maxHit / 3) : stats.breath!.maxHit;
+    const shield = !!(player.equipment.shield && ITEMS[player.equipment.shield]?.fireward);
+    const potion = player.firewardUntil !== undefined;
+    const prayer = player.prayers.includes('ember_ward');
+    const max = Math.floor(stats.breath!.maxHit / (shield ? 3 : 1) / (potion ? 3 : 1) / (prayer ? 2 : 1));
     const damage = Math.min(player.hp, this.rng.int(0, max));
     monster.nextAttack = this.tick + stats.attackSpeed;
     this.animate(monster, 'breath');
-    if (warded) this.message(player.id, 'Your shield turns most of the fire aside.');
+    if (shield) this.message(player.id, 'Your shield turns most of the fire aside.');
+    else if (potion || prayer) this.message(player.id, 'The fire washes over you, but its heat barely bites.');
     else if (damage >= max / 2) this.message(player.id, `You are badly burnt by the ${monster.name.toLowerCase()}'s fire.`, 'warn');
     this.landMonsterHit(monster, player, damage);
   }
@@ -884,6 +927,9 @@ export class Simulation {
     player.gateNotice = null;
     player.attackedBy = null;
     this.stopActions(player);
+    player.prayers = [];
+    player.boosts = {};
+    delete player.firewardUntil;
     this.animate(player, 'death');
     this.message(player.id, 'You have been defeated.', 'warn');
     for (const e of this.entities.values()) if (e.kind === 'monster' && e.target === player.id) e.target = null;
@@ -919,6 +965,7 @@ export class Simulation {
     player.x = this.map.spawn.x;
     player.y = this.map.spawn.y;
     player.hp = levelForXp(player.skills.hitpoints);
+    player.prayer = levelForXp(player.skills.prayer);
     player.nextRegen = this.tick + REGEN_TICKS;
     delete player.deadUntil;
     this.message(
@@ -936,11 +983,150 @@ export class Simulation {
       return;
     }
     const max = levelForXp(player.skills.hitpoints);
-    if (player.hp >= max) player.nextRegen = this.tick + REGEN_TICKS;
+    const regen = player.prayers.includes('mending_hands') ? REGEN_TICKS / 2 : REGEN_TICKS;
+    if (player.hp >= max) player.nextRegen = this.tick + regen;
     else if (this.tick >= player.nextRegen) {
       player.hp++;
-      player.nextRegen = this.tick + REGEN_TICKS;
+      player.nextRegen = this.tick + regen;
     }
+    if (player.prayers.length) this.drainPrayer(player);
+    if (Object.keys(player.boosts).length && this.tick >= player.nextBoostFade) this.fadeBoosts(player);
+    if (player.firewardUntil !== undefined) {
+      if (this.tick === player.firewardUntil - 50) this.message(player.id, 'Your fireward potion is about to wear off.', 'warn');
+      if (this.tick >= player.firewardUntil) {
+        delete player.firewardUntil;
+        this.message(player.id, 'Your fireward potion has worn off.', 'warn');
+      }
+    }
+  }
+
+  private drainPrayer(player: PlayerEntity): void {
+    player.prayer = Math.max(0, Math.round((player.prayer - drainPerTick(player.prayers)) * 1000) / 1000);
+    if (player.prayer > 0) return;
+    player.prayers = [];
+    this.message(player.id, 'You have run out of prayer points. Pray at an altar to recharge them.', 'warn');
+  }
+
+  /** Each potion boost slips a level a minute until it is gone. */
+  private fadeBoosts(player: PlayerEntity): void {
+    player.nextBoostFade = this.tick + BOOST_FADE_TICKS;
+    for (const [skill, boost] of Object.entries(player.boosts) as [SkillId, number][]) {
+      const next = boost - Math.sign(boost);
+      if (next === 0) delete player.boosts[skill];
+      else player.boosts[skill] = next;
+    }
+  }
+
+  private togglePrayer(player: PlayerEntity, id: PrayerId): void {
+    const prayer = PRAYERS[id];
+    if (!prayer) return;
+    if (player.prayers.includes(id)) {
+      player.prayers = player.prayers.filter((p) => p !== id);
+      return;
+    }
+    if (levelForXp(player.skills.prayer) < prayer.level) {
+      return this.message(player.id, `You need a Prayer level of ${prayer.level} to use ${prayer.name}.`, 'warn');
+    }
+    if (player.prayer <= 0) return this.message(player.id, 'You have no prayer points left. Pray at an altar to recharge them.', 'warn');
+    player.prayers = withPrayer(player.prayers, id);
+  }
+
+  /** Bones go in the ground, ashes on the wind; both please the gods a little. */
+  private bury(player: PlayerEntity, slot: number): void {
+    const stack = this.slot(player, slot);
+    const bury = stack ? ITEMS[stack.itemId].bury : undefined;
+    if (!stack || !bury || this.tick < player.nextBury) return;
+    const ashes = stack.itemId === 'ashes';
+    player.inventory[slot] = stack.qty > 1 ? { ...stack, qty: stack.qty - 1 } : null;
+    player.nextBury = this.tick + BURY_TICKS;
+    this.animate(player, ashes ? 'scatter' : 'bury');
+    this.message(player.id, ashes ? 'You scatter the ashes on the wind.' : `You dig a hole in the ground and bury the ${ITEMS[stack.itemId].name.toLowerCase()}.`);
+    this.addXp(player, 'prayer', bury.xp);
+  }
+
+  /** A dose of potion: a boost to some levels, prayer points back, or a ward against fire. */
+  private drink(player: PlayerEntity, slot: number): void {
+    const stack = this.slot(player, slot);
+    const effect = stack ? ITEMS[stack.itemId].drink : undefined;
+    if (!stack || !effect || this.tick < player.nextEat) return;
+    player.inventory[slot] = { itemId: effect.next, qty: 1 };
+    player.nextEat = this.tick + EAT_DELAY;
+    player.nextAttack = Math.max(player.nextAttack, this.tick + 2);
+    const amount = (level: number) => (effect.base ?? 0) + Math.floor((level * (effect.pct ?? 0)) / 100);
+    for (const skill of effect.boost ?? []) {
+      // A fresh dose tops the boost back up; it never stacks on top of one.
+      player.boosts[skill] = Math.max(player.boosts[skill] ?? 0, amount(levelForXp(player.skills[skill])));
+      if (!player.nextBoostFade || player.nextBoostFade <= this.tick) player.nextBoostFade = this.tick + BOOST_FADE_TICKS;
+    }
+    if (effect.prayer) {
+      const max = levelForXp(player.skills.prayer);
+      player.prayer = Math.min(max, Math.floor(player.prayer) + amount(max));
+    }
+    if (effect.fireward) player.firewardUntil = this.tick + effect.fireward;
+    this.animate(player, 'drink');
+    const name = ITEMS[stack.itemId].name.replace(/ \(\d\)$/, '').toLowerCase();
+    const left = ITEMS[effect.next]?.drink ? Number(/\((\d)\)$/.exec(ITEMS[effect.next].name)?.[1]) : 0;
+    this.message(player.id, `You drink some of your ${name}.`);
+    this.message(player.id, left ? `You have ${left} dose${left > 1 ? 's' : ''} of potion left.` : 'You have finished your potion.');
+  }
+
+  /** Whether Old Nessa has taught this player her craft; tells them if not. */
+  private knowsHerblore(player: PlayerEntity): boolean {
+    if ((player.quests[HERBLORE_QUEST] ?? 0) >= doneStage(QUESTS[HERBLORE_QUEST])) return true;
+    this.message(player.id, 'You don\'t know enough about herbs yet. Old Nessa, in her hut in the swamp, might teach you once her cauldron is going again.', 'warn');
+    return false;
+  }
+
+  private startClean(player: PlayerEntity, slot: number): void {
+    const stack = this.slot(player, slot);
+    const clean = stack ? ITEMS[stack.itemId].clean : undefined;
+    if (!stack || !clean || !this.knowsHerblore(player)) return;
+    this.stopActions(player);
+    player.path = [];
+    player.destination = null;
+    player.action = { kind: 'clean', itemId: stack.itemId, nextAttempt: this.tick + 1 };
+  }
+
+  /** Cleans one grimy herb of the chosen kind, until none are left. */
+  private cleanStep(player: PlayerEntity): void {
+    const action = player.action;
+    if (action?.kind !== 'clean' || this.tick < action.nextAttempt) return;
+    const clean = ITEMS[action.itemId].clean!;
+    const slot = player.inventory.findIndex((s) => s?.itemId === action.itemId);
+    if (slot < 0) return void (player.action = null);
+    if (levelForXp(player.skills.herblore) < clean.level) {
+      this.message(player.id, `You need a Herblore level of ${clean.level} to clean this herb.`, 'warn');
+      return void (player.action = null);
+    }
+    player.inventory[slot] = { itemId: clean.into, qty: 1 };
+    this.addXp(player, 'herblore', clean.xp);
+    this.message(player.id, `You clean the dirt from the ${ITEMS[clean.into].name.toLowerCase()}.`);
+    action.nextAttempt = this.tick + 2;
+    if (!player.inventory.some((s) => s?.itemId === action.itemId)) player.action = null;
+  }
+
+  /** Once beside the altar, offers the bones carried one at a time, for more XP than burying them. */
+  private offerStep(player: PlayerEntity): void {
+    const action = player.action;
+    if (action?.kind !== 'offer' || this.tick < action.nextAttempt) return;
+    const altar = this.entities.get(action.targetId);
+    if (!altar || !this.adjacent(player, altar)) return void (player.action = null);
+    const slot = player.inventory.findIndex((s) => !!s && !!ITEMS[s.itemId].bury && s.itemId !== 'ashes');
+    if (slot < 0) {
+      if (!action.started) this.message(player.id, 'You have no bones to offer.', 'warn');
+      return void (player.action = null);
+    }
+    const bones = player.inventory[slot]!;
+    if (!action.started) {
+      action.started = true;
+      action.nextAttempt = this.tick + 1;
+      this.message(player.id, 'You kneel before the altar.');
+      return;
+    }
+    player.inventory[slot] = bones.qty > 1 ? { ...bones, qty: bones.qty - 1 } : null;
+    this.addXp(player, 'prayer', ITEMS[bones.itemId].bury!.xp * ALTAR_MULTIPLIER);
+    this.message(player.id, `The gods are pleased with your offering of ${ITEMS[bones.itemId].name.toLowerCase()}.`);
+    action.nextAttempt = this.tick + OFFER_TICKS;
   }
 
   private eat(player: PlayerEntity, slot: number): void {
@@ -1139,6 +1325,7 @@ export class Simulation {
       if (shop) player.ui = { kind: 'shop', shopId: shop.id, at: target.id };
       return;
     }
+    if (target.defKey === 'altar') return this.pray(player);
     const station = (COOKING_FIRES.includes(target.defKey) ? 'range' : target.defKey) as StationKind;
     if (station === 'anvil' && !hasItem(player.inventory, 'hammer')) {
       this.message(player.id, 'You need a hammer to work the metal with.', 'warn');
@@ -1147,7 +1334,15 @@ export class Simulation {
     player.ui = { kind: 'craft', station, at: target.id };
   }
 
-  /** Using an item on its own: knives, logs, feathers and the like open the fletching window, anywhere. */
+  /** Kneeling at an altar fills your prayer points again. */
+  private pray(player: PlayerEntity): void {
+    const max = levelForXp(player.skills.prayer);
+    this.animate(player, 'pray');
+    if (player.prayer >= max) return this.message(player.id, 'You pray at the altar. Your prayer points are already full.');
+    player.prayer = max;
+    this.message(player.id, 'You kneel and pray. You feel your prayer points return.');
+  }
+
   /** Light logs from the pack where you stand. It may take a few strikes to catch. */
   private startLight(player: PlayerEntity, slot: number): void {
     const stack = this.slot(player, slot);
@@ -1201,18 +1396,22 @@ export class Simulation {
     this.spawnItem('ashes', 1, fire, undefined, 0, GROUND_ITEM_TICKS);
   }
 
-  private useItem(player: PlayerEntity, slot: number): void {
+  /** Using an item on its own: knives, logs and feathers open the fletching window, herbs and vials the herblore one, anywhere. */
+  private useItem(player: PlayerEntity, slot: number, wanted?: PackStation): void {
     const stack = this.slot(player, slot);
     if (!stack) return;
-    if (!opensFletching(stack.itemId)) {
+    const stations = packStations(stack.itemId);
+    const station = wanted && stations.includes(wanted) ? wanted : stations[0];
+    if (!station) {
       this.message(player.id, 'Nothing interesting happens.');
       return;
     }
+    if (station === 'herblore' && !this.knowsHerblore(player)) return;
     this.stopActions(player);
     player.path = [];
     player.destination = null;
-    // Fletching needs no station: the window is "at" the player.
-    player.ui = { kind: 'craft', station: 'fletching', at: player.id };
+    // No station needed: the window is "at" the player.
+    player.ui = { kind: 'craft', station, at: player.id };
   }
 
   private startCraft(player: PlayerEntity, recipeId: string, qty: number): void {
@@ -1270,7 +1469,7 @@ export class Simulation {
     } else {
       addItem(player.inventory, recipe.output, made);
       this.message(player.id, CRAFT_TEXT[recipe.station](made > 1 ? `${made} ${output.toLowerCase()}` : output.toLowerCase()));
-      this.addXp(player, recipe.skill, Math.round(recipe.xp * scale * 10) / 10);
+      if (recipe.xp > 0) this.addXp(player, recipe.skill, Math.round(recipe.xp * scale * 10) / 10);
     }
     action.remaining--;
     action.nextAttempt = this.tick + recipe.ticks;
@@ -1403,11 +1602,16 @@ export class Simulation {
       const target = this.entities.get(a.stationId);
       const recipe = RECIPE_BY_ID[a.recipeId];
       if (!target || !recipe) return null;
-      const activity = ({ furnace: 'smelt', anvil: 'smith', range: 'cook', fletching: 'fletch' } as const)[recipe.station];
+      const activity = ({ furnace: 'smelt', anvil: 'smith', range: 'cook', fletching: 'fletch', herblore: 'mix' } as const)[recipe.station];
       return { target, activity };
     }
     // Kneeling at your own feet, striking the tinderbox.
     if (a?.kind === 'light') return { target: player, activity: 'light' };
+    if (a?.kind === 'clean') return { target: player, activity: 'clean' };
+    if (a?.kind === 'offer' && a.started) {
+      const altar = this.entities.get(a.targetId);
+      return altar ? { target: altar, activity: 'offer' } : null;
+    }
     return null;
   }
 
@@ -1581,6 +1785,7 @@ export class Simulation {
     if (e.kind === 'player') {
       const work = this.activityOf(e);
       const fighting = e.action?.kind === 'attack' ? e.action.targetId : e.attackedBy;
+      const overhead = (['ward_of_blades', 'ember_ward'] as const).find((p) => e.prayers.includes(p));
       return {
         id: e.id,
         kind: e.kind,
@@ -1594,6 +1799,7 @@ export class Simulation {
         ...(fighting !== null && { interacting: fighting }),
         ...(e.deadUntil !== undefined && { dead: true }),
         ...(work && { workingOn: nearestTile(work.target, e), activity: work.activity }),
+        ...(overhead && { overhead }),
       };
     }
     if (e.kind === 'monster') {
@@ -1662,6 +1868,11 @@ export class Simulation {
       ui: this.uiView(player),
       quests: QUEST_IDS.map((id) => questView(id, player.quests[id] ?? 0)),
       questPoints: this.questPoints(player),
+      prayer: Math.ceil(player.prayer),
+      prayerMax: levelForXp(player.skills.prayer),
+      prayers: [...player.prayers],
+      boosts: { ...player.boosts },
+      ...(player.firewardUntil !== undefined && { fireward: Math.ceil((player.firewardUntil - this.tick) / 100) }),
     };
     const json = JSON.stringify(state);
     if (json === session.lastSelf) return;
@@ -1741,6 +1952,7 @@ const CRAFT_TEXT: Record<StationKind, (item: string) => string> = {
   anvil: (item) => `You hammer the metal and make ${aOrSome(item)}.`,
   range: (item) => `You cook the ${item}.`,
   fletching: (item) => (/^\d/.test(item) ? `You make ${item}.` : `You carefully make ${aOrSome(item)}.`),
+  herblore: (item) => (item.endsWith('(unf)') ? `You put the herb into the vial of water.` : `You mix the ingredients and make ${aOrSome(item.replace(/ \(3\)$/, ''))}.`),
 };
 
 function aOrSome(name: string): string {

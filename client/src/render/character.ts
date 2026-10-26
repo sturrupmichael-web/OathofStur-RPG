@@ -89,6 +89,28 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     hatColor: 0x5f6488,
     holding: 'staff',
   },
+  aldric: {
+    tunic: 0x6b3a22,
+    trousers: 0x3a2a1e,
+    boots: 0x2a1a10,
+    apron: 0x4a3a2a,
+    belt: 0x2a1a10,
+    buckle: 0xb8bcc4,
+    hair: 0x2b2018,
+    hairStyle: 'short',
+    beard: 0x2b2018,
+  },
+  banker: {
+    tunic: 0x1f3f6a,
+    trim: 0xd4a73a,
+    trousers: 0x1a1a2a,
+    boots: 0x1a1a1a,
+    belt: 0x2a2a2a,
+    buckle: 0xd4a73a,
+    hair: 0x4a4a4a,
+    hairStyle: 'short',
+    holding: 'scroll',
+  },
   cook_tobin: {
     tunic: 0xf3f3f3,
     trousers: 0x555555,
@@ -118,10 +140,12 @@ export interface CharacterRig {
   kneeR: THREE.Group;
   cape: THREE.Group | null;
   robe: THREE.Object3D | null;
-  /** Axe held while chopping; hidden otherwise. Players only. */
-  tool: THREE.Object3D | null;
-  /** 0 = not working, 1 = mid-chop; eased like `walk`. */
+  /** Tools held while working (axe, pickaxe, net...), each hidden until used. Players only. */
+  tools: Map<string, THREE.Object3D>;
+  /** 0 = not working, 1 = fully into the activity's pose; eased like `walk`. */
   work: number;
+  /** The activity being animated; kept while `work` eases back to 0. */
+  activity: string | null;
   /** Walk cycle angle in radians. */
   phase: number;
   /** 0 = standing, 1 = full walk; eased so starts and stops blend. */
@@ -363,15 +387,15 @@ export function buildCharacter(styleKey: string, seed: number): CharacterRig {
     grip.add(part(new THREE.SphereGeometry(0.04, 8, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), 0x9a9a9a, 0, -0.26, 0.02));
   }
 
-  // Players get an axe that only shows while they chop.
-  let tool: THREE.Object3D | null = null;
+  // Players carry a tool for each activity; only the one in use shows.
+  const tools = new Map<string, THREE.Object3D>();
   if (styleKey === 'player' || styleKey === 'other_player') {
-    tool = new THREE.Group();
-    tool.add(part(new THREE.CylinderGeometry(0.014, 0.017, 0.42, 6), 0x7a5230, 0, -0.04, 0.02));
-    tool.add(part(new THREE.BoxGeometry(0.02, 0.09, 0.12), 0xb8793a, 0, 0.13, 0.08));
-    tool.rotation.x = Math.PI / 2;
-    tool.visible = false;
-    grip.add(tool);
+    for (const [key, build] of Object.entries(TOOL_MODELS)) {
+      const tool = build();
+      tool.visible = false;
+      grip.add(tool);
+      tools.set(key, tool);
+    }
   }
 
   // Cape hangs from the shoulders and trails when walking.
@@ -409,8 +433,9 @@ export function buildCharacter(styleKey: string, seed: number): CharacterRig {
     kneeR: legs[1].knee,
     cape,
     robe,
-    tool,
+    tools,
     work: 0,
+    activity: null,
     phase: 0,
     walk: 0,
     seed,
@@ -424,10 +449,188 @@ const STRIDE_RATE = (Math.PI * 2) / 1.2;
  * Advance a rig. `moving` says whether the entity is between tiles this
  * frame; `speed` scales the stride (diagonal steps cover more ground).
  */
-/** One axe swing per 1.2 s: a slow wind-up, then a fast chop. */
-const CHOP_PERIOD = 1200;
+/** Tool models, built from primitives, held in the right hand with the handle along the forearm. */
+const TOOL_MODELS: Record<string, () => THREE.Group> = {
+  axe: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.014, 0.017, 0.42, 6), 0x7a5230, 0, -0.04, 0.02));
+    g.add(part(new THREE.BoxGeometry(0.02, 0.09, 0.12), 0xb8793a, 0, 0.13, 0.08));
+    g.rotation.x = Math.PI / 2;
+    return g;
+  },
+  pickaxe: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.014, 0.017, 0.46, 6), 0x7a5230, 0, -0.02, 0.02));
+    const head = new THREE.Group();
+    head.position.set(0, 0.19, 0.02);
+    head.add(part(new THREE.ConeGeometry(0.018, 0.17, 5).rotateX(Math.PI / 2).translate(0, 0, 0.085), 0x8a8c92));
+    head.add(part(new THREE.ConeGeometry(0.018, 0.17, 5).rotateX(-Math.PI / 2).translate(0, 0, -0.085), 0x8a8c92));
+    head.rotation.x = 0.25;
+    g.add(head);
+    g.rotation.x = Math.PI / 2;
+    return g;
+  },
+  hammer: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.012, 0.014, 0.26, 6), 0x7a5230, 0, 0.02, 0.02));
+    g.add(part(new THREE.BoxGeometry(0.05, 0.05, 0.11), 0x6c6e74, 0, 0.15, 0.03));
+    g.rotation.x = Math.PI / 2;
+    return g;
+  },
+  net: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.012, 0.014, 0.5, 6), 0x7a5230, 0, 0.12, 0.02));
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.008, 4, 16), mat(0xd8cfb4));
+    hoop.position.set(0, 0.47, 0.02);
+    hoop.rotation.y = Math.PI / 2;
+    g.add(hoop);
+    const netting = new THREE.MeshLambertMaterial({ color: 0xe8e0c8, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.16, 8, 1, true), netting);
+    mesh.rotation.z = Math.PI / 2;
+    mesh.position.set(0.08, 0.47, 0.02);
+    g.add(mesh);
+    g.rotation.x = Math.PI / 2;
+    return g;
+  },
+  rod: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.006, 0.014, 0.95, 6).translate(0, 0.4, 0), 0x6b4a2b, 0, 0, 0.02));
+    g.add(part(new THREE.CylinderGeometry(0.025, 0.025, 0.03, 8).rotateZ(Math.PI / 2), 0x555555, 0.02, 0.02, 0.02));
+    // The line hangs from the tip.
+    const line = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.002, 0.7, 3).translate(0, -0.35, 0), mat(0xeeeeee));
+    line.name = 'fishing-line';
+    line.position.set(0, 0.87, 0.02);
+    g.add(line);
+    g.rotation.x = Math.PI / 2 - 0.55;
+    return g;
+  },
+  pan: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.CylinderGeometry(0.01, 0.012, 0.2, 6), 0x2a2a2a, 0, 0.02, 0.02));
+    g.add(part(new THREE.CylinderGeometry(0.09, 0.08, 0.025, 12), 0x3a3a3a, 0, 0.2, 0.02));
+    g.add(part(new THREE.CylinderGeometry(0.035, 0.035, 0.012, 8), 0xc99a52, 0.01, 0.215, 0.02));
+    g.rotation.x = Math.PI / 2;
+    return g;
+  },
+};
 
-export function animateCharacter(rig: CharacterRig, dt: number, now: number, moving: boolean, speed = 1, working = false): void {
+/** Which tool each activity shows in the hand. */
+const ACTIVITY_TOOL: Record<string, string | undefined> = { chop: 'axe', mine: 'pickaxe', smith: 'hammer', net: 'net', rod: 'rod', cook: 'pan' };
+
+type Pose = Partial<{
+  shoulderLx: number;
+  shoulderLz: number;
+  shoulderRx: number;
+  shoulderRz: number;
+  elbowL: number;
+  elbowR: number;
+  torsoX: number;
+  torsoY: number;
+  hipsY: number;
+  hipL: number;
+  hipR: number;
+  kneeL: number;
+  kneeR: number;
+  headX: number;
+}>;
+
+/** A swing: slow wind-up to 1 over the first `windUp` of the cycle, then a fast drop to 0. */
+const swing = (u: number, windUp: number) => (u < windUp ? Math.sin((u / windUp) * Math.PI * 0.5) : 1 - Math.pow((u - windUp) / (1 - windUp), 0.5));
+
+/**
+ * Each activity is a looping pose: `u` runs 0..1 over its period (ms).
+ * Angles are in radians; negative shoulder x raises the arm forward.
+ */
+const ACTIVITIES: Record<string, { period: number; pose: (u: number) => Pose }> = {
+  // Axe: wind up over the shoulder, then a twisting chop.
+  chop: {
+    period: 1200,
+    pose: (u) => {
+      const lift = swing(u, 0.65);
+      return { shoulderRx: -0.5 - 2.1 * lift, shoulderRz: 0.25, elbowR: -0.25 - 0.6 * lift, shoulderLx: -0.6 - 0.8 * lift, elbowL: -0.5, torsoY: -0.25 * lift, torsoX: 0.15 - 0.15 * lift };
+    },
+  },
+  // Pickaxe: both hands overhead, then a hard strike down, bending at the knees.
+  mine: {
+    period: 1200,
+    pose: (u) => {
+      const lift = swing(u, 0.6);
+      const strike = 1 - lift;
+      return {
+        shoulderRx: -0.6 - 2.5 * lift,
+        shoulderLx: -0.6 - 2.3 * lift,
+        shoulderRz: 0.08,
+        shoulderLz: -0.08,
+        elbowR: -0.2 - 0.5 * lift,
+        elbowL: -0.25 - 0.5 * lift,
+        torsoX: 0.38 * strike - 0.08 * lift,
+        hipsY: -0.05 * strike,
+        hipL: -0.3 * strike,
+        hipR: -0.3 * strike,
+        kneeL: 0.55 * strike,
+        kneeR: 0.55 * strike,
+        headX: 0.2 * strike,
+      };
+    },
+  },
+  // Hammer: quick short taps on the anvil, the other hand holding the work.
+  smith: {
+    period: 600,
+    pose: (u) => {
+      const lift = swing(u, 0.55);
+      return { shoulderRx: -0.85 - 0.75 * lift, elbowR: -0.7 - 0.5 * lift, shoulderRz: 0.12, shoulderLx: -0.75, elbowL: -0.85, torsoX: 0.28, headX: 0.25 };
+    },
+  },
+  // Net: crouched at the water's edge, sweeping the net side to side.
+  net: {
+    period: 2400,
+    pose: (u) => {
+      const sweep = Math.sin(u * Math.PI * 2);
+      return {
+        shoulderRx: -0.75 + 0.15 * Math.cos(u * Math.PI * 4),
+        shoulderLx: -0.7,
+        elbowR: -0.3,
+        elbowL: -0.6,
+        torsoX: 0.45,
+        torsoY: 0.35 * sweep,
+        hipsY: -0.14,
+        hipL: -0.85,
+        hipR: -0.6,
+        kneeL: 1.3,
+        kneeR: 1.0,
+        headX: 0.3,
+      };
+    },
+  },
+  // Rod: standing still with the line out, small twitches and a tug each cycle.
+  rod: {
+    period: 3000,
+    pose: (u) => {
+      const tug = u > 0.85 ? Math.sin(((u - 0.85) / 0.15) * Math.PI) : 0;
+      const bob = Math.sin(u * Math.PI * 6) * 0.04;
+      return { shoulderRx: -0.95 + bob - 0.45 * tug, shoulderLx: -0.75 + bob - 0.3 * tug, elbowR: -0.55, elbowL: -0.9, shoulderLz: -0.25, torsoX: -0.06 + 0.06 * tug };
+    },
+  },
+  // Pan over the range: shake it, flip once a cycle.
+  cook: {
+    period: 1600,
+    pose: (u) => {
+      const shake = Math.sin(u * Math.PI * 8) * 0.06;
+      const flip = u < 0.2 ? Math.sin((u / 0.2) * Math.PI) : 0;
+      return { shoulderRx: -1.0 + shake - 0.35 * flip, elbowR: -0.5 + 0.3 * flip, shoulderLx: -0.55, elbowL: -1.1, torsoX: 0.18, headX: 0.25 };
+    },
+  },
+  // Feeding the furnace: lean in and push the ore forward with both hands.
+  smelt: {
+    period: 1800,
+    pose: (u) => {
+      const push = Math.max(0, Math.sin(u * Math.PI * 2));
+      return { shoulderRx: -0.7 - 0.6 * push, shoulderLx: -0.7 - 0.6 * push, elbowR: -0.9 + 0.6 * push, elbowL: -0.9 + 0.6 * push, torsoX: 0.2 + 0.2 * push, headX: 0.15, hipL: -0.15 * push, kneeL: 0.25 * push };
+    },
+  },
+};
+
+export function animateCharacter(rig: CharacterRig, dt: number, now: number, moving: boolean, speed = 1, activity: string | null = null): void {
   rig.walk += ((moving ? 1 : 0) - rig.walk) * Math.min(1, dt * 8);
   if (rig.walk > 0.01) rig.phase += dt * STRIDE_RATE * speed;
   else rig.phase = 0;
@@ -461,22 +664,37 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
   rig.head.rotation.y = s * 0.08 * w + Math.sin(t * 0.45) * 0.35 * idle * Math.max(0, Math.sin(t * 0.13));
   rig.head.rotation.x = -0.05 * w + Math.sin(t * 0.7) * 0.03 * idle;
 
-  // Chopping overrides the right arm and twists the body into the swing.
-  rig.work += ((working && !moving ? 1 : 0) - rig.work) * Math.min(1, dt * 10);
-  if (rig.tool) rig.tool.visible = rig.work > 0.05;
-  if (rig.work > 0.01) {
-    const u = ((now + rig.seed * 1000) % CHOP_PERIOD) / CHOP_PERIOD;
-    const lift = u < 0.65 ? Math.sin((u / 0.65) * Math.PI * 0.5) : 1 - Math.pow((u - 0.65) / 0.35, 0.5);
+  // Working: blend from the walk/idle pose into the activity's pose.
+  const target = activity && !moving ? activity : null;
+  if (target) rig.activity = target;
+  rig.work += ((target ? 1 : 0) - rig.work) * Math.min(1, dt * 10);
+  const shown = rig.work > 0.05 ? rig.activity : null;
+  for (const [key, tool] of rig.tools) tool.visible = !!shown && ACTIVITY_TOOL[shown] === key;
+  const anim = rig.activity ? ACTIVITIES[rig.activity] : undefined;
+  if (anim && rig.work > 0.01) {
+    const u = ((now + rig.seed * 1000) % anim.period) / anim.period;
+    const p = anim.pose(u);
     const k = rig.work;
-    const mix = (from: number, to: number) => from + (to - from) * k;
-    rig.shoulderR.rotation.x = mix(rig.shoulderR.rotation.x, -0.5 - 2.1 * lift);
-    rig.shoulderR.rotation.z = mix(rig.shoulderR.rotation.z, 0.25);
-    rig.elbowR.rotation.x = mix(rig.elbowR.rotation.x, -0.25 - 0.6 * lift);
-    rig.shoulderL.rotation.x = mix(rig.shoulderL.rotation.x, -0.6 - 0.8 * lift);
-    rig.elbowL.rotation.x = mix(rig.elbowL.rotation.x, -0.5);
-    rig.torso.rotation.y = mix(rig.torso.rotation.y, -0.25 * lift);
-    rig.torso.rotation.x = mix(rig.torso.rotation.x, 0.15 - 0.15 * lift);
-  }
+    const mix = (obj: { x: number } | { y: number } | { z: number }, axis: 'x' | 'y' | 'z', to: number | undefined) => {
+      if (to === undefined) return;
+      const o = obj as Record<string, number>;
+      o[axis] += (to - o[axis]) * k;
+    };
+    mix(rig.shoulderR.rotation, 'x', p.shoulderRx);
+    mix(rig.shoulderR.rotation, 'z', p.shoulderRz);
+    mix(rig.shoulderL.rotation, 'x', p.shoulderLx);
+    mix(rig.shoulderL.rotation, 'z', p.shoulderLz);
+    mix(rig.elbowR.rotation, 'x', p.elbowR);
+    mix(rig.elbowL.rotation, 'x', p.elbowL);
+    mix(rig.torso.rotation, 'x', p.torsoX);
+    mix(rig.torso.rotation, 'y', p.torsoY);
+    mix(rig.hipL.rotation, 'x', p.hipL);
+    mix(rig.hipR.rotation, 'x', p.hipR);
+    mix(rig.kneeL.rotation, 'x', p.kneeL);
+    mix(rig.kneeR.rotation, 'x', p.kneeR);
+    mix(rig.head.rotation, 'x', p.headX);
+    if (p.hipsY !== undefined) rig.hips.position.y += p.hipsY * k;
+  } else if (rig.work <= 0.01) rig.activity = null;
 
   if (rig.cape) rig.cape.rotation.x = 0.06 + 0.45 * w + Math.sin(rig.phase * 2) * 0.06 * w + Math.sin(t * 1.3) * 0.02;
   if (rig.robe) rig.robe.rotation.z = s * 0.06 * w;

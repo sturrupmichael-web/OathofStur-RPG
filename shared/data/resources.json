@@ -1,14 +1,16 @@
 {
-  "comment": "Gathering data for each resource on the map. One attempt every attemptTicks; chance = clamp(baseChance + perLevel * (level - required) + tool bonus, 0.05, 0.9). After each success the node is used up with depleteChance and comes back after respawnTicks (0.6 s each). Mining entries are fixed now and used from phase 3.",
+  "comment": "Gathering data for each resource on the map. One attempt every attemptTicks; chance = clamp(baseChance + perLevel * (level - required) + tool bonus, 0.05, 0.9). A node gives one of its yields per success (the best one you can get, with a 50% chance to step down a tier when there are several). After each success the node is used up with depleteChance and comes back after respawnTicks (0.6 s each). Fishing spots use a specific tool item and may use bait.",
   "attemptTicks": 4,
   "baseChance": 0.35,
   "perLevel": 0.015,
   "resources": {
-    "tree": { "skill": "woodcutting", "level": 1, "xp": 25, "item": "logs", "depleteChance": 0.125, "respawnTicks": 10 },
-    "dead_tree": { "skill": "woodcutting", "level": 15, "xp": 40, "item": "ashwood_logs", "depleteChance": 0.2, "respawnTicks": 25 },
-    "copper_rock": { "skill": "mining", "level": 1, "xp": 17.5, "item": "copper_ore", "depleteChance": 1, "respawnTicks": 4 },
-    "tin_rock": { "skill": "mining", "level": 1, "xp": 17.5, "item": "tin_ore", "depleteChance": 1, "respawnTicks": 4 },
-    "iron_rock": { "skill": "mining", "level": 15, "xp": 35, "item": "iron_ore", "depleteChance": 1, "respawnTicks": 9 },
-    "coal_rock": { "skill": "mining", "level": 30, "xp": 50, "item": "coal", "depleteChance": 1, "respawnTicks": 30 }
+    "tree": { "skill": "woodcutting", "verb": "chop", "yields": [{ "item": "logs", "level": 1, "xp": 25 }], "depleteChance": 0.125, "respawnTicks": 10 },
+    "dead_tree": { "skill": "woodcutting", "verb": "chop", "yields": [{ "item": "ashwood_logs", "level": 15, "xp": 40 }], "depleteChance": 0.2, "respawnTicks": 25 },
+    "copper_rock": { "skill": "mining", "verb": "mine", "yields": [{ "item": "copper_ore", "level": 1, "xp": 17.5 }], "depleteChance": 1, "respawnTicks": 4 },
+    "tin_rock": { "skill": "mining", "verb": "mine", "yields": [{ "item": "tin_ore", "level": 1, "xp": 17.5 }], "depleteChance": 1, "respawnTicks": 4 },
+    "iron_rock": { "skill": "mining", "verb": "mine", "yields": [{ "item": "iron_ore", "level": 15, "xp": 35 }], "depleteChance": 1, "respawnTicks": 9 },
+    "coal_rock": { "skill": "mining", "verb": "mine", "yields": [{ "item": "coal", "level": 30, "xp": 50 }], "depleteChance": 1, "respawnTicks": 30 },
+    "shallow_fishing_spot": { "skill": "fishing", "verb": "net", "toolItem": "small_net", "yields": [{ "item": "raw_minnows", "level": 1, "xp": 10 }], "depleteChance": 0, "respawnTicks": 0 },
+    "deep_fishing_spot": { "skill": "fishing", "verb": "rod", "toolItem": "fishing_rod", "bait": "fishing_bait", "yields": [{ "item": "raw_pike", "level": 35, "xp": 80 }, { "item": "raw_perch", "level": 15, "xp": 50 }], "depleteChance": 0, "respawnTicks": 0 }
   }
 }

@@ -1,4 +1,4 @@
-import { ITEMS, JsonMapSource, RESOURCE_DATA, WorldGrid, areaAt, type JsonMapFile, type MapSource, type Point, type PublicEntity } from '@rpg/shared';
+import { ITEMS, JsonMapSource, RESOURCE_DATA, SELL_RATE, WorldGrid, areaAt, type EntityId, type JsonMapFile, type MapSource, type Point, type PublicEntity } from '@rpg/shared';
 import kelmoor from '@rpg/shared/data/maps/kelmoor.json';
 import { LocalServer } from './net/LocalServer';
 import type { ServerConnection } from './net/ServerConnection';
@@ -42,32 +42,54 @@ async function start(): Promise<void> {
   state.on('self', (self) => {
     hud.renderSelf(self);
     hud.renderInventory(self.inventory);
+    hud.renderWindow(self);
   });
   state.on('gameMessage', ({ text, kind }) => hud.addMessage(text, kind));
   state.on('xpDrop', ({ skill, amount }) => hud.showXpDrop(skill, amount));
   state.on('levelUp', ({ skill, level }) => hud.showLevelUp(skill, level));
   server.onMessage((msg) => state.apply(msg, performance.now()));
 
-  /** Display name, allowing for stumps. */
+  /** Display name, allowing for stumps and empty rocks. */
   const nameOf = (e: PublicEntity) => {
     if (e.kind === 'item' && e.qty && e.qty > 1) return `${e.name} (${e.qty})`;
-    return e.depleted ? `${e.name} stump` : e.name;
+    if (e.depleted) return e.defKey?.endsWith('rock') ? 'Rocks' : `${e.name} stump`;
+    return e.name;
   };
+
+  const GATHER_LABELS = { chop: 'Chop down', mine: 'Mine', net: 'Net', rod: 'Bait' } as const;
+  const STATION_LABELS: Record<string, string> = { furnace: 'Smelt', anvil: 'Smith', range: 'Cook', bank_booth: 'Bank' };
+  const NPC_ROLES: Record<string, string> = Object.fromEntries(Object.values(map.defs.npcs).map((n) => [n.key, n.role]));
 
   /** The left-click action on an entity, if it has one besides walking. */
   const primaryAction = (e: PublicEntity | undefined): { label: string; run: () => void } | null => {
     if (!e) return null;
-    if (e.kind === 'item') return { label: 'Take', run: () => server.send({ type: 'interact', targetId: e.id, action: 'take' }) };
+    const use = (action: 'gather' | 'take' | 'use') => () => server.send({ type: 'interact', targetId: e.id, action });
+    if (e.kind === 'item') return { label: 'Take', run: use('take') };
     const data = e.kind === 'resource' && e.defKey ? RESOURCE_DATA[e.defKey] : undefined;
-    if (data?.skill === 'woodcutting' && !e.depleted) return { label: 'Chop down', run: () => server.send({ type: 'interact', targetId: e.id, action: 'gather' }) };
+    if (data && !e.depleted) return { label: GATHER_LABELS[data.verb], run: use('gather') };
+    if (e.kind === 'station' && e.defKey && STATION_LABELS[e.defKey]) return { label: STATION_LABELS[e.defKey], run: use('use') };
+    const role = e.kind === 'npc' && e.defKey ? NPC_ROLES[e.defKey] : undefined;
+    if (role === 'shop') return { label: 'Trade', run: use('use') };
+    if (role === 'bank') return { label: 'Bank', run: use('use') };
+    return null;
+  };
+
+  /** Fishing spots are ripples on the water, so a click on that tile counts as clicking the spot. */
+  const entityAt = (pick: PickResult): EntityId | null => {
+    if (pick.entityId !== null) return pick.entityId;
+    for (const view of state.entities.values()) {
+      const d = view.data;
+      if (d.kind === 'resource' && d.x === pick.tile.x && d.y === pick.tile.y) return d.id;
+    }
     return null;
   };
 
   /** Human-readable description of whatever is under the cursor. */
   const describe = (pick: PickResult): { action: string; target: string } => {
     if (pick.buildingName !== undefined) return { action: 'Walk into', target: pick.buildingName || 'Hut' };
-    if (pick.entityId !== null) {
-      const e = state.entities.get(pick.entityId)?.data;
+    const id = entityAt(pick);
+    if (id !== null) {
+      const e = state.entities.get(id)?.data;
       if (e?.kind === 'player') return { action: 'Walk here', target: `${e.name} (level-${e.combatLevel})` };
       const primary = primaryAction(e);
       if (e && primary) return { action: primary.label, target: nameOf(e) };
@@ -91,7 +113,8 @@ async function start(): Promise<void> {
       if (hud.consumeMenuDismiss()) return;
       const pick = renderer.pick(x, y);
       if (!pick) return;
-      const primary = pick.entityId !== null ? primaryAction(state.entities.get(pick.entityId)?.data) : null;
+      const id = entityAt(pick);
+      const primary = id !== null ? primaryAction(state.entities.get(id)?.data) : null;
       if (primary) {
         renderer.showClick(pick.tile);
         primary.run();
@@ -103,7 +126,8 @@ async function start(): Promise<void> {
       const { target } = describe(pick);
       hud.hideTooltip();
       renderer.setHover(pick.tile);
-      const e = pick.entityId !== null ? state.entities.get(pick.entityId)?.data : undefined;
+      const id = entityAt(pick);
+      const e = id !== null ? state.entities.get(id)?.data : undefined;
       const primary = primaryAction(e);
       const options = [];
       if (primary) options.push({ label: primary.label, target, action: primary.run });
@@ -129,13 +153,42 @@ async function start(): Promise<void> {
       const stack = state.self?.inventory[slot];
       if (!stack) return;
       const name = ITEMS[stack.itemId]?.name ?? stack.itemId;
+      const examine = { label: 'Examine', target: name, action: () => server.send({ type: 'examineItem', slot }) };
+      const ui = state.self?.ui;
       hud.hideTooltip();
-      hud.showMenu(x, y, [
-        { label: 'Drop', target: name, action: () => server.send({ type: 'invDrop', slot }) },
-        { label: 'Examine', target: name, action: () => server.send({ type: 'examineItem', slot }) },
-      ]);
+      if (ui?.kind === 'bank') {
+        const deposit = (qty: number) => () => server.send({ type: 'bankDeposit', slot, qty });
+        hud.showMenu(x, y, [
+          { label: 'Deposit-1', target: name, action: deposit(1) },
+          { label: 'Deposit-5', target: name, action: deposit(5) },
+          { label: 'Deposit-All', target: name, action: deposit(100_000) },
+          examine,
+        ]);
+      } else if (ui?.kind === 'shop') {
+        const sell = (qty: number) => () => server.send({ type: 'shopSell', slot, qty });
+        const price = Math.floor((ITEMS[stack.itemId]?.value ?? 0) * SELL_RATE);
+        const buys = stack.itemId !== 'coins' && (ui.buys === 'all' || ui.buys.includes(stack.itemId));
+        const value = () => hud.addMessage(buys ? `${name}: the shop will pay ${price} coin${price === 1 ? '' : 's'} each.` : `The shop won't buy ${name.toLowerCase()}.`);
+        hud.showMenu(x, y, [
+          ...(buys ? [{ label: 'Sell 1', target: name, action: sell(1) }, { label: 'Sell 5', target: name, action: sell(5) }, { label: 'Sell All', target: name, action: sell(100_000) }] : []),
+          { label: 'Value', target: name, action: value },
+          examine,
+        ]);
+      } else {
+        hud.showMenu(x, y, [{ label: 'Drop', target: name, action: () => server.send({ type: 'invDrop', slot }) }, examine]);
+      }
     },
     move: (from, to) => server.send({ type: 'invMove', from, to }),
+  };
+
+  // --- Bank, shop and crafting windows -----------------------------------------
+  hud.windowHandlers = {
+    close: () => server.send({ type: 'closeInterface' }),
+    withdraw: (index, qty) => server.send({ type: 'bankWithdraw', index, qty }),
+    depositAll: () => server.send({ type: 'bankDepositAll' }),
+    buy: (itemId, qty) => server.send({ type: 'shopBuy', itemId, qty }),
+    craft: (recipeId, qty) => server.send({ type: 'craft', recipeId, qty }),
+    examine: (itemId) => hud.addMessage(ITEMS[itemId]?.examine ?? '', 'examine'),
   };
 
   // --- Saving ---------------------------------------------------------------------
@@ -219,7 +272,10 @@ async function start(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
     keys.add(e.key.toLowerCase());
-    if (e.key === 'Escape') hud.hideMenu();
+    if (e.key === 'Escape') {
+      if (!hud.menuOpen && state.self?.ui) server.send({ type: 'closeInterface' });
+      hud.hideMenu();
+    }
     if (e.key.toLowerCase() === 'r') renderer.buildings.roofsEnabled = !renderer.buildings.roofsEnabled;
   });
   window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -279,6 +335,9 @@ async function start(): Promise<void> {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+
+  // Test hook for automated browser checks: only with #debug in the address.
+  if (location.hash === '#debug') Object.assign(window, { __oath: { state, send: (m: Parameters<ServerConnection['send']>[0]) => server.send(m) } });
 
   await server.connect('Wanderer', loadLocal());
 }

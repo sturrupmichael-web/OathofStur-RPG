@@ -9,7 +9,6 @@
     "tin_rock": "A rock with flecks of tin.",
     "iron_rock": "Rust-red veins of iron run through this rock.",
     "coal_rock": "Black, crumbly coal seams.",
-    "rock_depleted": "There's no ore left in this rock right now.",
     "anvil": "Heavy, scarred iron. Used for smithing.",
     "bank_booth": "The clerk keeps the town's valuables safe.",
     "market_stall": "A trader's stall, piled with wares.",
@@ -20,6 +19,18 @@
     "hide_tent": "A tent of stitched hides. It smells of smoke.",
     "campfire": "A smoky goblin cookfire.",
     "goblin_totem": "A crude totem hung with bones and feathers.",
-    "goblin": "An ugly, green-skinned scavenger."
+    "goblin": "An ugly, green-skinned scavenger.",
+    "copper_rock_stump": "There's no ore left in this rock right now.",
+    "tin_rock_stump": "There's no ore left in this rock right now.",
+    "iron_rock_stump": "There's no ore left in this rock right now.",
+    "coal_rock_stump": "There's no ore left in this rock right now.",
+    "furnace": "A roaring furnace. Hot enough to smelt ore into bars.",
+    "range": "A big iron cooking range. Something smells good.",
+    "shallow_fishing_spot": "Little fish are darting about in the shallows.",
+    "deep_fishing_spot": "Something big is moving down there.",
+    "shopkeeper": "Runs the General Store. Knows the price of everything.",
+    "aldric": "A broad-shouldered bladesmith with scarred forearms.",
+    "cook_tobin": "The Blue Gull's cook. His apron has seen things.",
+    "banker": "Keeps Kelmoor's valuables safe and its ledgers neat."
   }
 }

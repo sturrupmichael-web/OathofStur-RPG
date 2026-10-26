@@ -1,5 +1,5 @@
 import type { Point } from '../map/types';
-import { INVENTORY_SIZE, ITEMS, type Inventory } from './items';
+import { INVENTORY_SIZE, ITEMS, type Inventory, type ItemStack } from './items';
 import { MAX_XP, SKILLS, startingXp, type SkillXp } from './skills';
 
 export const SAVE_VERSION = 1;
@@ -7,7 +7,7 @@ export const SAVE_VERSION = 1;
 /**
  * Everything needed to bring a character back. XP is stored, levels are
  * derived. The same record maps one-to-one onto a per-account row once the
- * server keeps saves (phase 6). Equipment, bank and quests are empty until
+ * server keeps saves (phase 6). Equipment and quests are empty until
  * the phases that add them.
  */
 export interface SaveData {
@@ -17,7 +17,7 @@ export interface SaveData {
   skills: SkillXp;
   inventory: Inventory;
   equipment: Record<string, string>;
-  bank: { itemId: string; qty: number }[];
+  bank: ItemStack[];
   quests: Record<string, number>;
   createdAt: string;
   updatedAt: string;
@@ -51,6 +51,15 @@ export function parseSave(raw: unknown): SaveData | null {
     inventory.push(valid ? { itemId: slot.itemId as string, qty: ITEMS[slot.itemId as string].stackable ? qty : 1 } : null);
   }
 
+  const bank: ItemStack[] = [];
+  for (const entry of Array.isArray(s.bank) ? s.bank : []) {
+    const qty = Number(entry?.qty);
+    if (!entry || typeof entry.itemId !== 'string' || !ITEMS[entry.itemId] || !Number.isInteger(qty) || qty < 1) continue;
+    const existing = bank.find((b) => b.itemId === entry.itemId);
+    if (existing) existing.qty += qty;
+    else bank.push({ itemId: entry.itemId, qty });
+  }
+
   const now = new Date().toISOString();
   return {
     version: SAVE_VERSION,
@@ -59,7 +68,7 @@ export function parseSave(raw: unknown): SaveData | null {
     skills,
     inventory,
     equipment: {},
-    bank: [],
+    bank,
     quests: {},
     createdAt: typeof s.createdAt === 'string' ? s.createdAt : now,
     updatedAt: typeof s.updatedAt === 'string' ? s.updatedAt : now,

@@ -3,7 +3,7 @@
   "sellRate": 0.4,
   "shops": {
     "general_store": { "name": "Kelmoor General Store", "npc": "mara", "buys": "all",
-      "stock": ["bronze_axe", "iron_axe", "bronze_pickaxe", "iron_pickaxe", "small_net", "fishing_rod", "fishing_bait", "hammer", "knife"] },
+      "stock": ["bronze_axe", "iron_axe", "bronze_pickaxe", "iron_pickaxe", "small_net", "fishing_rod", "fishing_bait", "hammer", "knife", "tinderbox"] },
     "aldrics_blades": { "name": "Aldric's Blades", "npc": "aldric",
       "buys": ["bronze_dagger", "bronze_sword", "iron_dagger", "iron_sword", "steel_dagger", "steel_sword", "bronze_bar", "iron_bar", "steel_bar"],
       "stock": ["bronze_dagger", "bronze_sword", "iron_dagger", "iron_sword"] },
@@ -29,7 +29,7 @@
       "buys": ["gold_ore", "gold_bar", "coal", "cobalt_ore", "verdite_ore", "glacite_ore"],
       "stock": ["coal", "gold_bar"] },
     "brightwater_store": { "name": "Brightwater Store", "npc": "dunstan", "buys": "all",
-      "stock": ["bronze_axe", "bronze_pickaxe", "small_net", "hammer"] },
+      "stock": ["bronze_axe", "bronze_pickaxe", "small_net", "hammer", "tinderbox"] },
     "bow_and_arrow": { "name": "Bow & Arrow", "npc": "ivy",
       "buys": ["logs", "oak_logs", "willow_logs", "yew_logs", "feathers", "crimson_feathers", "arrow_shaft", "headless_arrow", "bronze_arrowheads", "iron_arrowheads", "steel_arrowheads", "bronze_arrow", "iron_arrow", "steel_arrow", "shortbow_u", "longbow_u", "oak_shortbow_u", "oak_longbow_u", "willow_shortbow_u", "willow_longbow_u", "yew_shortbow_u", "yew_longbow_u", "shortbow", "longbow", "oak_shortbow", "oak_longbow", "willow_shortbow", "willow_longbow", "yew_shortbow", "yew_longbow"],
       "stock": ["knife", "bowstring", "arrow_shaft", "feathers", "shortbow", "longbow", "bronze_arrow", "iron_arrow"] },

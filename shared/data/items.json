@@ -1,5 +1,5 @@
 {
-  "comment": "Every item in the game. value is the shop price in coins; shops buy back at 40%. Items don't stack unless stackable is true. tool.bonus is added to the chance of success per attempt. heals is hitpoints restored when eaten. equip: the slot it is worn in, its attack/strength/defence bonuses, and the level needed (Attack for weapons, Defence for armour; 1 when left out). Weapons attack every 4 ticks unless they give a speed; style picks the animation. Bows (style shoot) need a Ranged level, hit from up to `range` tiles away, and fire the best arrows in the pack that the player can use; ammo.strength is an arrow's strength bonus. Axes and pickaxes can be wielded and still work as tools.",
+  "comment": "Every item in the game. value is the shop price in coins; shops buy back at 40%. Items don't stack unless stackable is true. tool.bonus is added to the chance of success per attempt. heals is hitpoints restored when eaten. equip: the slot it is worn in, its attack/strength/defence bonuses, and the level needed (Attack for weapons, Defence for armour; 1 when left out). Weapons attack every 4 ticks unless they give a speed; style picks the animation. Bows (style shoot) need a Ranged level, hit from up to `range` tiles away, and fire the best arrows in the pack that the player can use; ammo.strength is an arrow's strength bonus. Axes and pickaxes can be wielded and still work as tools. burn: the Firemaking level and XP for lighting a log with a tinderbox.",
   "items": [
     { "id": "coins", "name": "Coins", "examine": "Kelmoor crowns. Lovely money.", "stackable": true, "value": 1 },
 
@@ -42,12 +42,14 @@
     { "id": "yew_longbow_u", "name": "Yew longbow (unstrung)", "examine": "A yew long bow with no string yet.", "value": 640 },
     { "id": "yew_longbow", "name": "Yew longbow", "examine": "A yew long bow. Slower, but it reaches further.", "value": 1280, "equip": { "slot": "weapon", "style": "shoot", "attack": 31, "range": 9, "speed": 4, "level": 40 } },
 
-    { "id": "logs", "name": "Logs", "examine": "Freshly cut logs, still smelling of sap.", "value": 4 },
-    { "id": "ashwood_logs", "name": "Ashwood logs", "examine": "Pale, bone-dry logs from a tree the Ashen Waste killed. They burn hot.", "value": 12 },
-    { "id": "oak_logs", "name": "Oak logs", "examine": "Heavy oak. Worth more than ordinary logs.", "value": 20 },
-    { "id": "willow_logs", "name": "Willow logs", "examine": "Springy willow from the riverbank.", "value": 36 },
-    { "id": "yew_logs", "name": "Yew logs", "examine": "Dark, close-grained yew from Elderglen.", "value": 90 },
-    { "id": "starwood_logs", "name": "Starwood logs", "examine": "Pale wood with a faint light in the grain.", "value": 250 },
+    { "id": "tinderbox", "name": "Tinderbox", "examine": "Flint, steel and a little dry tinder, for lighting fires.", "value": 1 },
+    { "id": "ashes", "name": "Ashes", "examine": "A heap of soft grey ash.", "value": 2 },
+    { "id": "logs", "name": "Logs", "examine": "Freshly cut logs, still smelling of sap.", "value": 4, "burn": { "level": 1, "xp": 40 } },
+    { "id": "ashwood_logs", "name": "Ashwood logs", "examine": "Pale, bone-dry logs from a tree the Ashen Waste killed. They burn hot.", "value": 12, "burn": { "level": 15, "xp": 60 } },
+    { "id": "oak_logs", "name": "Oak logs", "examine": "Heavy oak. Worth more than ordinary logs.", "value": 20, "burn": { "level": 15, "xp": 60 } },
+    { "id": "willow_logs", "name": "Willow logs", "examine": "Springy willow from the riverbank.", "value": 36, "burn": { "level": 30, "xp": 90 } },
+    { "id": "yew_logs", "name": "Yew logs", "examine": "Dark, close-grained yew from Elderglen.", "value": 90, "burn": { "level": 60, "xp": 202.5 } },
+    { "id": "starwood_logs", "name": "Starwood logs", "examine": "Pale wood with a faint light in the grain.", "value": 250, "burn": { "level": 75, "xp": 303.8 } },
 
     { "id": "copper_ore", "name": "Copper ore", "examine": "Reddish ore. Smelt it with tin for bronze.", "value": 5 },
     { "id": "tin_ore", "name": "Tin ore", "examine": "Silvery ore. Smelt it with copper for bronze.", "value": 5 },

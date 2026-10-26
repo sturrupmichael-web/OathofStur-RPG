@@ -13,6 +13,8 @@ export type SoundName =
   | 'smelt'
   | 'smith'
   | 'fletch'
+  | 'light'
+  | 'ignite'
   | 'shoot'
   | 'swing'
   | 'punch'
@@ -194,6 +196,16 @@ const RECIPES: Record<SoundName, (v: Voice) => void> = {
   fletch: (v) => {
     v.hiss('bandpass', 3200, 1900, 0.4, 0, 0.03, 0.22, 2.5);
     v.hiss('highpass', 5000, 4000, 0.12, 0.05, 0.02, 0.18);
+  },
+  // Tinderbox: a sharp click of flint on steel with a spit of sparks.
+  light: (v) => {
+    v.tone('square', 2600, 1900, 0.12, 0, 0.001, 0.03);
+    v.hiss('highpass', 6000, 3500, 0.35, 0, 0.002, 0.09);
+  },
+  // The logs catching: a soft whoomph and a crackle.
+  ignite: (v) => {
+    v.hiss('lowpass', 400, 1600, 0.6, 0, 0.12, 0.6);
+    for (const s of [0.15, 0.27, 0.42, 0.5]) v.hiss('bandpass', 3500, 2500, 0.3, s, 0.002, s + 0.03, 3);
   },
   // Bow: the creak of the draw, then the string's twang and the arrow's whoosh as it's loosed.
   shoot: (v) => {

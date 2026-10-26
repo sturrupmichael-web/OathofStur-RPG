@@ -131,6 +131,8 @@ async function start(): Promise<void> {
     else land();
   });
   renderer.entities.onImpact = (id, activity) => sound.play(activity as SoundName, near(id) * (id === state.playerId ? 0.8 : 0.5));
+  // A fire catching nearby.
+  state.on('added', (v) => v.data.kind === 'station' && v.data.defKey === 'fire' && sound.play('ignite', near(v.data.id)));
   state.on('levelUp', () => sound.play('levelup'));
   state.on('questComplete', () => sound.play('quest_complete'));
   state.on('gameMessage', ({ text, kind }) => {
@@ -167,7 +169,7 @@ async function start(): Promise<void> {
   };
 
   const GATHER_LABELS = { chop: 'Chop down', mine: 'Mine', net: 'Net', rod: 'Bait' } as const;
-  const STATION_LABELS: Record<string, string> = { furnace: 'Smelt', anvil: 'Smith', range: 'Cook', bank_booth: 'Bank' };
+  const STATION_LABELS: Record<string, string> = { furnace: 'Smelt', anvil: 'Smith', range: 'Cook', fire: 'Cook', campfire: 'Cook', bank_booth: 'Bank' };
   /** What each person offers, from the role the map gives them. */
   const NPC_ACTIONS: Record<string, string> = Object.fromEntries(
     Object.values(map.defs.npcs).flatMap((n): [string, string][] => {
@@ -304,6 +306,7 @@ async function start(): Promise<void> {
             ? [{ label: item.equip.slot === 'weapon' ? 'Wield' : 'Wear', target: name, action: () => server.send({ type: 'equip', slot }) }]
             : [];
         if (opensFletching(stack.itemId)) use.unshift({ label: 'Fletch', target: name, action: () => server.send({ type: 'useItem', slot }) });
+        if (item?.burn) use.unshift({ label: 'Light', target: name, action: () => server.send({ type: 'light', slot }) });
         hud.showMenu(x, y, [...use, { label: 'Drop', target: name, action: () => server.send({ type: 'invDrop', slot }) }, examine]);
       }
     },

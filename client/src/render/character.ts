@@ -727,6 +727,12 @@ const TOOL_MODELS: Record<string, () => THREE.Group> = {
     g.rotation.x = Math.PI / 2 - 0.55;
     return g;
   },
+  tinderbox: () => {
+    const g = new THREE.Group();
+    g.add(part(new THREE.BoxGeometry(0.05, 0.03, 0.07), 0x6a4a2a, 0, -0.03, 0.03));
+    g.add(metalPart(new THREE.BoxGeometry(0.012, 0.02, 0.06), 0x7d7f86, 0, -0.005, 0.03));
+    return g;
+  },
   knife: () => {
     const g = new THREE.Group();
     g.add(part(new THREE.CylinderGeometry(0.011, 0.012, 0.08, 6), 0x5a3a20, 0, -0.01, 0.02));
@@ -753,7 +759,7 @@ const TOOL_MODELS: Record<string, () => THREE.Group> = {
 };
 
 /** Which tool each activity shows in the hand. */
-const ACTIVITY_TOOL: Record<string, string | undefined> = { chop: 'axe', mine: 'pickaxe', smith: 'hammer', net: 'net', rod: 'rod', cook: 'pan', fletch: 'knife' };
+const ACTIVITY_TOOL: Record<string, string | undefined> = { chop: 'axe', mine: 'pickaxe', smith: 'hammer', net: 'net', rod: 'rod', cook: 'pan', fletch: 'knife', light: 'tinderbox' };
 /** What each activity holds in the left hand too, if anything. */
 const ACTIVITY_OFFHAND: Record<string, string | undefined> = { fletch: 'stave' };
 const OFFHAND_TOOLS = new Set(Object.values(ACTIVITY_OFFHAND));
@@ -884,6 +890,28 @@ const ACTIVITIES: Record<string, { period: number; pose: (u: number) => Pose }> 
         torsoX: 0.22,
         headX: 0.42,
         hipsY: -0.01,
+      };
+    },
+  },
+  // Down on one knee over the logs, striking the tinderbox; a quick flick of the wrist each time.
+  light: {
+    period: 900,
+    pose: (u) => {
+      const strike = u < 0.5 ? Math.sin(u * Math.PI) : 1 - Math.pow((u - 0.5) / 0.5, 0.4);
+      return {
+        hipsY: -0.3,
+        hipL: -1.5,
+        kneeL: 1.6,
+        hipR: 0.15,
+        kneeR: 1.75,
+        torsoX: 0.5,
+        headX: 0.4,
+        shoulderRx: -0.75 - 0.35 * strike,
+        shoulderRz: -0.1,
+        elbowR: -0.5 - 0.4 * strike,
+        shoulderLx: -0.7,
+        shoulderLz: 0.12,
+        elbowL: -0.45,
       };
     },
   },

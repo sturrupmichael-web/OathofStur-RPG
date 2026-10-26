@@ -41,6 +41,8 @@ export type ClientMessage =
   | { type: 'eat'; slot: number }
   /** Use an item from the pack on its own: a knife or logs open the fletching window. */
   | { type: 'useItem'; slot: number }
+  /** Light the logs in this slot with a tinderbox. */
+  | { type: 'light'; slot: number }
   | { type: 'equip'; slot: number }
   | { type: 'unequip'; slot: EquipSlot }
   | { type: 'setAttackStyle'; style: AttackStyle };
@@ -79,7 +81,7 @@ export interface PublicEntity {
   dead?: boolean;
 }
 
-export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith' | 'fletch';
+export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith' | 'fletch' | 'light';
 
 /**
  * One-off animations, sent as they happen. Players: punch, stab, slash, block, eat, death.

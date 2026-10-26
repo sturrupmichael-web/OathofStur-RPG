@@ -94,7 +94,7 @@ addEventListener('resize', resize);
 resize();
 
 const bar = document.getElementById('bar')!;
-for (const name of ['idle', 'walk', 'fight', 'aim', 'chop', 'mine', 'smith', 'net', 'rod', 'cook', 'smelt', 'fletch', 'dead']) {
+for (const name of ['idle', 'walk', 'fight', 'aim', 'chop', 'mine', 'smith', 'net', 'rod', 'cook', 'smelt', 'fletch', 'light', 'dead']) {
   const b = document.createElement('button');
   b.textContent = name;
   b.className = name === anim ? 'on' : '';
@@ -128,7 +128,7 @@ function frame(now: number) {
   const moving = anim === 'walk';
   for (const e of entries) {
     e.root.rotation.y = yaw0 + spin;
-    const activity = ['chop', 'mine', 'smith', 'net', 'rod', 'cook', 'smelt', 'fletch', 'fight', 'aim'].includes(anim) ? anim : null;
+    const activity = ['chop', 'mine', 'smith', 'net', 'rod', 'cook', 'smelt', 'fletch', 'light', 'fight', 'aim'].includes(anim) ? anim : null;
     if (e.human) animateCharacter(e.human, dt, now, moving, 1, activity, anim === 'dead');
     if (e.creature) animateCreature(e.creature, dt, now, moving, 1, anim === 'fight', anim === 'dead');
   }

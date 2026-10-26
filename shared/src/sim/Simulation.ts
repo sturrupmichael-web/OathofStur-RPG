@@ -82,7 +82,11 @@ const STARTING_ITEMS: ItemStack[] = [
   { itemId: 'small_net', qty: 1 },
   { itemId: 'coins', qty: 25 },
 ];
-const STATIONS: readonly string[] = ['furnace', 'anvil', 'range'];
+const STATIONS: readonly string[] = ['furnace', 'anvil', 'range', 'campfire', 'fire'];
+/** Fires cook like a range. */
+const COOKING_FIRES: readonly string[] = ['campfire', 'fire'];
+/** How long a lit fire burns (ticks), at least and at most. */
+export const FIRE_TICKS = [60, 110] as const;
 
 /** Wording for each kind of gathering. */
 const GATHER_TEXT = {
@@ -248,11 +252,13 @@ export class Simulation {
       else if (e.action?.kind === 'use') this.arriveToUse(e);
       else if (e.action?.kind === 'talk') this.arriveToTalk(e);
       else if (e.action?.kind === 'craft') this.craftStep(e);
+      else if (e.action?.kind === 'light') this.lightStep(e);
     }
     for (const e of [...this.entities.values()]) {
       if (e.kind === 'player') this.recover(e);
       if (e.kind === 'resource' && e.depletedUntil !== undefined && this.tick >= e.depletedUntil) delete e.depletedUntil;
       if (e.kind === 'item' && this.tick >= e.despawnAt) this.entities.delete(e.id);
+      if (e.kind === 'station' && e.burnsUntil !== undefined && this.tick >= e.burnsUntil) this.burnOut(e);
     }
 
     this.flushDeltas();
@@ -342,6 +348,9 @@ export class Simulation {
         return;
       case 'useItem':
         this.useItem(player, msg.slot);
+        return;
+      case 'light':
+        this.startLight(player, msg.slot);
         return;
       case 'eat':
         this.eat(player, msg.slot);
@@ -1128,7 +1137,7 @@ export class Simulation {
       if (shop) player.ui = { kind: 'shop', shopId: shop.id, at: target.id };
       return;
     }
-    const station = target.defKey as StationKind;
+    const station = (COOKING_FIRES.includes(target.defKey) ? 'range' : target.defKey) as StationKind;
     if (station === 'anvil' && !hasItem(player.inventory, 'hammer')) {
       this.message(player.id, 'You need a hammer to work the metal with.', 'warn');
       return;
@@ -1137,6 +1146,59 @@ export class Simulation {
   }
 
   /** Using an item on its own: knives, logs, feathers and the like open the fletching window, anywhere. */
+  /** Light logs from the pack where you stand. It may take a few strikes to catch. */
+  private startLight(player: PlayerEntity, slot: number): void {
+    const stack = this.slot(player, slot);
+    const burn = stack ? ITEMS[stack.itemId].burn : undefined;
+    if (!stack || !burn) return;
+    this.stopActions(player);
+    player.path = [];
+    player.destination = null;
+    if (!hasItem(player.inventory, 'tinderbox')) return this.message(player.id, 'You need a tinderbox to light a fire.', 'warn');
+    if (levelForXp(player.skills.firemaking) < burn.level) {
+      return this.message(player.id, `You need a Firemaking level of ${burn.level} to light ${ITEMS[stack.itemId].name.toLowerCase()}.`, 'warn');
+    }
+    if (!this.canLightHere(player)) return this.message(player.id, "You can't light a fire here.", 'warn');
+    this.message(player.id, 'You strike the tinderbox over the logs...');
+    player.action = { kind: 'light', itemId: stack.itemId, nextAttempt: this.tick + 1 };
+  }
+
+  /** Fires go on open ground: not on another fire, and not in banks, shops or town squares. */
+  private canLightHere(at: Point): boolean {
+    for (const e of this.entities.values()) if (e.kind === 'station' && e.x === at.x && e.y === at.y) return false;
+    return !this.map.areas.some((a) => /bank|square|keep|chapel|inn|store|bourse|market/i.test(a.name) && at.x >= a.x && at.y >= a.y && at.x < a.x + a.w && at.y < a.y + a.h);
+  }
+
+  private lightStep(player: PlayerEntity): void {
+    const action = player.action;
+    if (action?.kind !== 'light' || this.tick < action.nextAttempt) return;
+    const burn = ITEMS[action.itemId].burn!;
+    if (!hasItem(player.inventory, action.itemId) || !hasItem(player.inventory, 'tinderbox')) return void (player.action = null);
+    action.nextAttempt = this.tick + 1;
+    const level = levelForXp(player.skills.firemaking);
+    if (!this.rng.chance(Math.min(1, 0.4 + (level - burn.level) * 0.03))) return;
+    player.action = null;
+    removeItem(player.inventory, action.itemId, 1);
+    const id = this.allocateId();
+    this.entities.set(id, { id, kind: 'station', defKey: 'fire', name: 'Fire', x: player.x, y: player.y, burnsUntil: this.tick + this.rng.int(FIRE_TICKS[0], FIRE_TICKS[1]) });
+    this.grid.blocked[this.grid.index(player.x, player.y)] = 1;
+    this.addXp(player, 'firemaking', burn.xp);
+    this.message(player.id, 'The fire catches and the logs begin to burn.');
+    // Step off the fire: west first, as fire-lighters always have.
+    const step = [[-1, 0], [1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: player.x + dx, y: player.y + dy })).find((p) => this.grid.isWalkable(p.x, p.y));
+    if (step) {
+      player.path = [step];
+      player.destination = step;
+    }
+  }
+
+  /** A fire dies down to a heap of ashes. */
+  private burnOut(fire: ObjectEntity): void {
+    this.entities.delete(fire.id);
+    this.grid.blocked[this.grid.index(fire.x, fire.y)] = 0;
+    this.spawnItem('ashes', 1, fire, undefined, 0, GROUND_ITEM_TICKS);
+  }
+
   private useItem(player: PlayerEntity, slot: number): void {
     const stack = this.slot(player, slot);
     if (!stack) return;
@@ -1342,6 +1404,8 @@ export class Simulation {
       const activity = ({ furnace: 'smelt', anvil: 'smith', range: 'cook', fletching: 'fletch' } as const)[recipe.station];
       return { target, activity };
     }
+    // Kneeling at your own feet, striking the tinderbox.
+    if (a?.kind === 'light') return { target: player, activity: 'light' };
     return null;
   }
 

@@ -39,6 +39,8 @@ export type ClientMessage =
   | { type: 'shopSell'; slot: number; qty: number }
   | { type: 'attack'; targetId: EntityId }
   | { type: 'eat'; slot: number }
+  /** Use an item from the pack on its own: a knife or logs open the fletching window. */
+  | { type: 'useItem'; slot: number }
   | { type: 'equip'; slot: number }
   | { type: 'unequip'; slot: EquipSlot }
   | { type: 'setAttackStyle'; style: AttackStyle };
@@ -77,7 +79,7 @@ export interface PublicEntity {
   dead?: boolean;
 }
 
-export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith';
+export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith' | 'fletch';
 
 /**
  * One-off animations, sent as they happen. Players: punch, stab, slash, block, eat, death.

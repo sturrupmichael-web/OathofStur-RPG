@@ -20,6 +20,13 @@ export const ATTACK_STYLES: Readonly<Record<AttackStyle, { skill: SkillId; label
   defensive: { skill: 'defence', label: 'Defensive' },
 };
 
+/** The same three choices with a bow: steadier aim, faster shots, or shooting from further back. */
+export const RANGED_STYLES: Readonly<Record<AttackStyle, { label: string; detail: string }>> = {
+  accurate: { label: 'Accurate', detail: '+3 Ranged' },
+  aggressive: { label: 'Rapid', detail: 'Shoots a tick faster' },
+  defensive: { label: 'Longrange', detail: '+2 range, trains Defence too' },
+};
+
 export interface Drop {
   item: string;
   qty: number | [number, number];
@@ -83,6 +90,19 @@ export function playerFighter(skills: SkillXp, equipment: Equipment, style: Atta
     strength: levelForXp(skills.strength) + boost('strength'),
     defence: levelForXp(skills.defence) + boost('defence'),
     bonuses: equipmentBonuses(equipment),
+  };
+}
+
+/** A player shooting: Ranged for both aim and power, the bow's accuracy and the arrow's strength. */
+export function rangedFighter(skills: SkillXp, equipment: Equipment, style: AttackStyle, arrowStrength: number): Fighter {
+  const ranged = levelForXp(skills.ranged) + (style === 'accurate' ? 3 : 0);
+  const bow = equipment.weapon ? ITEMS[equipment.weapon]?.equip : undefined;
+  const worn = equipmentBonuses(equipment);
+  return {
+    attack: ranged,
+    strength: ranged,
+    defence: levelForXp(skills.defence) + (style === 'defensive' ? 3 : 0),
+    bonuses: { attack: bow?.attack ?? 0, strength: arrowStrength, defence: worn.defence },
   };
 }
 

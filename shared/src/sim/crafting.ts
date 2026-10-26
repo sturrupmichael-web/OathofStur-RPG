@@ -2,7 +2,8 @@ import recipeData from '../../data/recipes.json';
 import shopData from '../../data/shops.json';
 import type { SkillId } from './skills';
 
-export type StationKind = 'furnace' | 'anvil' | 'range';
+/** Where things are made. Fletching isn't a place: it opens from the pack, anywhere. */
+export type StationKind = 'furnace' | 'anvil' | 'range' | 'fletching';
 
 export interface Recipe {
   id: string;
@@ -13,6 +14,10 @@ export interface Recipe {
   ticks: number;
   inputs: { itemId: string; qty: number }[];
   output: string;
+  /** How many one go makes, when more than one (15 arrow shafts from a log). */
+  outputQty?: number;
+  /** An item that must be carried, not used up (a knife). */
+  tool?: string;
   /** Cooking only: the level from which it never burns, and what a burnt one becomes. */
   stopBurn?: number;
   burnt?: string;
@@ -25,7 +30,13 @@ export const STATION_TITLES: Record<StationKind, string> = {
   furnace: 'What would you like to smelt?',
   anvil: 'What would you like to smith?',
   range: 'What would you like to cook?',
+  fletching: 'What would you like to fletch?',
 };
+
+/** Whether using an item from the pack opens the fletching window: a knife, or anything fletched from. */
+export function opensFletching(itemId: string): boolean {
+  return itemId === 'knife' || RECIPES.some((r) => r.station === 'fletching' && r.inputs.some((i) => i.itemId === itemId));
+}
 
 /** Chance a cooking attempt burns the food. */
 export function burnChance(recipe: Recipe, level: number): number {

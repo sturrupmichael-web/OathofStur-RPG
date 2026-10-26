@@ -4,12 +4,14 @@ export type SkillId =
   | 'attack'
   | 'strength'
   | 'defence'
+  | 'ranged'
   | 'hitpoints'
   | 'woodcutting'
   | 'mining'
   | 'fishing'
   | 'cooking'
-  | 'smithing';
+  | 'smithing'
+  | 'fletching';
 
 export interface SkillInfo {
   id: SkillId;
@@ -51,8 +53,10 @@ export function startingXp(): SkillXp {
 
 export function combatLevel(xp: SkillXp): number {
   const { meleeWeight, hitpointsWeight } = skillData.combatLevel;
-  const melee = levelForXp(xp.attack) + levelForXp(xp.strength) + levelForXp(xp.defence);
-  return Math.floor((meleeWeight * melee) / 3 + hitpointsWeight * levelForXp(xp.hitpoints));
+  const defence = levelForXp(xp.defence);
+  const melee = levelForXp(xp.attack) + levelForXp(xp.strength) + defence;
+  const ranged = 2 * levelForXp(xp.ranged) + defence;
+  return Math.floor((meleeWeight * Math.max(melee, ranged)) / 3 + hitpointsWeight * levelForXp(xp.hitpoints));
 }
 
 /** Level used for a requirement: a skill id, or "combat" for combat level. */

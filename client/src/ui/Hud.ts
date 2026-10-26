@@ -14,14 +14,22 @@ export class Hud {
   private readonly chatLog = el('chat-log');
   private readonly tooltip = el('tooltip');
   private readonly menu = el('context-menu');
+  private closedByOutsidePress = false;
 
   constructor() {
     this.buildTabs();
     this.buildInventory();
     this.buildEquipment();
-    document.addEventListener('pointerdown', (e) => {
-      if (!this.menu.contains(e.target as Node)) this.hideMenu();
-    });
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (this.menuOpen && !this.menu.contains(e.target as Node)) {
+          this.closedByOutsidePress = true;
+          this.hideMenu();
+        }
+      },
+      true,
+    );
     window.addEventListener('blur', () => this.hideMenu());
   }
 
@@ -42,6 +50,13 @@ export class Hud {
 
   hideTooltip(): void {
     this.tooltip.hidden = true;
+  }
+
+  /** True once after a press outside the menu closed it, so that press doesn't also walk. */
+  consumeMenuDismiss(): boolean {
+    const was = this.closedByOutsidePress;
+    this.closedByOutsidePress = false;
+    return was;
   }
 
   get menuOpen(): boolean {
@@ -110,8 +125,16 @@ export class Hud {
 
   private buildTabs(): void {
     const buttons = document.querySelectorAll<HTMLButtonElement>('.tab');
+    const app = el('app');
+    // On phones the panels are a sheet: tapping the open tab again closes it.
+    if (window.matchMedia('(max-width: 720px)').matches) app.classList.add('sheet-closed');
     buttons.forEach((b) =>
       b.addEventListener('click', () => {
+        if (b.classList.contains('active')) {
+          app.classList.toggle('sheet-closed');
+          return;
+        }
+        app.classList.remove('sheet-closed');
         buttons.forEach((x) => x.classList.toggle('active', x === b));
         document.querySelectorAll<HTMLElement>('.panel').forEach((p) => (p.hidden = p.id !== `panel-${b.dataset.tab}`));
       }),

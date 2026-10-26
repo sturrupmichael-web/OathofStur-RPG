@@ -7,6 +7,7 @@ import { Renderer, type PickResult } from './render/Renderer';
 import { ClientState } from './state/ClientState';
 import { Hud } from './ui/Hud';
 import { Minimap } from './ui/Minimap';
+import { PointerInput } from './ui/PointerInput';
 import './styles.css';
 
 const WORLD_SEED = 20261025;
@@ -54,56 +55,57 @@ async function start(): Promise<void> {
     return { action: grid.isWalkable(pick.tile.x, pick.tile.y) ? 'Walk here' : 'Walk to', target: name };
   };
 
-  // --- Mouse and keyboard ----------------------------------------------------
+  // --- Pointer (mouse, pen, touch) and keyboard ---------------------------------
   const canvas = renderer.canvas;
   let pointer: { x: number; y: number } | null = null;
-  let drag: { x: number; y: number; button: number; moved: boolean } | null = null;
+  const local = (x: number, y: number) => {
+    const rect = canvas.getBoundingClientRect();
+    return { x: x - rect.left, y: y - rect.top };
+  };
 
-  canvas.addEventListener('pointermove', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    if (drag) {
-      const dx = e.clientX - drag.x;
-      if (Math.abs(dx) > 3 || Math.abs(e.clientY - drag.y) > 3) drag.moved = true;
-      if (drag.button === 1 || (drag.button === 0 && drag.moved && e.shiftKey)) {
-        renderer.rig.rotate(-e.movementX * 0.01);
-        renderer.rig.tilt(e.movementY * 0.005);
-      }
-    }
-  });
-  canvas.addEventListener('pointerleave', () => {
-    pointer = null;
-  });
-  canvas.addEventListener('pointerdown', (e) => {
-    drag = { x: e.clientX, y: e.clientY, button: e.button, moved: false };
-    if (e.button === 1) e.preventDefault();
-  });
-  canvas.addEventListener('pointerup', (e) => {
-    const wasClick = drag && !drag.moved && drag.button === 0 && e.button === 0;
-    drag = null;
-    if (!wasClick || hud.menuOpen) return;
-    const pick = renderer.pick(e.clientX, e.clientY);
-    if (pick) walk(pick.tile);
-  });
-  canvas.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    const pick = renderer.pick(e.clientX, e.clientY);
-    if (!pick) return;
-    const { target } = describe(pick);
-    const rect = canvas.getBoundingClientRect();
-    hud.hideTooltip();
-    hud.showMenu(e.clientX - rect.left, e.clientY - rect.top, [
-      { label: 'Walk here', target: pick.entityId !== null ? target : undefined, action: () => walk(pick.tile) },
-    ]);
-  });
-  canvas.addEventListener(
-    'wheel',
-    (e) => {
-      e.preventDefault();
-      renderer.rig.zoomBy(e.deltaY > 0 ? 0.9 : 1.1);
+  new PointerInput(canvas, {
+    tap: (x, y) => {
+      if (hud.consumeMenuDismiss()) return;
+      const pick = renderer.pick(x, y);
+      if (pick) walk(pick.tile);
     },
-    { passive: false },
-  );
+    menu: (x, y) => {
+      const pick = renderer.pick(x, y);
+      if (!pick) return;
+      const { target } = describe(pick);
+      const at = local(x, y);
+      hud.hideTooltip();
+      renderer.setHover(pick.tile);
+      hud.showMenu(at.x, at.y, [
+        { label: 'Walk here', target: pick.entityId !== null || pick.buildingName ? target : undefined, action: () => walk(pick.tile) },
+      ]);
+    },
+    menuCancel: () => hud.hideMenu(),
+    hover: (x, y) => {
+      pointer = local(x, y);
+    },
+    hoverEnd: () => {
+      pointer = null;
+    },
+    rotate: (r) => renderer.rig.rotate(r),
+    tilt: (r) => renderer.rig.tilt(r),
+    zoom: (f) => renderer.rig.zoomBy(f),
+  });
+
+  // On-screen camera buttons (shown on touch screens): hold to rotate or zoom.
+  const held = new Set<string>();
+  document.querySelectorAll<HTMLButtonElement>('#camera-buttons button').forEach((b) => {
+    const action = b.dataset.cam!;
+    const release = () => held.delete(action);
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (action === 'roofs') renderer.buildings.roofsEnabled = !renderer.buildings.roofsEnabled;
+      else held.add(action);
+    });
+    b.addEventListener('pointerup', release);
+    b.addEventListener('pointerleave', release);
+    b.addEventListener('pointercancel', release);
+  });
 
   const keys = new Set<string>();
   window.addEventListener('keydown', (e) => {
@@ -124,11 +126,15 @@ async function start(): Promise<void> {
     if (keys.has('arrowright') || keys.has('e') || keys.has('d')) renderer.rig.rotate(1.6 * dt);
     if (keys.has('arrowup') || keys.has('w')) renderer.rig.tilt(0.8 * dt);
     if (keys.has('arrowdown') || keys.has('s')) renderer.rig.tilt(-0.8 * dt);
+    if (held.has('left')) renderer.rig.rotate(-1.6 * dt);
+    if (held.has('right')) renderer.rig.rotate(1.6 * dt);
+    if (held.has('in')) renderer.rig.zoomBy(1 + 1.2 * dt);
+    if (held.has('out')) renderer.rig.zoomBy(1 - 1.0 * dt);
 
     renderer.frame(now);
     minimap.draw(now);
 
-    if (pointer && !hud.menuOpen && !drag?.moved) {
+    if (pointer && !hud.menuOpen) {
       const rect = canvas.getBoundingClientRect();
       const pick = renderer.pick(pointer.x + rect.left, pointer.y + rect.top);
       renderer.setHover(pick?.tile ?? null);
@@ -136,9 +142,9 @@ async function start(): Promise<void> {
         const { action, target } = describe(pick);
         hud.showTooltip(pointer.x, pointer.y, action, target);
       } else hud.hideTooltip();
-    } else {
+    } else if (!hud.menuOpen) {
       renderer.setHover(null);
-      if (!pointer) hud.hideTooltip();
+      hud.hideTooltip();
     }
 
     // Name and combat level above each player.

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Tile RPG</title>
   </head>
   <body>
@@ -11,7 +11,17 @@
         <div id="labels"></div>
         <div id="tooltip" hidden></div>
         <div id="context-menu" hidden></div>
-        <div id="controls-hint">Click to walk · Right-click for options · Q/E or middle-drag to rotate · Wheel to zoom · R toggles roofs</div>
+        <div id="controls-hint">
+          <span class="hint-mouse">Click to walk · Right-click for options · Q/E or middle-drag to rotate · Wheel to zoom · R toggles roofs</span>
+          <span class="hint-touch">Tap to walk · Hold for options · Drag to turn · Pinch to zoom</span>
+        </div>
+        <div id="camera-buttons" aria-label="Camera">
+          <button data-cam="left" aria-label="Rotate left">⟲</button>
+          <button data-cam="right" aria-label="Rotate right">⟳</button>
+          <button data-cam="in" aria-label="Zoom in">+</button>
+          <button data-cam="out" aria-label="Zoom out">−</button>
+          <button data-cam="roofs" aria-label="Toggle roofs">⌂</button>
+        </div>
       </main>
       <aside id="side">
         <canvas id="minimap" aria-label="Minimap"></canvas>

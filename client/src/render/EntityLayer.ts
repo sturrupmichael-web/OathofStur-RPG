@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { EntityId, MapData, WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView } from '../state/ClientState';
-import { FLICKER, RESOURCE_STYLES, buildFigure, buildStation, type PartStyle } from './models';
+import { animateCharacter, buildCharacter, type CharacterRig } from './character';
+import { FLICKER, RESOURCE_STYLES, buildStation, type PartStyle } from './models';
 import { hash2, shade } from './palette';
 
 /** One InstancedMesh per part of a resource model, shared by every node of that type. */
@@ -23,6 +24,8 @@ export class EntityLayer {
   private readonly meshes = new Map<EntityId, THREE.Object3D>();
   private readonly facing = new Map<EntityId, number>();
   private readonly flickers: THREE.Object3D[] = [];
+  private readonly rigs = new Map<EntityId, CharacterRig>();
+  private lastFrame = 0;
   private readonly tmp = new THREE.Matrix4();
 
   constructor(
@@ -80,10 +83,12 @@ export class EntityLayer {
   }
 
   update(now: number): void {
+    const dt = this.lastFrame ? Math.min(0.1, (now - this.lastFrame) / 1000) : 0;
+    this.lastFrame = now;
     for (const [id, obj] of this.meshes) {
       const view = this.state.entities.get(id);
       if (!view) continue;
-      if (view.data.kind === 'player' || view.data.kind === 'npc') this.placeCharacter(id, obj, view, now);
+      if (view.data.kind === 'player' || view.data.kind === 'npc') this.placeCharacter(id, obj, view, now, dt);
     }
     for (const pool of this.pools.values()) if (pool.ripple && pool.slotOf.size) this.animateRipples(pool, now);
     this.flickers.forEach((f, i) => {
@@ -106,8 +111,12 @@ export class EntityLayer {
     }
     let obj: THREE.Object3D;
     if (data.kind === 'station') obj = buildStation(data.defKey ?? '');
-    else if (data.kind === 'npc') obj = buildFigure(data.defKey ?? '');
-    else obj = buildFigure(data.id === this.state.playerId ? 'player' : 'other_player');
+    else {
+      const style = data.kind === 'npc' ? (data.defKey ?? '') : data.id === this.state.playerId ? 'player' : 'other_player';
+      const rig = buildCharacter(style, hash2(data.id, 3) * 100);
+      this.rigs.set(data.id, rig);
+      obj = rig.root;
+    }
     obj.userData.entityId = data.id;
     obj.position.set(data.x + 0.5, 0, data.y + 0.5);
     if (data.kind === 'station' || data.kind === 'npc') obj.rotation.y = this.faceOpenSide(data.x, data.y);
@@ -123,6 +132,7 @@ export class EntityLayer {
     if (obj) {
       this.group.remove(obj);
       this.meshes.delete(id);
+      this.rigs.delete(id);
       return;
     }
     for (const pool of this.pools.values()) {
@@ -178,17 +188,17 @@ export class EntityLayer {
     }
   }
 
-  private placeCharacter(id: EntityId, obj: THREE.Object3D, view: EntityView, now: number): void {
+  private placeCharacter(id: EntityId, obj: THREE.Object3D, view: EntityView, now: number, dt: number): void {
     const pos = this.state.renderPosition(view, now);
     const dx = view.toX - view.fromX;
     const dy = view.toY - view.fromY;
     const moving = (dx !== 0 || dy !== 0) && now - view.movedAt < this.state.tickMs;
     if (moving) this.facing.set(id, Math.atan2(dx, dy));
     const targetYaw = this.facing.get(id) ?? obj.rotation.y;
-    obj.rotation.y += shortestAngle(obj.rotation.y, targetYaw) * 0.25;
-    // A small bob while walking.
-    const bob = moving ? Math.abs(Math.sin(now / 90)) * 0.04 : 0;
-    obj.position.set(pos.x + 0.5, bob, pos.y + 0.5);
+    obj.rotation.y += shortestAngle(obj.rotation.y, targetYaw) * Math.min(1, dt * 12);
+    obj.position.set(pos.x + 0.5, 0, pos.y + 0.5);
+    const rig = this.rigs.get(id);
+    if (rig) animateCharacter(rig, dt, now, moving, Math.min(1.4, Math.hypot(dx, dy)));
   }
 
   /** Face NPCs and stations toward a walkable neighbour, preferring south. */

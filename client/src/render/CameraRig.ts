@@ -31,7 +31,7 @@ export class CameraRig {
   }
 
   zoomBy(factor: number): void {
-    this.zoom = THREE.MathUtils.clamp(this.zoom * factor, 0.45, 2.6);
+    this.zoom = THREE.MathUtils.clamp(this.zoom * factor, 0.45, 4);
     this.applyProjection();
   }
 

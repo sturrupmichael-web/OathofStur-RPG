@@ -29,7 +29,7 @@ export interface CharacterStyle {
   /** Worn and wielded gear, as metal colours. */
   helm?: number;
   shield?: number;
-  weapon?: { kind: 'dagger' | 'sword' | 'scimitar'; color: number };
+  weapon?: { kind: WeaponKind; color: number };
   /** Overall size; goblins are small. */
   scale?: number;
   /** Eyes that glow this colour (skeletons, spirits). */
@@ -39,6 +39,8 @@ export interface CharacterStyle {
   /** Bare bones: ribs over the chest, no nose or ears. */
   bones?: boolean;
 }
+
+type WeaponKind = 'dagger' | 'sword' | 'scimitar' | 'axe' | 'pickaxe';
 
 /** Colours for each metal tier, used on worn gear. */
 export const METALS: Record<string, number> = { bronze: 0xb8793a, iron: 0x7d7f86, steel: 0xb4bec8 };
@@ -55,8 +57,14 @@ export function withGear(base: CharacterStyle, gear: Partial<Record<string, stri
   if (gear.shield) s.shield = metal(gear.shield);
   if (gear.body) [s.tunic, s.trim] = [shadeHex(metal(gear.body)!, 0.82), metal(gear.body)];
   if (gear.legs) [s.trousers, s.bootCuff] = [shadeHex(metal(gear.legs)!, 0.9), undefined];
-  if (gear.weapon) s.weapon = { kind: gear.weapon.endsWith('dagger') ? 'dagger' : 'sword', color: metal(gear.weapon) ?? 0x9a9ca4 };
+  if (gear.weapon) s.weapon = { kind: weaponKind(gear.weapon), color: metal(gear.weapon) ?? 0x9a9ca4 };
   return s;
+}
+
+function weaponKind(itemId: string): WeaponKind {
+  if (itemId.endsWith('pickaxe')) return 'pickaxe';
+  if (itemId.endsWith('axe')) return 'axe';
+  return itemId.endsWith('dagger') ? 'dagger' : 'sword';
 }
 
 function shadeHex(hex: number, k: number): number {
@@ -739,8 +747,22 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
 }
 
 /** A blade held in the right hand, pointing forward and a little down at rest. */
-function buildBlade(kind: 'dagger' | 'sword' | 'scimitar', color: number): THREE.Group {
+function buildBlade(kind: WeaponKind, color: number): THREE.Group {
   const g = new THREE.Group();
+  if (kind === 'axe' || kind === 'pickaxe') {
+    // The same shapes as the skilling tools, with the head in the metal's colour.
+    g.add(part(new THREE.CylinderGeometry(0.014, 0.017, 0.44, 6).translate(0, 0.16, 0), 0x7a5230, 0, 0, 0.02));
+    if (kind === 'axe') g.add(part(new THREE.BoxGeometry(0.02, 0.09, 0.12), color, 0, 0.33, 0.08));
+    else {
+      const pick = new THREE.Group();
+      pick.position.set(0, 0.37, 0.02);
+      pick.add(part(new THREE.ConeGeometry(0.018, 0.17, 5).rotateX(Math.PI / 2).translate(0, 0, 0.085), color));
+      pick.add(part(new THREE.ConeGeometry(0.018, 0.17, 5).rotateX(-Math.PI / 2).translate(0, 0, -0.085), color));
+      g.add(pick);
+    }
+    g.rotation.x = Math.PI / 2 + 0.45;
+    return g;
+  }
   const length = kind === 'dagger' ? 0.22 : 0.5;
   g.add(part(new THREE.CylinderGeometry(0.014, 0.016, 0.1, 6), 0x5a3a20, 0, -0.01, 0.02));
   g.add(part(new THREE.BoxGeometry(0.03, 0.022, kind === 'dagger' ? 0.08 : 0.14), 0x6b5a3a, 0, 0.045, 0.02));

@@ -31,8 +31,8 @@ async function start(): Promise<void> {
   const minimap = new Minimap(
     document.getElementById('minimap') as HTMLCanvasElement,
     map,
-    renderer.terrain.tileColors,
-    renderer.terrain.info,
+    renderer.tileColors,
+    renderer.info,
     state,
     walk,
   );
@@ -43,6 +43,7 @@ async function start(): Promise<void> {
 
   /** Human-readable description of whatever is under the cursor. */
   const describe = (pick: PickResult): { action: string; target: string } => {
+    if (pick.buildingName) return { action: 'Walk into', target: pick.buildingName };
     if (pick.entityId !== null) {
       const e = state.entities.get(pick.entityId)?.data;
       if (e?.kind === 'player') return { action: 'Walk here', target: `${e.name} (level-${e.combatLevel})` };
@@ -109,6 +110,7 @@ async function start(): Promise<void> {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
     keys.add(e.key.toLowerCase());
     if (e.key === 'Escape') hud.hideMenu();
+    if (e.key.toLowerCase() === 'r') renderer.buildings.roofsEnabled = !renderer.buildings.roofsEnabled;
   });
   window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
   window.addEventListener('blur', () => keys.clear());

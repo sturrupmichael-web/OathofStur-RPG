@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { EntityId, MapData, WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView } from '../state/ClientState';
-import { RESOURCE_STYLES, buildFigure, buildStation, type PartStyle } from './models';
-import { hash2 } from './palette';
+import { FLICKER, RESOURCE_STYLES, buildFigure, buildStation, type PartStyle } from './models';
+import { hash2, shade } from './palette';
 
 /** One InstancedMesh per part of a resource model, shared by every node of that type. */
 interface ResourcePool {
@@ -22,6 +22,7 @@ export class EntityLayer {
   private readonly pools = new Map<string, ResourcePool>();
   private readonly meshes = new Map<EntityId, THREE.Object3D>();
   private readonly facing = new Map<EntityId, number>();
+  private readonly flickers: THREE.Object3D[] = [];
   private readonly tmp = new THREE.Matrix4();
 
   constructor(
@@ -36,7 +37,8 @@ export class EntityLayer {
       const pool: ResourcePool = { parts: [], slotOf: new Map(), entityAt: [], free: [], ripple: false };
       for (const style of styles) {
         const material = new THREE.MeshLambertMaterial({
-          color: style.color,
+          color: 0xffffff,
+          map: style.map?.() ?? null,
           emissive: style.emissive ?? 0x000000,
           flatShading: true,
           transparent: !!style.transparent,
@@ -84,6 +86,10 @@ export class EntityLayer {
       if (view.data.kind === 'player' || view.data.kind === 'npc') this.placeCharacter(id, obj, view, now);
     }
     for (const pool of this.pools.values()) if (pool.ripple && pool.slotOf.size) this.animateRipples(pool, now);
+    this.flickers.forEach((f, i) => {
+      const k = 0.8 + Math.sin(now * 0.02 + i) * 0.12 + Math.sin(now * 0.053 + i * 3) * 0.08;
+      ((f as THREE.Mesh).material as THREE.MeshLambertMaterial).emissiveIntensity = k;
+    });
   }
 
   private add(view: EntityView): void {
@@ -105,6 +111,9 @@ export class EntityLayer {
     obj.userData.entityId = data.id;
     obj.position.set(data.x + 0.5, 0, data.y + 0.5);
     if (data.kind === 'station' || data.kind === 'npc') obj.rotation.y = this.faceOpenSide(data.x, data.y);
+    obj.traverse((o) => {
+      if (o.name === FLICKER) this.flickers.push(o);
+    });
     this.meshes.set(data.id, obj);
     this.group.add(obj);
   }
@@ -133,18 +142,33 @@ export class EntityLayer {
     const rot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), hash2(x, y, 7) * Math.PI * 2);
     const size = 0.88 + hash2(x, y, 8) * 0.24;
     const base = new THREE.Matrix4().compose(new THREE.Vector3(x + 0.5, 0, y + 0.5), rot, new THREE.Vector3(size, size, size));
-    for (const { style, mesh } of pool.parts) {
-      const pulse = style.ripple ? 0.75 + 0.35 * ((t / 1400 + hash2(x, y, 9) + style.position[0]) % 1) : 1;
+    const color = new THREE.Color();
+    pool.parts.forEach(({ style, mesh }, k) => {
       const [sx, sy, sz] = style.scale ?? [1, 1, 1];
-      const local = new THREE.Matrix4().compose(
-        new THREE.Vector3(...style.position),
-        new THREE.Quaternion(),
-        new THREE.Vector3(sx * pulse, sy, sz * pulse),
-      );
+      const pos = new THREE.Vector3(...style.position);
+      let pulse = 1;
+      if (style.ripple) {
+        const phase = (t / 1600 + hash2(x, y, 9) + k * 0.31) % 1;
+        if (style.geometry.type === 'TorusGeometry') pulse = 0.7 + 0.5 * phase;
+        else if (style.scale) {
+          // Fish shadow circling under the surface.
+          const a = t / 900 + hash2(x, y, 12) * 6;
+          pos.set(Math.cos(a) * 0.18, pos.y, Math.sin(a) * 0.18);
+        } else pos.y += phase * 0.1;
+      }
+      const euler = new THREE.Euler(...(style.rotation ?? [0, 0, 0]));
+      if (style.ripple && style.scale) euler.y = -(t / 900 + hash2(x, y, 12) * 6) - Math.PI / 2;
+      const local = new THREE.Matrix4().compose(pos, new THREE.Quaternion().setFromEuler(euler), new THREE.Vector3(sx * pulse, sy, sz * pulse));
       mesh.setMatrixAt(slot, this.tmp.multiplyMatrices(base, local));
       mesh.count = Math.max(mesh.count, slot + 1);
       mesh.instanceMatrix.needsUpdate = true;
-    }
+      if (t === 0) {
+        const vary = style.vary ?? 0;
+        color.setHex(shade(style.color, 1 - vary + hash2(x, y, 20 + k) * vary * 2));
+        mesh.setColorAt(slot, color);
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      }
+    });
   }
 
   private animateRipples(pool: ResourcePool, now: number): void {

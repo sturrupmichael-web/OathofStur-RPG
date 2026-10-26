@@ -14,9 +14,10 @@ export const AREA_COLORS = {
   mine: 0x8c8660,
   town: 0x7fb05a,
   hollowmere: 0x5a5845,
+  pen: 0xa89a5a,
   road: 0xa39572,
   dirtPath: 0x8a6a45,
-  floor: 0x9b7650,
+  floor: 0xa47c52,
   door: 0x6e4b2c,
   gateGround: 0x6a5c48,
   waterShallow: 0x3c7fbb,
@@ -61,14 +62,12 @@ export function isFishingSpot(key: string | null): boolean {
   return key !== null && key.endsWith('fishing_spot');
 }
 
-/**
- * Base ground colour of every tile, tinted by area so forest, river, mine,
- * town and the walled southeast read at a glance. Purely presentational.
- */
-export function buildTileColors(map: MapData, grid: WorldGrid, info: TileInfo): number[] {
-  const { width, height } = map;
-  const colors: number[] = new Array(width * height);
+export type Area = 'grass' | 'forest' | 'mine' | 'town' | 'hollowmere' | 'pen' | 'other';
 
+/** Which readable area each tile belongs to (only meaningful for grass tiles). */
+export function classifyAreas(map: MapData, grid: WorldGrid, info: TileInfo): Area[] {
+  const { width, height } = map;
+  const areas: Area[] = new Array(width * height).fill('other');
   const countNear = (x: number, y: number, r: number, test: (i: number) => boolean) => {
     let n = 0;
     for (let dy = -r; dy <= r; dy++) {
@@ -83,28 +82,73 @@ export function buildTileColors(map: MapData, grid: WorldGrid, info: TileInfo): 
   };
   const isTree = (i: number) => (info.placementKey[i] ?? '').endsWith('tree');
   const isRocky = (i: number) => info.terrainKey[i] === 'mountain' || (info.placementKey[i] ?? '').endsWith('rock');
-  const isBuilt = (i: number) => {
-    const k = info.terrainKey[i];
-    return k === 'floor' || k === 'door' || (k === 'wall' && grid.gateZone[i] === -1 && !nearGateWall(i));
+  const isBuilt = (i: number) => info.terrainKey[i] === 'floor' || info.terrainKey[i] === 'door';
+  // A tile is in a pen if a fence is the first solid thing in all four directions.
+  const fenced = (x: number, y: number) =>
+    [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dy]) => {
+      for (let k = 1; k < 10; k++) {
+        const nx = x + dx * k;
+        const ny = y + dy * k;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) return false;
+        const key = info.terrainKey[ny * width + nx];
+        if (key === 'fence' || key === 'door') return true;
+        if (!grid.isWalkable(nx, ny) && !info.placementKey[ny * width + nx]) return false;
+      }
+      return false;
+    });
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (info.terrainKey[i] !== 'grass') continue;
+      // Blocked tiles (trees, rocks) have no zone of their own; borrow a neighbour's.
+      const inGatedArea = grid.gateZone[i] !== -1 || (grid.blocked[i] === 1 && countNear(x, y, 1, (j) => grid.gateZone[j] !== -1) > 0);
+      if (inGatedArea) areas[i] = 'hollowmere';
+      else if (fenced(x, y)) areas[i] = 'pen';
+      else if (countNear(x, y, 2, isTree) >= 4) areas[i] = 'forest';
+      else if (countNear(x, y, 4, isRocky) >= 5) areas[i] = 'mine';
+      else if (countNear(x, y, 4, isBuilt) > 0) areas[i] = 'town';
+      else areas[i] = 'grass';
+    }
+  }
+  return areas;
+}
+
+/**
+ * Base ground colour of every tile, tinted by area so forest, river, mine,
+ * town and the walled southeast read at a glance. Purely presentational.
+ */
+export function buildTileColors(map: MapData, info: TileInfo, areas: Area[]): number[] {
+  const { width, height } = map;
+  const colors: number[] = new Array(width * height);
+  const waterNear = (x: number, y: number) => {
+    let n = 0;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < width && ny < height && info.terrainKey[ny * width + nx] === 'water') n++;
+      }
+    return n;
   };
-  // The long Hollowmere wall should not tint its surroundings as "town".
-  const nearGateWall = (i: number) => {
-    const x = i % width;
-    const y = Math.floor(i / width);
-    return countNear(x, y, 1, (j) => grid.gateZone[j] !== -1) > 0;
+  const areaColor: Record<Area, number> = {
+    grass: AREA_COLORS.grass,
+    forest: AREA_COLORS.forest,
+    mine: AREA_COLORS.mine,
+    town: AREA_COLORS.town,
+    hollowmere: AREA_COLORS.hollowmere,
+    pen: AREA_COLORS.pen,
+    other: AREA_COLORS.grass,
   };
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
-      const key = info.terrainKey[i];
       let c: number;
-      switch (key) {
-        case 'water': {
-          const deep = countNear(x, y, 1, (j) => info.terrainKey[j] === 'water') >= 8;
-          c = deep ? AREA_COLORS.waterDeep : AREA_COLORS.waterShallow;
+      switch (info.terrainKey[i]) {
+        case 'water':
+          c = waterNear(x, y) >= 8 ? AREA_COLORS.waterDeep : AREA_COLORS.waterShallow;
           break;
-        }
         case 'road':
           c = isBridge(map, info, x, y) ? AREA_COLORS.bridge : AREA_COLORS.road;
           break;
@@ -112,7 +156,7 @@ export function buildTileColors(map: MapData, grid: WorldGrid, info: TileInfo): 
           c = AREA_COLORS.dirtPath;
           break;
         case 'floor':
-          c = y % 2 ? AREA_COLORS.floor : shade(AREA_COLORS.floor, 0.92);
+          c = AREA_COLORS.floor;
           break;
         case 'door':
           c = AREA_COLORS.door;
@@ -127,16 +171,30 @@ export function buildTileColors(map: MapData, grid: WorldGrid, info: TileInfo): 
           c = AREA_COLORS.wall;
           break;
         default: {
-          // Blocked tiles (trees, rocks) have no zone of their own; borrow a neighbour's.
-          const inGatedArea = grid.gateZone[i] !== -1 || (grid.blocked[i] === 1 && countNear(x, y, 1, (j) => grid.gateZone[j] !== -1) > 0);
-          if (inGatedArea) c = AREA_COLORS.hollowmere;
-          else if (countNear(x, y, 2, isTree) >= 4) c = AREA_COLORS.forest;
-          else if (countNear(x, y, 4, isRocky) >= 5) c = AREA_COLORS.mine;
-          else if (countNear(x, y, 3, isBuilt) > 0) c = AREA_COLORS.town;
-          else c = AREA_COLORS.grass;
+          // Blend with neighbouring grass so area edges fade instead of forming squares.
+          let r = 0;
+          let g = 0;
+          let b = 0;
+          let n = 0;
+          for (let dy = -1; dy <= 1; dy++)
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+              const j = ny * width + nx;
+              if (info.terrainKey[j] !== 'grass') continue;
+              const w = dx === 0 && dy === 0 ? 4 : 1;
+              const ac = areaColor[areas[j]];
+              r += ((ac >> 16) & 255) * w;
+              g += ((ac >> 8) & 255) * w;
+              b += (ac & 255) * w;
+              n += w;
+            }
+          // The walled area keeps a hard edge so it reads as separate.
+          c = areas[i] === 'hollowmere' || areas[i] === 'pen' ? areaColor[areas[i]] : (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n);
         }
       }
-      colors[i] = shade(c, 0.94 + hash2(x, y) * 0.1);
+      colors[i] = shade(c, 0.97 + hash2(x, y) * 0.05);
     }
   }
   return colors;

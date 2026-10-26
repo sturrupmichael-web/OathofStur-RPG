@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import type { MapData, WorldGrid } from '@rpg/shared';
-import { buildTileColors, hash2, isBridge, shade, tileInfo, type TileInfo } from './palette';
+import type { Building } from './buildings';
+import { WALL_HEIGHT } from './buildings';
+import { hash2, isBridge, shade, type TileInfo } from './palette';
+import { textures } from './textures';
 
 export const WATER_TOP = -0.18;
 
@@ -9,9 +12,8 @@ export interface TerrainLayer {
   group: THREE.Group;
   /** Meshes worth raycasting for clicks (tall things that hide the ground). */
   pickables: THREE.Object3D[];
-  tileColors: number[];
-  info: TileInfo;
-  fishingSpots: { x: number; y: number }[];
+  /** Scrolled each frame so the river flows. */
+  waterTexture: THREE.Texture;
 }
 
 /** InstancedMesh that remembers which tile each instance belongs to, for picking. */
@@ -38,30 +40,47 @@ function finish(mesh: THREE.InstancedMesh, shadows: { cast?: boolean; receive?: 
   return mesh;
 }
 
-export function buildTerrain(map: MapData, grid: WorldGrid): TerrainLayer {
-  const info = tileInfo(map);
-  const tileColors = buildTileColors(map, grid, info);
+export function buildTerrain(map: MapData, grid: WorldGrid, info: TileInfo, tileColors: number[], buildings: Building[]): TerrainLayer {
   const group = new THREE.Group();
-  const lambert = () => new THREE.MeshLambertMaterial({ color: 0xffffff });
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const size = map.width * map.height;
+  const textured = (tex: THREE.Texture, flat = false) => new THREE.MeshLambertMaterial({ color: 0xffffff, map: tex, flatShading: flat });
 
   const box = new THREE.BoxGeometry(1, 1, 1);
-  const ground = tiledMesh(box, lambert(), size);
-  const water = tiledMesh(box, new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.92 }), size);
-  const mountainBase = tiledMesh(box, lambert(), size);
+  // One ground mesh per surface texture; instance colours carry the area tint.
+  const groundByKey: Record<string, THREE.InstancedMesh> = {
+    grass: tiledMesh(box, textured(textures.grass()), size),
+    road: tiledMesh(box, textured(textures.cobble()), size),
+    dirt: tiledMesh(box, textured(textures.dirt()), size),
+    planks: tiledMesh(box, textured(textures.planks()), size),
+    stone: tiledMesh(box, textured(textures.rock()), size),
+  };
+  const surfaceFor = (key: string, bridge: boolean) => {
+    if (bridge || key === 'floor' || key === 'door') return 'planks';
+    if (key === 'road') return 'road';
+    if (key === 'dirt_path' || key === 'gate') return 'dirt';
+    if (key === 'mountain' || key === 'wall') return 'stone';
+    return 'grass';
+  };
+  const waterTexture = textures.water().clone();
+  waterTexture.needsUpdate = true;
+  const water = tiledMesh(box, new THREE.MeshLambertMaterial({ color: 0xffffff, map: waterTexture, transparent: true, opacity: 0.93 }), size);
+  const mountainBase = tiledMesh(box, textured(textures.rock()), size);
   const peakGeo = new THREE.CylinderGeometry(0.1, 0.62, 1, 5);
   peakGeo.translate(0, 0.5, 0);
-  const peaks = tiledMesh(peakGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), size);
-  const walls = tiledMesh(box, lambert(), size);
+  const peaks = tiledMesh(peakGeo, textured(textures.rock(), true), size);
+  const snowGeo = new THREE.CylinderGeometry(0.115, 0.26, 0.27, 5);
+  snowGeo.translate(0, 0.87, 0);
+  const snow = tiledMesh(snowGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), size);
+  const walls = tiledMesh(box, textured(textures.bricks()), size);
   const postGeo = new THREE.BoxGeometry(0.12, 0.75, 0.12);
   postGeo.translate(0, 0.375, 0);
-  const posts = tiledMesh(postGeo, lambert(), size);
+  const posts = tiledMesh(postGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), size);
   const railGeo = new THREE.BoxGeometry(1, 0.06, 0.05);
-  const rails = tiledMesh(railGeo, lambert(), size * 4);
-  const fishingSpots: { x: number; y: number }[] = [];
+  const rails = tiledMesh(railGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), size * 4);
+  const inBuilding = (x: number, y: number) => buildings.some((b) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1);
 
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= map.width || y >= map.height ? '' : info.terrainKey[y * map.width + x]);
   const fenceLike = (k: string) => k === 'fence' || k === 'gate';
@@ -77,14 +96,18 @@ export function buildTerrain(map: MapData, grid: WorldGrid): TerrainLayer {
       if (key === 'water') {
         m.compose(new THREE.Vector3(cx, WATER_TOP - 0.25, cz), q.identity(), new THREE.Vector3(1, 0.5, 1));
         pushInstance(water, m, color, i);
-        if (info.placementKey[i]?.endsWith('fishing_spot')) fishingSpots.push({ x, y });
         continue;
       }
 
       const bridge = isBridge(map, info, x, y);
       const top = bridge ? 0.06 : 0;
-      m.compose(new THREE.Vector3(cx, top - 0.3, cz), q.identity(), new THREE.Vector3(1, 0.6, 1));
-      pushInstance(ground, m, color, i);
+      // Random quarter turns hide texture repeats on natural ground.
+      const surface = surfaceFor(key, bridge);
+      const turn = surface === 'grass' || surface === 'dirt' || surface === 'stone' ? Math.floor(hash2(x, y, 11) * 4) : bridge ? 1 : 0;
+      q.setFromAxisAngle(up, (turn * Math.PI) / 2);
+      m.compose(new THREE.Vector3(cx, top - 0.3, cz), q, new THREE.Vector3(1, 0.6, 1));
+      pushInstance(groundByKey[surface], m, color, i);
+      q.identity();
 
       if (bridge) {
         // Water shows under the gaps of the bridge rails.
@@ -103,10 +126,13 @@ export function buildTerrain(map: MapData, grid: WorldGrid): TerrainLayer {
         const s = 0.95 + hash2(x, y, 4) * 0.35;
         m.compose(new THREE.Vector3(cx, 0.45, cz), q, new THREE.Vector3(s, h, s));
         pushInstance(peaks, m, tone, i);
+        if (h > 1.9) pushInstance(snow, m, 0xf4f6fa, i);
         q.identity();
       } else if (key === 'wall') {
-        const tone = shade(0x8b8a85, 0.85 + hash2(x, y, 5) * 0.25);
-        m.compose(new THREE.Vector3(cx, 0.65, cz), q.identity(), new THREE.Vector3(1, 1.3, 1));
+        // Town buildings are warm sandstone; the southeast boundary wall is dark granite.
+        const base = inBuilding(x, y) ? 0xc4b08e : 0x6e6862;
+        const tone = shade(base, 0.9 + hash2(x, y, 5) * 0.18);
+        m.compose(new THREE.Vector3(cx, WALL_HEIGHT / 2, cz), q.identity(), new THREE.Vector3(1, WALL_HEIGHT, 1));
         pushInstance(walls, m, tone, i);
       } else if (key === 'fence') {
         m.compose(new THREE.Vector3(cx, 0, cz), q.identity(), new THREE.Vector3(1, 1, 1));
@@ -140,8 +166,9 @@ export function buildTerrain(map: MapData, grid: WorldGrid): TerrainLayer {
     }
   }
 
+  for (const g of Object.values(groundByKey)) group.add(finish(g, { receive: true }));
   group.add(
-    finish(ground, { receive: true }),
+    finish(snow, { cast: true, receive: true }),
     finish(water, { receive: true }),
     finish(mountainBase, { cast: true, receive: true }),
     finish(peaks, { cast: true, receive: true }),
@@ -150,7 +177,7 @@ export function buildTerrain(map: MapData, grid: WorldGrid): TerrainLayer {
     finish(rails, { cast: true }),
   );
 
-  return { group, pickables: [peaks, mountainBase, walls], tileColors, info, fishingSpots };
+  return { group, pickables: [peaks, mountainBase, walls], waterTexture };
 }
 
 /** Iron gate: two stone pillars and a row of bars across the opening. */

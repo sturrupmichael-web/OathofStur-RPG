@@ -2,18 +2,26 @@ import * as THREE from 'three';
 import type { EntityId, MapData, Point, WorldGrid } from '@rpg/shared';
 import type { ClientState } from '../state/ClientState';
 import { CameraRig } from './CameraRig';
+import { BuildingLayer, detectBuildings } from './buildings';
 import { EntityLayer } from './EntityLayer';
+import { buildTileColors, classifyAreas, tileInfo, type TileInfo } from './palette';
+import { buildScenery } from './scenery';
 import { buildTerrain, type TerrainLayer } from './terrain';
 
 export interface PickResult {
   tile: Point;
   entityId: EntityId | null;
+  /** Set when the cursor is over a building's roof. */
+  buildingName?: string;
 }
 
 /** Owns the Three.js scene. Reads ClientState, never mutates game state. */
 export class Renderer {
   readonly rig = new CameraRig();
   readonly terrain: TerrainLayer;
+  readonly info: TileInfo;
+  readonly tileColors: number[];
+  readonly buildings: BuildingLayer;
   private readonly webgl: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly entities: EntityLayer;
@@ -48,8 +56,15 @@ export class Renderer {
     this.sun.shadow.bias = -0.0008;
     this.scene.add(this.sun, this.sun.target);
 
-    this.terrain = buildTerrain(map, grid);
+    this.info = tileInfo(map);
+    const areas = classifyAreas(map, grid, this.info);
+    this.tileColors = buildTileColors(map, this.info, areas);
+    const buildings = detectBuildings(map, this.info);
+    this.terrain = buildTerrain(map, grid, this.info, this.tileColors, buildings);
     this.scene.add(this.terrain.group);
+    this.buildings = new BuildingLayer(map, grid, this.info, buildings);
+    this.scene.add(this.buildings.group);
+    this.scene.add(buildScenery(map, grid, this.info, areas, this.tileColors));
     this.entities = new EntityLayer(state, map, grid);
     this.scene.add(this.entities.group);
 
@@ -94,9 +109,12 @@ export class Renderer {
     const hasGround = this.raycaster.ray.intersectPlane(this.groundPlane, groundHit) !== null;
     const groundDist = hasGround ? this.raycaster.ray.origin.distanceTo(groundHit) : Infinity;
 
-    const hits = this.raycaster.intersectObjects([...this.entities.pickables, ...this.terrain.pickables], false);
+    const roofs = this.buildings.roofPickables.filter((r) => r.visible);
+    const hits = this.raycaster.intersectObjects([...this.entities.pickables, ...this.terrain.pickables, ...roofs], true);
     for (const hit of hits) {
       if (hit.distance > groundDist + 0.5) break;
+      const building = this.buildings.buildingFromHit(hit);
+      if (building) return { tile: building.entry, entityId: null, buildingName: building.name };
       const entityId = this.entities.entityFromHit(hit);
       if (entityId !== null) {
         const view = this.state.entities.get(entityId);
@@ -157,6 +175,9 @@ export class Renderer {
       (this.clickPulse.material as THREE.MeshBasicMaterial).opacity = 1 - age;
     }
 
+    const self = this.state.player;
+    this.buildings.update(now, self ? { x: self.data.x, y: self.data.y } : null);
+    this.terrain.waterTexture.offset.set((now / 9000) % 1, (now / 14000) % 1);
     this.entities.update(now);
     this.webgl.render(this.scene, this.rig.camera);
   }

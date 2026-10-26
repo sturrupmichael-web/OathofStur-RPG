@@ -229,12 +229,15 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     [0.68, 0.127, 0.088, 0],
     [0.74, 0.13, 0.09, 0.004],
     [0.8, 0.142, 0.095, 0.01],
-    [0.85, 0.156, 0.097, 0.013],
-    [0.895, 0.165, 0.093, 0.01],
-    [0.93, 0.163, 0.082, 0.002],
-    [0.952, 0.12, 0.066, -0.006],
-    [0.968, 0.062, 0.05, -0.006],
-    [0.972, 0.04, 0.035, -0.006],
+    [0.84, 0.156, 0.097, 0.013],
+    [0.862, 0.172, 0.096, 0.012],
+    [0.885, 0.196, 0.093, 0.01],
+    [0.905, 0.21, 0.087, 0.005],
+    [0.922, 0.198, 0.078, 0.001],
+    [0.936, 0.17, 0.07, -0.003],
+    [0.95, 0.125, 0.06, -0.005],
+    [0.962, 0.08, 0.052, -0.006],
+    [0.974, 0.04, 0.035, -0.006],
   ];
   const top = s.trim ?? s.tunic;
   b.tube(
@@ -244,7 +247,12 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     }),
     {
       layer: bodyLayer,
-      radial: 24,
+      radial: 28,
+      // The shoulders are part of the torso, rounding over into the arm, and move with it.
+      weigh: (p, w) => {
+        const k = THREE.MathUtils.smoothstep(Math.abs(p.x), 0.09 * bulk, 0.17 * bulk) * THREE.MathUtils.smoothstep(p.y, 0.8, 0.885) * 0.8;
+        return k > 0 ? [...w.map(([bone, x]): [number, number] => [bone, x * (1 - k)]), [arms[p.x < 0 ? 0 : 1].shoulder, k]] : w;
+      },
       paint: (p, c) => {
         if (s.bones && p.z > 0 && p.y > 0.72 && p.y < 0.9 && Math.abs(p.x) > 0.02) return Math.sin((p.y - 0.72) * 140) > 0.2 ? 0x3a3428 : c;
         return c;
@@ -320,10 +328,10 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
       [wristJ + 0.01, hand],
     ];
     const shape: [number, number, number, number][] = [
-      [0.952, 0.02, 0.02, 0],
-      [0.945, 0.036, 0.038, 0],
-      [0.925, 0.047, 0.05, 0],
-      [0.88, 0.047, 0.048, 0],
+      // Starts inside the shoulder, so the torso's rounded shoulder covers the join.
+      [0.905, 0.038, 0.04, 0],
+      [0.885, 0.046, 0.048, 0],
+      [0.85, 0.047, 0.048, 0],
       [0.8, 0.042, 0.044, 0],
       [0.74, 0.038, 0.039, 0],
       [elbowJ, 0.035, 0.037, -0.004],

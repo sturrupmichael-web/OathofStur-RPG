@@ -596,6 +596,24 @@ export function buildGroundItem(itemId: string): THREE.Group {
     g.add(mesh(new THREE.BoxGeometry(len, 0.012, 0.04), color, len / 2, 0.02, 0));
     g.add(mesh(new THREE.BoxGeometry(0.03, 0.02, 0.12), 0x6b5a3a, 0, 0.02, 0));
     g.add(mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.1, 6).rotateZ(Math.PI / 2), 0x5a3a20, -0.06, 0.02, 0));
+  } else if (/_(helm|chainbody|platelegs|shield)$/.test(itemId)) {
+    const color = itemId.startsWith('bronze') ? 0xc88a4a : itemId.startsWith('iron') ? 0x9a9ca4 : 0xc9d3dd;
+    if (itemId.endsWith('helm')) g.add(mesh(new THREE.SphereGeometry(0.12, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), color, 0, 0, 0));
+    else if (itemId.endsWith('chainbody')) g.add(mesh(new THREE.BoxGeometry(0.34, 0.05, 0.3), color, 0, 0.025, 0));
+    else if (itemId.endsWith('platelegs')) {
+      g.add(mesh(new THREE.BoxGeometry(0.1, 0.05, 0.34), color, -0.06, 0.025, 0));
+      g.add(mesh(new THREE.BoxGeometry(0.1, 0.05, 0.34), color, 0.06, 0.025, 0.02));
+    } else g.add(mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.03, 4).scale(0.8, 1, 1.25), color, 0, 0.015, 0));
+  } else if (itemId === 'raw_beef' || itemId === 'beef' || itemId === 'burnt_meat') {
+    const color = itemId === 'raw_beef' ? 0xc8424a : itemId === 'beef' ? 0x8a4a24 : 0x2a2018;
+    g.add(mesh(new THREE.SphereGeometry(0.1, 8, 6).scale(1.3, 0.55, 1), color, 0, 0.05, 0));
+  } else if (itemId === 'cowhide') {
+    g.add(mesh(new THREE.BoxGeometry(0.4, 0.015, 0.3), 0xf0ece2, 0, 0.01, 0));
+    g.add(mesh(new THREE.BoxGeometry(0.12, 0.018, 0.1), 0x2a2420, 0.06, 0.012, 0.04));
+  } else if (itemId === 'crimson_feathers') {
+    for (const a of [0, 0.7]) g.add(mesh(new THREE.ConeGeometry(0.03, 0.22, 4).rotateZ(Math.PI / 2).rotateY(a), 0xc8262a, 0, 0.02, 0));
+  } else if (itemId === 'lizard_scales') {
+    for (const [x, z] of [[0, 0], [0.06, 0.04], [-0.05, 0.05]]) g.add(mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.01, 6), 0xd8b050, x, 0.01, z));
   } else if (itemId === 'coins') {
     for (const [x, z] of [[0, 0], [0.06, 0.04], [-0.04, 0.05]]) g.add(mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.012, 10), 0xf0c840, x, 0.01, z));
   } else {

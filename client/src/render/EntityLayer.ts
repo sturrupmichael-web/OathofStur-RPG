@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { EntityId, MapData, WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView } from '../state/ClientState';
-import { animateCharacter, buildCharacter, styleForNpc, type CharacterRig } from './character';
+import { CHARACTER_STYLES, animateCharacter, buildCharacter, characterBusy, playCharacter, styleForNpc, withGear, type CharacterRig } from './character';
+import { animateCreature, buildCreature, creatureBusy, isCreature, playCreature, type CreatureRig } from './creatures';
 import { FLICKER, RESOURCE_STYLES, buildGroundItem, buildStation, type PartStyle } from './models';
 import type { Heightmap } from './heightmap';
 import { hash2, shade, type TileInfo } from './palette';
@@ -26,6 +27,7 @@ export class EntityLayer {
   private readonly facing = new Map<EntityId, number>();
   private readonly flickers: THREE.Object3D[] = [];
   private readonly rigs = new Map<EntityId, CharacterRig>();
+  private readonly creatures = new Map<EntityId, CreatureRig>();
   private lastFrame = 0;
   private readonly tmp = new THREE.Matrix4();
 
@@ -68,10 +70,22 @@ export class EntityLayer {
     state.on('added', (v) => this.add(v));
     state.on('removed', (id) => this.remove(id));
     state.on('changed', (v) => {
-      // A tree felled or grown back swaps models.
-      if (v.data.kind !== 'resource') return;
+      // A tree felled or grown back swaps models; a player changing gear is rebuilt in it.
+      const gearChanged = v.data.kind === 'player' && this.meshes.get(v.data.id)?.userData.gear !== JSON.stringify(v.data.gear ?? {});
+      if (v.data.kind !== 'resource' && !gearChanged) return;
+      const yaw = this.meshes.get(v.data.id)?.rotation.y;
       this.remove(v.data.id);
       this.add(v);
+      if (yaw !== undefined) this.meshes.get(v.data.id)!.rotation.y = yaw;
+    });
+    state.on('animation', ({ entityId, kind }) => this.play(entityId, kind, performance.now()));
+    // Whoever is hit flinches as the blow lands, unless busy with a move of their own.
+    state.on('hit', ({ targetId }) => {
+      const now = performance.now();
+      const rig = this.rigs.get(targetId);
+      if (rig && !characterBusy(rig, now)) rig.oneShot = { kind: 'block', start: now + 220 };
+      const creature = this.creatures.get(targetId);
+      if (creature && !creatureBusy(creature, now)) creature.oneShot = { kind: 'block', start: now + 220 };
     });
   }
 
@@ -98,7 +112,7 @@ export class EntityLayer {
     for (const [id, obj] of this.meshes) {
       const view = this.state.entities.get(id);
       if (!view) continue;
-      if (view.data.kind === 'player' || view.data.kind === 'npc') this.placeCharacter(id, obj, view, now, dt);
+      if (view.data.kind === 'player' || view.data.kind === 'npc' || view.data.kind === 'monster') this.placeCharacter(id, obj, view, now, dt);
     }
     for (const pool of this.pools.values()) if (pool.ripple && pool.slotOf.size) this.animateRipples(pool, now);
     this.flickers.forEach((f, i) => {
@@ -125,14 +139,22 @@ export class EntityLayer {
       obj = buildGroundItem(data.defKey ?? '');
       obj.rotation.y = hash2(data.id, 11) * Math.PI * 2;
     } else if (data.kind === 'station' || data.kind === 'scenery') obj = buildStation(data.defKey ?? '', (dx, dy) => this.objectAt(data.x + dx, data.y + dy), hash2(data.x, data.y, 5));
-    else {
-      const style =
-        data.kind === 'npc'
-          ? styleForNpc(data.defKey ?? '', this.map.defs.npcs[data.defKey ?? '']?.role)
-          : data.id === this.state.playerId
-            ? 'player'
-            : 'other_player';
-      const rig = buildCharacter(style, hash2(data.id, 3) * 100);
+    else if (data.kind === 'monster' && isCreature(data.defKey ?? '')) {
+      const rig = buildCreature(data.defKey as Parameters<typeof buildCreature>[0], hash2(data.id, 3) * 100);
+      this.creatures.set(data.id, rig);
+      obj = rig.root;
+    } else if (data.kind === 'monster') {
+      const rig = buildCharacter(CHARACTER_STYLES[data.defKey ?? ''] ? (data.defKey as string) : 'goblin', hash2(data.id, 3) * 100);
+      this.rigs.set(data.id, rig);
+      obj = rig.root;
+    } else if (data.kind === 'player') {
+      const look = CHARACTER_STYLES[data.id === this.state.playerId ? 'player' : 'other_player'];
+      const rig = buildCharacter(withGear(look, data.gear), hash2(data.id, 3) * 100, true);
+      this.rigs.set(data.id, rig);
+      obj = rig.root;
+      obj.userData.gear = JSON.stringify(data.gear ?? {});
+    } else {
+      const rig = buildCharacter(styleForNpc(data.defKey ?? '', this.map.defs.npcs[data.defKey ?? '']?.role), hash2(data.id, 3) * 100);
       this.rigs.set(data.id, rig);
       obj = rig.root;
     }
@@ -153,6 +175,7 @@ export class EntityLayer {
       this.group.remove(obj);
       this.meshes.delete(id);
       this.rigs.delete(id);
+      this.creatures.delete(id);
       return;
     }
     for (const pool of this.pools.values()) {
@@ -223,11 +246,29 @@ export class EntityLayer {
     if (moving) this.facing.set(id, Math.atan2(dx, dy));
     const work = view.data.workingOn;
     if (work && !moving) this.facing.set(id, Math.atan2(work.x - view.toX, work.y - view.toY));
+    // Fighters turn to face their opponent.
+    const foe = view.data.interacting !== undefined ? this.state.entities.get(view.data.interacting) : undefined;
+    const fighting = !!foe && !view.data.dead;
+    if (foe && !moving && !view.data.dead) {
+      const at = this.state.renderPosition(foe, now);
+      if (at.x !== pos.x || at.y !== pos.y) this.facing.set(id, Math.atan2(at.x - pos.x, at.y - pos.y));
+    }
     const targetYaw = this.facing.get(id) ?? obj.rotation.y;
     obj.rotation.y += shortestAngle(obj.rotation.y, targetYaw) * Math.min(1, dt * 12);
     obj.position.set(pos.x + 0.5, this.hm.groundAt(pos.x + 0.5, pos.y + 0.5), pos.y + 0.5);
+    const speed = Math.min(1.4, Math.hypot(dx, dy));
+    const dead = !!view.data.dead;
     const rig = this.rigs.get(id);
-    if (rig) animateCharacter(rig, dt, now, moving, Math.min(1.4, Math.hypot(dx, dy)), work ? (view.data.activity ?? 'chop') : null);
+    if (rig) animateCharacter(rig, dt, now, moving, speed, work ? (view.data.activity ?? 'chop') : fighting ? 'fight' : null, dead);
+    const creature = this.creatures.get(id);
+    if (creature) animateCreature(creature, dt, now, moving, speed, fighting, dead);
+  }
+
+  private play(id: EntityId, kind: string, now: number): void {
+    const rig = this.rigs.get(id);
+    if (rig) playCharacter(rig, kind, now);
+    const creature = this.creatures.get(id);
+    if (creature) playCreature(creature, kind, now);
   }
 
   private objectAt(x: number, y: number): string | null {

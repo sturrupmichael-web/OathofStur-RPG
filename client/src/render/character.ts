@@ -25,7 +25,43 @@ export interface CharacterStyle {
   apron?: number;
   robe?: number;
   /** Item carried in the right hand. */
-  holding?: 'staff' | 'scroll' | 'ladle';
+  holding?: 'staff' | 'scroll' | 'ladle' | 'club';
+  /** Worn and wielded gear, as metal colours. */
+  helm?: number;
+  shield?: number;
+  weapon?: { kind: 'dagger' | 'sword' | 'scimitar'; color: number };
+  /** Overall size; goblins are small. */
+  scale?: number;
+  /** Eyes that glow this colour (skeletons, spirits). */
+  glowEyes?: number;
+  /** A ghost: see-through, no legs, drifting. */
+  ghost?: boolean;
+  /** Bare bones: ribs over the chest, no nose or ears. */
+  bones?: boolean;
+}
+
+/** Colours for each metal tier, used on worn gear. */
+export const METALS: Record<string, number> = { bronze: 0xb8793a, iron: 0x7d7f86, steel: 0xb4bec8 };
+
+/**
+ * A look with gear on top: helmets and shields are added, a chainbody
+ * replaces the tunic and platelegs the trousers.
+ */
+export function withGear(base: CharacterStyle, gear: Partial<Record<string, string>> | undefined): CharacterStyle {
+  if (!gear) return base;
+  const metal = (id: string | undefined) => (id ? METALS[id.split('_')[0]] : undefined);
+  const s: CharacterStyle = { ...base };
+  if (gear.helmet) [s.helm, s.hat, s.hairStyle] = [metal(gear.helmet), undefined, 'none'];
+  if (gear.shield) s.shield = metal(gear.shield);
+  if (gear.body) [s.tunic, s.trim] = [shadeHex(metal(gear.body)!, 0.82), metal(gear.body)];
+  if (gear.legs) [s.trousers, s.bootCuff] = [shadeHex(metal(gear.legs)!, 0.9), undefined];
+  if (gear.weapon) s.weapon = { kind: gear.weapon.endsWith('dagger') ? 'dagger' : 'sword', color: metal(gear.weapon) ?? 0x9a9ca4 };
+  return s;
+}
+
+function shadeHex(hex: number, k: number): number {
+  const c = new THREE.Color(hex).multiplyScalar(k);
+  return c.getHex();
 }
 
 export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
@@ -172,6 +208,79 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     hat: 'hood',
     hatColor: 0x35592f,
   },
+  goblin: {
+    tunic: 0x6b5a3a,
+    trousers: 0x4a3a28,
+    boots: 0x3a2a1a,
+    belt: 0x2a1a10,
+    skin: 0x7fa64a,
+    hairStyle: 'none',
+    holding: 'club',
+    scale: 0.78,
+  },
+  skeleton: {
+    tunic: 0xe6dfc8,
+    trousers: 0xe6dfc8,
+    boots: 0xd8d0b8,
+    skin: 0xe6dfc8,
+    hairStyle: 'none',
+    glowEyes: 0xff5a2a,
+    bones: true,
+    weapon: { kind: 'sword', color: 0x7a6a5a },
+  },
+  falcrest_guard: {
+    tunic: 0x6a6f7a,
+    trim: 0x2f4f8a,
+    trousers: 0x3a3f49,
+    boots: 0x2a2a2a,
+    belt: 0x2a2a2a,
+    buckle: 0xd4a73a,
+    hair: 0x3a2a1a,
+    hairStyle: 'none',
+    helm: 0x8a8f99,
+    shield: 0x2f4f8a,
+    weapon: { kind: 'sword', color: 0x9a9ca4 },
+    cape: 0x2f4f8a,
+  },
+  desert_bandit: {
+    tunic: 0xc8a878,
+    trim: 0x8a2c2c,
+    trousers: 0x6a5238,
+    boots: 0x4a3020,
+    belt: 0x8a2c2c,
+    skin: 0xb07a52,
+    hair: 0x1a1410,
+    hairStyle: 'short',
+    beard: 0x1a1410,
+    hat: 'hood',
+    hatColor: 0xd8c8a0,
+    weapon: { kind: 'scimitar', color: 0xb4bec8 },
+  },
+  storm_druid: {
+    tunic: 0x3a4a6a,
+    trim: 0x8fd0ff,
+    trousers: 0x2a3348,
+    boots: 0x2a2a2a,
+    robe: 0x34405e,
+    belt: 0x8fd0ff,
+    hair: 0xc8c8c8,
+    hairStyle: 'long',
+    beard: 0xc8c8c8,
+    hat: 'hood',
+    hatColor: 0x2a3550,
+    holding: 'staff',
+  },
+  wailing_spirit: {
+    tunic: 0xbfd8e8,
+    trousers: 0xbfd8e8,
+    boots: 0xbfd8e8,
+    robe: 0xa8c8dc,
+    skin: 0xd8eaf4,
+    hair: 0xe8f4fa,
+    hairStyle: 'long',
+    glowEyes: 0x6ae0ff,
+    ghost: true,
+  },
   farmer: {
     tunic: 0xc8a85a,
     trousers: 0x6a5a3a,
@@ -240,6 +349,8 @@ export function styleForNpc(key: string, role: string | undefined): string {
 
 export interface CharacterRig {
   root: THREE.Group;
+  /** Everything above the feet; tips over when the character dies. */
+  body: THREE.Group;
   hips: THREE.Group;
   torso: THREE.Group;
   head: THREE.Group;
@@ -265,6 +376,13 @@ export interface CharacterRig {
   walk: number;
   /** Per-character offset so idle motion isn't in sync. */
   seed: number;
+  /** Wielded weapon, hidden while a tool is out. */
+  weapon: THREE.Object3D | null;
+  /** A one-off animation (attack, block, eat) playing over everything else. */
+  oneShot: { kind: string; start: number } | null;
+  /** 0 = standing, 1 = lying dead. */
+  fallen: number;
+  ghost: boolean;
 }
 
 // Proportions: about 1.2 tiles tall and seven heads high.
@@ -398,11 +516,14 @@ const SHAPES = {
   robe: profiled([[0.02, 0.124, 0.084], [-0.2, 0.17, 0.13], [-0.56, 0.22, 0.17]], 16, true),
 };
 
-export function buildCharacter(styleKey: string, seed: number): CharacterRig {
-  const s = CHARACTER_STYLES[styleKey] ?? CHARACTER_STYLES.other_player;
+/** Builds a character from a named look or a look of its own; `tools` gives it the skilling tools players carry. */
+export function buildCharacter(style: string | CharacterStyle, seed: number, tools_ = false): CharacterRig {
+  const s = typeof style === 'string' ? (CHARACTER_STYLES[style] ?? CHARACTER_STYLES.other_player) : style;
   const skin = s.skin ?? 0xd9a77e;
   const root = new THREE.Group();
-  const hips = pivot(root, 0, HIP_Y);
+  const body = pivot(root, 0, 0);
+  if (s.scale) body.scale.setScalar(s.scale);
+  const hips = pivot(body, 0, HIP_Y);
 
   hips.add(part(SHAPES.pelvis, s.trousers));
 
@@ -449,13 +570,30 @@ export function buildCharacter(styleKey: string, seed: number): CharacterRig {
   const ear = new THREE.BoxGeometry(0.014, 0.04, 0.028);
   head.add(part(ear, skin, -0.073, 0.095, -0.005), part(ear, skin, 0.073, 0.095, -0.005));
   for (const x of [-0.03, 0.03]) {
+    if (s.glowEyes !== undefined) {
+      if (s.bones) head.add(part(new THREE.BoxGeometry(0.034, 0.03, 0.01), 0x1a1410, x, 0.104, 0.078));
+      head.add(part(new THREE.BoxGeometry(0.014, 0.012, 0.012), s.glowEyes, x, 0.104, 0.082, s.glowEyes));
+      continue;
+    }
     head.add(part(new THREE.BoxGeometry(0.022, 0.011, 0.006), 0xf4efe6, x, 0.104, 0.08));
     head.add(part(new THREE.BoxGeometry(0.01, 0.011, 0.007), 0x2a2018, x, 0.104, 0.081));
     head.add(part(new THREE.BoxGeometry(0.03, 0.007, 0.01), s.hair ?? 0x3a2a1a, x, 0.122, 0.079));
   }
-  const nose = new THREE.ConeGeometry(0.013, 0.045, 4).rotateX(Math.PI / 2 + 0.5);
-  head.add(part(nose, skin, 0, 0.082, 0.088));
-  head.add(part(new THREE.BoxGeometry(0.03, 0.006, 0.006), 0x9a5a4a, 0, 0.05, 0.072));
+  if (s.bones) {
+    // Grinning teeth and a ribcage over the chest.
+    head.add(part(new THREE.BoxGeometry(0.06, 0.016, 0.01), 0xf4efe0, 0, 0.045, 0.074));
+    for (let k = 0; k < 4; k++) torso.add(part(profiled([[0.08 + k * 0.045, 0.15 - k * 0.006, 0.096], [0.095 + k * 0.045, 0.152 - k * 0.006, 0.098]], 14), 0x3a3428));
+    torso.add(part(new THREE.BoxGeometry(0.03, 0.22, 0.012), 0xf4efe0, 0, 0.16, 0.099));
+  } else {
+    const nose = new THREE.ConeGeometry(0.013, 0.045, 4).rotateX(Math.PI / 2 + 0.5);
+    head.add(part(nose, skin, 0, 0.082, 0.088));
+    head.add(part(new THREE.BoxGeometry(0.03, 0.006, 0.006), 0x9a5a4a, 0, 0.05, 0.072));
+  }
+  if (s.skin === CHARACTER_STYLES.goblin.skin) {
+    // Long pointed ears and a big nose.
+    for (const side of [-1, 1]) head.add(part(new THREE.ConeGeometry(0.02, 0.1, 4).rotateZ(-side * 1.2), skin, side * 0.1, 0.11, -0.01));
+    head.add(part(new THREE.ConeGeometry(0.02, 0.07, 5).rotateX(Math.PI / 2 + 0.3), skin, 0, 0.08, 0.1));
+  }
   if (s.hair && s.hairStyle !== 'none') {
     head.add(part(SHAPES.hair, s.hair));
     // Back of the head down to the nape.
@@ -471,6 +609,11 @@ export function buildCharacter(styleKey: string, seed: number): CharacterRig {
   if (s.hat === 'chef') {
     head.add(part(profiled([[0.15, 0.08, 0.09], [0.2, 0.078, 0.088]], 12), s.hatColor!));
     head.add(part(profiled([[0.2, 0.08, 0.088], [0.25, 0.1, 0.1], [0.29, 0.09, 0.09], [0.305, 0.01, 0.01]], 12), s.hatColor!));
+  }
+  if (s.helm !== undefined) {
+    head.add(part(profiled([[0.06, 0.082, 0.094, -0.004], [0.13, 0.083, 0.095, -0.004], [0.18, 0.068, 0.08, -0.006], [0.215, 0.03, 0.036, -0.008], [0.224, 0.002, 0.002, -0.008]], 12), s.helm));
+    head.add(part(new THREE.BoxGeometry(0.02, 0.07, 0.02), s.helm, 0, 0.09, 0.094)); // nose guard
+    head.add(part(new THREE.BoxGeometry(0.17, 0.016, 0.17), shadeHex(s.helm, 0.8), 0, 0.13, -0.004));
   }
   if (s.hat === 'hood') head.add(part(profiled([[0.02, 0.085, 0.07, -0.04], [0.1, 0.088, 0.1, -0.008], [0.17, 0.07, 0.08, -0.012], [0.215, 0.004, 0.004, -0.015]], 14), s.hatColor!));
 
@@ -500,9 +643,29 @@ export function buildCharacter(styleKey: string, seed: number): CharacterRig {
     grip.add(part(new THREE.SphereGeometry(0.04, 8, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), 0x9a9a9a, 0, -0.26, 0.02));
   }
 
+  if (s.holding === 'club') {
+    const club = new THREE.Group();
+    club.add(part(new THREE.CylinderGeometry(0.045, 0.02, 0.42, 6).translate(0, 0.21, 0), 0x6b4a2b));
+    club.rotation.x = Math.PI / 2 + 0.5;
+    club.position.set(0, -0.06, 0.02);
+    grip.add(club);
+  }
+  let weapon: THREE.Object3D | null = null;
+  if (s.weapon) {
+    weapon = buildBlade(s.weapon.kind, s.weapon.color);
+    grip.add(weapon);
+  }
+  if (s.shield !== undefined) {
+    const kite = new THREE.Shape([new THREE.Vector2(0, 0.17), new THREE.Vector2(0.12, 0.1), new THREE.Vector2(0.1, -0.06), new THREE.Vector2(0, -0.2), new THREE.Vector2(-0.1, -0.06), new THREE.Vector2(-0.12, 0.1)]);
+    const geo = new THREE.ExtrudeGeometry(kite, { depth: 0.02, bevelEnabled: false }).rotateY(-Math.PI / 2);
+    const board = part(geo, s.shield, -0.06, -0.11, 0.02);
+    board.add(part(new THREE.SphereGeometry(0.03, 8, 6), shadeHex(s.shield, 1.25), -0.022, 0.0, 0));
+    arms[0].elbow.add(board);
+  }
+
   // Players carry a tool for each activity; only the one in use shows.
   const tools = new Map<string, THREE.Object3D>();
-  if (styleKey === 'player' || styleKey === 'other_player') {
+  if (tools_) {
     for (const [key, build] of Object.entries(TOOL_MODELS)) {
       const tool = build();
       tool.visible = false;
@@ -530,9 +693,25 @@ export function buildCharacter(styleKey: string, seed: number): CharacterRig {
     torso.add(part(new THREE.BoxGeometry(0.26, 0.025, 0.04), s.trim ?? s.cape, 0, TORSO - 0.035, -0.07));
   }
 
-  root.traverse((o) => (o.castShadow = true));
+  const ghost = !!s.ghost;
+  if (ghost) {
+    // See-through and legless: the robe trails into nothing.
+    for (const leg of legs) leg.hip.visible = false;
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const material = (m.material as THREE.MeshLambertMaterial).clone();
+      material.transparent = true;
+      material.opacity = 0.55;
+      material.depthWrite = false;
+      material.emissive = new THREE.Color(0x1a3040);
+      m.material = material;
+      m.castShadow = false;
+    });
+  } else root.traverse((o) => (o.castShadow = true));
   return {
     root,
+    body,
     hips,
     torso,
     head,
@@ -552,7 +731,34 @@ export function buildCharacter(styleKey: string, seed: number): CharacterRig {
     phase: 0,
     walk: 0,
     seed,
+    weapon,
+    oneShot: null,
+    fallen: 0,
+    ghost,
   };
+}
+
+/** A blade held in the right hand, pointing forward and a little down at rest. */
+function buildBlade(kind: 'dagger' | 'sword' | 'scimitar', color: number): THREE.Group {
+  const g = new THREE.Group();
+  const length = kind === 'dagger' ? 0.22 : 0.5;
+  g.add(part(new THREE.CylinderGeometry(0.014, 0.016, 0.1, 6), 0x5a3a20, 0, -0.01, 0.02));
+  g.add(part(new THREE.BoxGeometry(0.03, 0.022, kind === 'dagger' ? 0.08 : 0.14), 0x6b5a3a, 0, 0.045, 0.02));
+  const blade = new THREE.BoxGeometry(0.012, length, 0.045).translate(0, 0.055 + length / 2, 0.02);
+  if (kind === 'scimitar') {
+    // Curve the blade back toward the tip.
+    const pos = blade.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const t = (pos.getY(i) - 0.055) / length;
+      pos.setZ(i, pos.getZ(i) - t * t * 0.12);
+    }
+    blade.computeVertexNormals();
+  }
+  // A narrowing point.
+  const tip = new THREE.ConeGeometry(0.025, 0.07, 4).scale(0.5, 1, 1).translate(0, 0.055 + length + 0.035, kind === 'scimitar' ? -0.1 : 0.02);
+  g.add(part(blade, color, 0, 0, 0, 0x101010), part(tip, color));
+  g.rotation.x = Math.PI / 2 + 0.45;
+  return g;
 }
 
 /** One full stride (two steps) per 1.2 s, matching one tile per 0.6 s tick. */
@@ -733,6 +939,14 @@ const ACTIVITIES: Record<string, { period: number; pose: (u: number) => Pose }> 
       return { shoulderRx: -1.0 + shake - 0.35 * flip, elbowR: -0.5 + 0.3 * flip, shoulderLx: -0.55, elbowL: -1.1, torsoX: 0.18, headX: 0.25 };
     },
   },
+  // Squared up to a fight: guard raised, knees soft, a slight sway.
+  fight: {
+    period: 1800,
+    pose: (u) => {
+      const sway = Math.sin(u * Math.PI * 2) * 0.05;
+      return { shoulderRx: -0.75 + sway, elbowR: -0.95, shoulderRz: 0.15, shoulderLx: -0.6 - sway, elbowL: -1.25, shoulderLz: -0.1, hipL: -0.22, hipR: 0.12, kneeL: 0.22, kneeR: 0.16, hipsY: -0.02, torsoY: -0.12 };
+    },
+  },
   // Feeding the furnace: lean in and push the ore forward with both hands.
   smelt: {
     period: 1800,
@@ -743,7 +957,100 @@ const ACTIVITIES: Record<string, { period: number; pose: (u: number) => Pose }> 
   },
 };
 
-export function animateCharacter(rig: CharacterRig, dt: number, now: number, moving: boolean, speed = 1, activity: string | null = null): void {
+/**
+ * One-off moves, `u` running 0..1 over `ms`. Poses blend in and out at the
+ * ends, so they sit on top of standing, walking or fighting stances.
+ */
+const ONE_SHOTS: Record<string, { ms: number; pose: (u: number) => Pose }> = {
+  // Fists: pull back, then a straight jab.
+  punch: {
+    ms: 550,
+    pose: (u) => {
+      const jab = u < 0.4 ? -u / 0.4 : Math.sin(((u - 0.4) / 0.6) * Math.PI);
+      return { shoulderRx: -1.2 - 0.35 * jab, elbowR: -1.6 + 1.5 * Math.max(0, jab), shoulderLx: -1.1, elbowL: -1.7, torsoY: 0.3 * jab - 0.15, torsoX: 0.1 };
+    },
+  },
+  // Dagger: tuck the blade, then a lunging thrust.
+  stab: {
+    ms: 600,
+    pose: (u) => {
+      const thrust = u < 0.35 ? -u / 0.35 : Math.sin(((u - 0.35) / 0.65) * Math.PI);
+      return {
+        shoulderRx: -1.3 - 0.25 * thrust,
+        elbowR: -1.5 + 1.45 * Math.max(0, thrust),
+        shoulderLx: -0.3,
+        elbowL: -0.6,
+        torsoX: 0.12 + 0.18 * thrust,
+        torsoY: 0.25 * thrust,
+        hipL: -0.45 * Math.max(0, thrust),
+        kneeL: 0.35 * Math.max(0, thrust),
+        hipR: 0.25 * Math.max(0, thrust),
+      };
+    },
+  },
+  // Sword: raise it high over the right shoulder, then cut down and across.
+  slash: {
+    ms: 700,
+    pose: (u) => {
+      const lift = swing(u, 0.45);
+      const cut = 1 - lift;
+      return {
+        shoulderRx: -0.6 - 2.3 * lift,
+        shoulderRz: 0.5 * lift - 0.35 * cut * Math.sin(u * Math.PI),
+        elbowR: -0.3 - 0.7 * lift,
+        shoulderLx: -0.4,
+        elbowL: -0.7,
+        torsoY: -0.45 * lift + 0.4 * cut * Math.sin(u * Math.PI),
+        torsoX: 0.25 * cut * Math.sin(u * Math.PI),
+      };
+    },
+  },
+  // Monsters with a club or blade: a heavy overhead blow.
+  swing: {
+    ms: 700,
+    pose: (u) => {
+      const lift = swing(u, 0.55);
+      return { shoulderRx: -0.4 - 2.6 * lift, elbowR: -0.2 - 0.6 * lift, shoulderLx: -0.5, elbowL: -0.4, torsoX: 0.3 * (1 - lift) - 0.1 * lift };
+    },
+  },
+  // A spirit's wail: arms flung up and out, head back.
+  wail: {
+    ms: 900,
+    pose: (u) => {
+      const k = Math.sin(u * Math.PI);
+      return { shoulderRx: -2.4 * k, shoulderLx: -2.4 * k, shoulderRz: 0.6 * k, shoulderLz: -0.6 * k, elbowR: -0.2, elbowL: -0.2, headX: -0.5 * k, torsoX: -0.2 * k };
+    },
+  },
+  // Taking a hit: guard up and flinch back.
+  block: {
+    ms: 450,
+    pose: (u) => {
+      const k = Math.sin(u * Math.PI);
+      return { shoulderLx: -1.3 * k, elbowL: -1.3 * k, shoulderLz: 0.3 * k, torsoX: -0.18 * k, headX: -0.15 * k, hipsY: -0.02 * k };
+    },
+  },
+  // Food to the mouth, a couple of chews.
+  eat: {
+    ms: 1100,
+    pose: (u) => {
+      const k = Math.min(1, Math.sin(u * Math.PI) * 1.6);
+      return { shoulderRx: -1.25 * k, shoulderRz: -0.35 * k, elbowR: -2.1 * k, headX: -0.1 * k + Math.sin(u * Math.PI * 6) * 0.04 * k };
+    },
+  },
+};
+
+/** Starts a one-off animation. Unknown kinds (a monster's bite on a humanoid rig) fall back to a swing. */
+export function playCharacter(rig: CharacterRig, kind: string, now: number): void {
+  if (kind === 'death') return; // handled by the `dead` flag
+  rig.oneShot = { kind: ONE_SHOTS[kind] ? kind : 'swing', start: now };
+}
+
+/** Whether a one-off animation is still playing, so a block doesn't cut off an attack. */
+export function characterBusy(rig: CharacterRig, now: number): boolean {
+  return !!rig.oneShot && now - rig.oneShot.start < ONE_SHOTS[rig.oneShot.kind].ms;
+}
+
+export function animateCharacter(rig: CharacterRig, dt: number, now: number, moving: boolean, speed = 1, activity: string | null = null, dead = false): void {
   rig.walk += ((moving ? 1 : 0) - rig.walk) * Math.min(1, dt * 8);
   if (rig.walk > 0.01) rig.phase += dt * STRIDE_RATE * speed;
   else rig.phase = 0;
@@ -783,11 +1090,46 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
   rig.work += ((target ? 1 : 0) - rig.work) * Math.min(1, dt * 10);
   const shown = rig.work > 0.05 ? rig.activity : null;
   for (const [key, tool] of rig.tools) tool.visible = !!shown && ACTIVITY_TOOL[shown] === key;
+  if (rig.weapon) rig.weapon.visible = !(shown && ACTIVITY_TOOL[shown]);
   const anim = rig.activity ? ACTIVITIES[rig.activity] : undefined;
   if (anim && rig.work > 0.01) {
     const u = ((now + rig.seed * 1000) % anim.period) / anim.period;
-    const p = anim.pose(u);
-    const k = rig.work;
+    applyPose(rig, anim.pose(u), rig.work);
+  } else if (rig.work <= 0.01) rig.activity = null;
+
+  // A one-off move on top, eased in and out over its first and last fifth.
+  if (rig.oneShot) {
+    const shot = ONE_SHOTS[rig.oneShot.kind];
+    const u = (now - rig.oneShot.start) / shot.ms;
+    if (u >= 1) rig.oneShot = null;
+    else if (u >= 0) applyPose(rig, shot.pose(u), Math.min(1, u * 5, (1 - u) * 5));
+  }
+
+  // Dying: knees give, then a fall onto the back. Ghosts sink and fade instead.
+  rig.fallen += ((dead ? 1 : 0) - rig.fallen) * Math.min(1, dt * (dead ? 3 : 8));
+  if (rig.ghost) {
+    rig.body.position.y = 0.18 + Math.sin(now / 600 + rig.seed) * 0.05 - rig.fallen * 0.8;
+    rig.body.rotation.x = 0;
+  } else {
+    const f = rig.fallen;
+    rig.body.rotation.x = -Math.PI / 2 * Math.max(0, (f - 0.25) / 0.75);
+    rig.body.position.y = 0.1 * f;
+    rig.body.position.z = -0.25 * f;
+    if (f > 0.01) {
+      rig.kneeL.rotation.x += 0.9 * Math.sin(f * Math.PI);
+      rig.kneeR.rotation.x += 0.7 * Math.sin(f * Math.PI);
+      rig.shoulderL.rotation.z -= 0.9 * f;
+      rig.shoulderR.rotation.z += 0.9 * f;
+    }
+  }
+
+  if (rig.cape) rig.cape.rotation.x = 0.06 + 0.45 * w + Math.sin(rig.phase * 2) * 0.06 * w + Math.sin(t * 1.3) * 0.02;
+  if (rig.robe) rig.robe.rotation.z = s * 0.06 * w;
+}
+
+/** Blends a rig toward a pose by `k` (0 = untouched, 1 = exactly the pose). */
+function applyPose(rig: CharacterRig, p: Pose, k: number): void {
+  {
     const mix = (obj: { x: number } | { y: number } | { z: number }, axis: 'x' | 'y' | 'z', to: number | undefined) => {
       if (to === undefined) return;
       const o = obj as Record<string, number>;
@@ -807,8 +1149,5 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
     mix(rig.kneeR.rotation, 'x', p.kneeR);
     mix(rig.head.rotation, 'x', p.headX);
     if (p.hipsY !== undefined) rig.hips.position.y += p.hipsY * k;
-  } else if (rig.work <= 0.01) rig.activity = null;
-
-  if (rig.cape) rig.cape.rotation.x = 0.06 + 0.45 * w + Math.sin(rig.phase * 2) * 0.06 * w + Math.sin(t * 1.3) * 0.02;
-  if (rig.robe) rig.robe.rotation.z = s * 0.06 * w;
+  }
 }

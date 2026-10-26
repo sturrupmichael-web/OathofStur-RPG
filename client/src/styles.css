@@ -54,7 +54,8 @@ body {
   touch-action: none;
 }
 
-#labels {
+#labels,
+#combat-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -918,4 +919,138 @@ body {
   margin: 0 8px;
   font-size: 12px;
   color: #cbbd9c;
+}
+
+/* --- Combat ---------------------------------------------------------------- */
+
+#hp-bar {
+  position: relative;
+  order: 4;
+  flex-basis: 100%;
+  height: 14px;
+  margin-top: 4px;
+  background: #5a1a14;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#hp-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(#4fc04a, #2f8a2a);
+  transition: width 0.25s;
+}
+
+#hp-bar.low #hp-fill {
+  background: linear-gradient(#e0603a, #a8321c);
+}
+
+#hp-text {
+  position: absolute;
+  inset: 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 13px;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.equip-slot.filled {
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+#equip-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 8px;
+  margin: 10px 0 4px;
+  font-size: 12px;
+}
+
+#panel-equipment h3 {
+  margin: 10px 0 6px;
+  font-size: 13px;
+  color: var(--gold);
+}
+
+#attack-styles {
+  display: grid;
+  gap: 4px;
+}
+
+.style-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 5px 8px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel-dark);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.style-button.active {
+  background: #6a4a1c;
+  border-color: var(--gold);
+}
+
+.style-name {
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.style-detail {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Hit splats and health bars float over the 3D view. */
+.splat {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 24px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+  background: radial-gradient(circle at 40% 35%, #e8463a, #9a1a12);
+  clip-path: polygon(50% 0, 63% 22%, 92% 12%, 80% 42%, 100% 60%, 74% 70%, 78% 100%, 50% 84%, 22% 100%, 26% 70%, 0 60%, 20% 42%, 8% 12%, 37% 22%);
+  animation: splat 1.1s ease-out forwards;
+}
+
+.splat.miss {
+  background: radial-gradient(circle at 40% 35%, #5a8ae8, #1f3f9a);
+  clip-path: circle(48%);
+}
+
+@keyframes splat {
+  0% { opacity: 0; scale: 0.4; }
+  12% { opacity: 1; scale: 1.15; }
+  25% { scale: 1; }
+  75% { opacity: 1; }
+  100% { opacity: 0; translate: 0 -10px; }
+}
+
+.healthbar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 34px;
+  height: 5px;
+  background: #c8261c;
+  border: 1px solid #000;
+}
+
+.healthbar > div {
+  height: 100%;
+  background: #3ac83a;
 }

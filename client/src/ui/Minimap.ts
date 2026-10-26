@@ -53,7 +53,7 @@ export class Minimap {
     ctx.drawImage(this.base, -this.origin.x * SCALE, -this.origin.y * SCALE);
 
     for (const view of this.state.entities.values()) {
-      if (view.data.kind === 'npc') this.dot(view.data.x + 0.5, view.data.y + 0.5, '#ffe14d', 2);
+      if (view.data.kind === 'npc' || (view.data.kind === 'monster' && !view.data.dead)) this.dot(view.data.x + 0.5, view.data.y + 0.5, '#ffe14d', 2);
       if (view.data.kind === 'item') this.dot(view.data.x + 0.5, view.data.y + 0.5, '#e8322b', 1.6);
     }
     const dest = this.state.self?.destination;

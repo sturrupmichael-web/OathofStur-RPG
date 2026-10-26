@@ -18,6 +18,7 @@
     { "id": "ranged", "name": "Ranged" },
     { "id": "hitpoints", "name": "Hitpoints" },
     { "id": "woodcutting", "name": "Woodcutting" },
+    { "id": "firemaking", "name": "Firemaking" },
     { "id": "mining", "name": "Mining" },
     { "id": "fishing", "name": "Fishing" },
     { "id": "cooking", "name": "Cooking" },

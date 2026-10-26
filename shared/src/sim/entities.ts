@@ -23,6 +23,8 @@ export type PlayerAction =
   | { kind: 'talk'; targetId: EntityId }
   /** Making things at a station, one every recipe.ticks. */
   | { kind: 'craft'; stationId: EntityId; recipeId: string; remaining: number; nextAttempt: number; started?: boolean }
+  /** Lighting logs on the spot with a tinderbox; a try every tick until it catches. */
+  | { kind: 'light'; itemId: string; nextAttempt: number }
   /** Fighting a monster: chase it into reach, then swing whenever the weapon is ready. */
   | { kind: 'attack'; targetId: EntityId; chasing?: Point };
 
@@ -112,6 +114,8 @@ export interface ObjectEntity {
   size?: number;
   /** Resources only: tick at which a used-up node comes back. */
   depletedUntil?: number;
+  /** Fires players light: the tick it burns out, leaving ashes. */
+  burnsUntil?: number;
 }
 
 /** An item lying on the ground. It vanishes at `despawnAt`. */

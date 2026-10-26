@@ -16,6 +16,8 @@ export interface ItemDef {
   equip?: EquipStats;
   /** Arrows: their strength bonus, and the Ranged level needed to fire them. */
   ammo?: { strength: number; level: number };
+  /** Logs: the Firemaking level needed to light them, and the XP for it. */
+  burn?: { level: number; xp: number };
   /** Set on tools: the skill it is used for, the level needed, and its success bonus. */
   tool?: { skill: SkillId; level: number; bonus: number };
 }

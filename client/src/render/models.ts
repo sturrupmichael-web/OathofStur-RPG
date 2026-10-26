@@ -354,6 +354,22 @@ export function buildStation(defKey: string, near: NeighbourLookup = () => null,
       g.userData.span = [w, d];
       break;
     }
+    case 'fire': {
+      // A small heap of burning logs, fresh from the tinderbox.
+      for (let n = 0; n < 3; n++) {
+        const log = mesh(C(0.05, 0.055, 0.44, 6), n % 2 ? 0x5a3a20 : 0x6b4a2b, 0, 0.07, 0);
+        log.rotation.set(Math.PI / 2, (n / 3) * Math.PI, 0);
+        log.position.y = 0.06 + n * 0.035;
+        g.add(log);
+      }
+      g.add(mesh(new THREE.CircleGeometry(0.28, 10).rotateX(-Math.PI / 2), 0x2a2420, 0, 0.015, 0));
+      for (const [s, x, z] of [[1.15, 0, 0], [0.8, 0.09, 0.05], [0.7, -0.08, -0.05], [0.55, 0.02, 0.1]]) {
+        const flame = mesh(new THREE.ConeGeometry(0.12 * s, 0.5 * s, 6).translate(0, 0.25 * s, 0), 0xffa030, x, 0.1, z, { emissive: 0xff5a00 });
+        flame.name = FLICKER;
+        g.add(flame);
+      }
+      break;
+    }
     case 'campfire': {
       for (let n = 0; n < 8; n++) {
         const a = (n / 8) * Math.PI * 2;
@@ -573,6 +589,11 @@ export function buildGroundItem(itemId: string): THREE.Group {
       g.add(mesh(log, bark, x, y, z));
       g.add(mesh(new THREE.CircleGeometry(0.066, 7).rotateY(Math.PI / 2), wood, x + 0.211, y, z));
     }
+  } else if (itemId === 'ashes') {
+    g.add(mesh(new THREE.SphereGeometry(0.16, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.35, 1), 0x8a8580, 0, 0, 0));
+    g.add(mesh(new THREE.DodecahedronGeometry(0.035, 0), 0x2a2420, 0.06, 0.04, 0.02));
+  } else if (itemId === 'tinderbox') {
+    g.add(mesh(new THREE.BoxGeometry(0.12, 0.05, 0.08), 0x6a4a2a, 0, 0.025, 0));
   } else if (itemId.endsWith('_arrow') || itemId === 'arrow_shaft') {
     // A few arrows scattered where they fell.
     const head = { bronze_arrow: 0xb8793a, iron_arrow: 0x7d7f86, steel_arrow: 0xb4bec8 }[itemId];

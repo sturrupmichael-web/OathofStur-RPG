@@ -7,6 +7,7 @@ export type SkillId =
   | 'ranged'
   | 'hitpoints'
   | 'woodcutting'
+  | 'firemaking'
   | 'mining'
   | 'fishing'
   | 'cooking'

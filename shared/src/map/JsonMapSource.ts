@@ -80,7 +80,7 @@ const OBJECT_KINDS: Record<string, Exclude<PlacementKind, 'npc' | 'monster'>> = 
   statue: 'scenery',
   log_pile: 'scenery',
   hide_tent: 'scenery',
-  campfire: 'scenery',
+  campfire: 'station',
   goblin_totem: 'scenery',
   gravestone: 'scenery',
   cactus: 'scenery',

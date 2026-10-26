@@ -85,6 +85,8 @@ const STARTING_ITEMS: ItemStack[] = [
 const STATIONS: readonly string[] = ['furnace', 'anvil', 'range', 'campfire', 'fire'];
 /** Fires cook like a range. */
 const COOKING_FIRES: readonly string[] = ['campfire', 'fire'];
+/** Chance a defeated desert bandit drops the Emir's seal, during that quest. */
+export const SEAL_CHANCE = 0.34;
 /** How long a lit fire burns (ticks), at least and at most. */
 export const FIRE_TICKS = [60, 110] as const;
 
@@ -865,7 +867,7 @@ export class Simulation {
       if (dealt > best && this.entities.has(id)) [killer, best] = [id, dealt];
     }
     const winner = killer !== undefined ? this.entities.get(killer) : undefined;
-    if (winner?.kind === 'player') this.questKill(winner, monster.defKey);
+    if (winner?.kind === 'player') this.questKill(winner, monster);
     for (const drop of MONSTERS[monster.defKey].drops) {
       if (!this.rng.chance(drop.chance)) continue;
       const qty = rollQty(drop.qty, (a, b) => this.rng.int(a, b));
@@ -1521,7 +1523,14 @@ export class Simulation {
   }
 
   /** Kills that move a quest on. */
-  private questKill(player: PlayerEntity, defKey: string): void {
+  private questKill(player: PlayerEntity, monster: MonsterEntity): void {
+    const defKey = monster.defKey;
+    // About one bandit in three has the Emir's seal on them.
+    if (defKey === 'desert_bandit' && player.quests.emirs_seal === 1 && this.rng.chance(SEAL_CHANCE)) {
+      this.spawnItem('sunspire_seal', 1, monster, player.id, GROUND_ITEM_TICKS, GROUND_ITEM_TICKS);
+      this.setQuestStage(player, 'emirs_seal', 2);
+      this.message(player.id, "Something gold glints among the bandit's things: the Sunspire seal!", 'quest');
+    }
     if (defKey === 'goblin' && player.quests.first_oath === 4) {
       this.setQuestStage(player, 'first_oath', 5);
       this.message(player.id, "That's the goblin beaten. Elder Maren will want to hear about it.", 'quest');

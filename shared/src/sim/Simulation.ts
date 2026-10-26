@@ -919,7 +919,10 @@ export class Simulation {
       target = undefined;
     }
     if (!target && stats.aggressive) target = this.findPrey(m, stats.aggroRange ?? 3, !!stats.boss);
+    const was = m.target !== null ? this.entities.get(m.target) : undefined;
     m.target = target?.kind === 'player' ? target.id : null;
+    // Whoever it gave up on is no longer under attack from it.
+    if (was?.kind === 'player' && was.id !== m.target && was.attackedBy === m.id) was.attackedBy = null;
 
     if (target?.kind === 'player') {
       m.path = [];
@@ -1358,7 +1361,7 @@ export class Simulation {
     this.sessions.get(playerId)?.outbox.push({ type: 'reject', reason });
   }
 
-  /** Everything is visible in single-player; a view radius slots in here for multiplayer. */
+  /** What a player can see: everything within VIEW_RADIUS, less respawning monsters and other people's private drops. */
   private visibleTo(player: PlayerEntity): PublicEntity[] {
     const out: PublicEntity[] = [];
     for (const e of this.entities.values()) {

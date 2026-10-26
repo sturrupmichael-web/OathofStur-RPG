@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { shared } from './dispose';
 
 /**
  * Four-, six- and eight-legged monsters and birds, built from primitives
@@ -49,7 +50,7 @@ function mat(color: number, emissive = 0): THREE.MeshLambertMaterial {
   const key = color * 31 + emissive;
   let m = materials.get(key);
   if (!m) {
-    m = new THREE.MeshLambertMaterial({ color, emissive, flatShading: true });
+    m = shared(new THREE.MeshLambertMaterial({ color, emissive, flatShading: true }));
     materials.set(key, m);
   }
   return m;

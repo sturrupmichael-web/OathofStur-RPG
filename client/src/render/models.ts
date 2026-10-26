@@ -225,8 +225,6 @@ function mesh(geo: THREE.BufferGeometry, color: number, x = 0, y = 0, z = 0, opt
 }
 
 const B = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
-
-
 const C = (rt: number, rb: number, h: number, seg = 10) => new THREE.CylinderGeometry(rt, rb, h, seg);
 
 /** Glowing parts that flicker (furnace mouth, range fire). Renderer animates them. */

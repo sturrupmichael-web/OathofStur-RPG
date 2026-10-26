@@ -24,7 +24,6 @@ export interface MenuOption {
   action: () => void;
 }
 
-
 export interface InventoryHandlers {
   /** A filled slot was tapped or right-clicked, at these screen coordinates. */
   open: (slot: number, x: number, y: number) => void;
@@ -68,6 +67,7 @@ export class Hud {
   private readonly win = el('window');
   private windowKey = '';
   private equipmentKey = '';
+  private skillsKey = '';
   private equipment: SelfState['equipment'] = {};
   equipmentHandlers: EquipmentHandlers = { unequip: () => {}, setStyle: () => {}, examine: () => {} };
   dialogueHandlers: DialogueHandlers = { choose: () => {} };
@@ -446,6 +446,10 @@ export class Hud {
     el('hp-text').textContent = `${self.hp} / ${self.maxHp}`;
     el('hp-fill').style.width = `${(self.hp / self.maxHp) * 100}%`;
     el('hp-bar').classList.toggle('low', self.hp <= self.maxHp / 4);
+    // The state comes every tick something changes; rebuild the skills only when XP moves.
+    const key = JSON.stringify(self.skills);
+    if (key === this.skillsKey) return;
+    this.skillsKey = key;
     const grid = el('skills-grid');
     grid.replaceChildren();
     let total = 0;

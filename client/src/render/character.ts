@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { shared } from './dispose';
 
 /**
  * Jointed procedural humanoid (~1.15 tiles tall, facing +Z) and its
@@ -407,7 +408,7 @@ function mat(color: number, emissive = 0, doubleSided = false): THREE.MeshLamber
   const key = `${color}|${emissive}|${doubleSided}`;
   let m = materials.get(key);
   if (!m) {
-    m = new THREE.MeshLambertMaterial({ color, emissive, side: doubleSided ? THREE.DoubleSide : THREE.FrontSide });
+    m = shared(new THREE.MeshLambertMaterial({ color, emissive, side: doubleSided ? THREE.DoubleSide : THREE.FrontSide }));
     materials.set(key, m);
   }
   return m;
@@ -523,6 +524,7 @@ const SHAPES = {
   hem: profiled([[0.02, 0.124, 0.084], [-0.06, 0.14, 0.095], [-0.13, 0.152, 0.104]], 14, true),
   robe: profiled([[0.02, 0.124, 0.084], [-0.2, 0.17, 0.13], [-0.56, 0.22, 0.17]], 16, true),
 };
+for (const geo of Object.values(SHAPES)) shared(geo);
 
 /** Builds a character from a named look or a look of its own; `tools` gives it the skilling tools players carry. */
 export function buildCharacter(style: string | CharacterStyle, seed: number, tools_ = false): CharacterRig {

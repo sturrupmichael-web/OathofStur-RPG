@@ -87,8 +87,8 @@ export class CombatOverlay {
   private updateBossBar(): void {
     const me = this.state.player?.data;
     let boss = me?.interacting !== undefined ? this.state.entities.get(me.interacting)?.data : undefined;
-    if (!boss || boss.kind !== 'monster' || !MONSTERS[boss.defKey ?? '']?.boss) {
-      boss = [...this.state.entities.values()].map((v) => v.data).find((d) => d.kind === 'monster' && d.interacting === me?.id && MONSTERS[d.defKey ?? '']?.boss);
+    if (me && (!boss || boss.kind !== 'monster' || !MONSTERS[boss.defKey ?? '']?.boss)) {
+      boss = [...this.state.entities.values()].map((v) => v.data).find((d) => d.kind === 'monster' && d.interacting === me.id && MONSTERS[d.defKey ?? '']?.boss);
     }
     const key = boss && !boss.dead ? `${boss.name}:${boss.hp}:${boss.maxHp}` : '';
     if (key === this.bossKey) return;

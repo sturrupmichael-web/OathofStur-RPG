@@ -35,6 +35,42 @@ const roots = (color: number, spread: number): PartStyle[] =>
     rotation: [0, -a, 0] as [number, number, number],
   }));
 
+const limb = new THREE.CylinderGeometry(0.035, 0.06, 1, 5).translate(0, 0.5, 0);
+
+/** A branch leaving the trunk at height `y`, leaning out toward angle `a`. */
+const branch = (color: number, out: number, y: number, a: number, len: number, r = 0.05): PartStyle => ({
+  geometry: limb,
+  color,
+  position: [Math.cos(a) * out * 0.3, y, Math.sin(a) * out * 0.3],
+  rotation: [Math.sin(a) * 0.9, 0, -Math.cos(a) * 0.9],
+  scale: [r / 0.05, len, r / 0.05],
+  vary: 0.08,
+});
+
+/**
+ * A rounded crown of leaf clumps around `y`: one big core, a ring of six
+ * around its waist and a cap. `r` is the core's radius; `flat` squashes it.
+ */
+function canopy(colors: number[], y: number, r: number, flat: number, emissive?: number[]): PartStyle[] {
+  const c = (k: number) => colors[k % colors.length];
+  const e = (k: number) => emissive?.[k % emissive.length];
+  const parts: PartStyle[] = [{ geometry: blob(r), color: c(0), emissive: e(0), position: [0, y, 0], scale: [1.15, flat, 1.15], vary: 0.12 }];
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2 + 0.4;
+    const rr = r * (0.62 + (k % 3) * 0.08);
+    parts.push({
+      geometry: blob(rr),
+      color: c(k + 1),
+      emissive: e(k + 1),
+      position: [Math.cos(a) * r * 0.85, y - r * 0.15 + (k % 2) * r * 0.25, Math.sin(a) * r * 0.85],
+      scale: [1, flat, 1],
+      vary: 0.14,
+    });
+  }
+  parts.push({ geometry: blob(r * 0.6), color: c(3), emissive: e(3), position: [0.05, y + r * 0.7, 0.03], scale: [1, flat, 1], vary: 0.14 });
+  return parts;
+}
+
 const rockChunk = new THREE.DodecahedronGeometry(0.3, 0);
 const nugget = new THREE.OctahedronGeometry(0.08, 0);
 
@@ -64,53 +100,61 @@ const fishingParts = (deep: boolean): PartStyle[] => [
 ];
 
 export const RESOURCE_STYLES: Record<string, PartStyle[]> = {
+  // Trees stand two to three times a person's height. Big trees (2 x 2) are
+  // these same models drawn larger by EntityLayer.
   tree: [
-    { geometry: trunk(0.12, 0.75), color: 0x6b4a2b, position: [0, 0.37, 0], vary: 0.1 },
-    ...roots(0x5f4126, 0.12),
-    { geometry: blob(0.36), color: 0x3f8f3a, position: [0, 1.0, 0], vary: 0.14 },
-    { geometry: blob(0.27), color: 0x4a9a40, position: [0.2, 1.12, 0.08], vary: 0.14 },
-    { geometry: blob(0.25), color: 0x37803a, position: [-0.17, 1.15, -0.1], vary: 0.14 },
-    { geometry: blob(0.22), color: 0x52a347, position: [0.02, 1.32, 0.02], vary: 0.14 },
+    { geometry: trunk(0.13, 1.5), color: 0x6b4a2b, position: [0, 0.75, 0], vary: 0.1 },
+    ...roots(0x5f4126, 0.13),
+    branch(0x6b4a2b, 0.16, 1.25, 0.5, 0.8),
+    branch(0x6b4a2b, -0.14, 1.4, -2.4, 0.7),
+    ...canopy([0x3f8f3a, 0x4a9a40, 0x37803a, 0x52a347], 1.85, 0.5, 0.95),
   ],
   oak_tree: [
-    { geometry: trunk(0.18, 0.85), color: 0x5e3f24, position: [0, 0.42, 0], vary: 0.08 },
-    ...roots(0x553820, 0.18),
-    { geometry: new THREE.CylinderGeometry(0.04, 0.06, 0.5, 5), color: 0x5e3f24, position: [0.2, 0.85, 0], rotation: [0, 0, -0.9] },
-    { geometry: blob(0.44), color: 0x5d7f2b, position: [0, 1.15, 0], scale: [1.15, 0.8, 1.1], vary: 0.12 },
-    { geometry: blob(0.34), color: 0x6a8c32, position: [0.32, 1.08, 0.1], vary: 0.12 },
-    { geometry: blob(0.32), color: 0x547628, position: [-0.3, 1.12, -0.12], vary: 0.12 },
-    { geometry: blob(0.3), color: 0x678a30, position: [0.05, 1.42, -0.05], vary: 0.12 },
+    { geometry: trunk(0.22, 1.3), color: 0x5e3f24, position: [0, 0.65, 0], vary: 0.08 },
+    ...roots(0x553820, 0.22),
+    branch(0x5e3f24, 0.25, 1.15, 0.3, 1.0, 0.07),
+    branch(0x5e3f24, -0.22, 1.2, 2.6, 0.9, 0.06),
+    branch(0x5e3f24, 0.05, 1.3, -1.6, 0.8, 0.05),
+    ...canopy([0x5d7f2b, 0x6a8c32, 0x547628, 0x678a30], 1.8, 0.62, 0.75),
   ],
   willow_tree: [
-    { geometry: trunk(0.14, 0.95), color: 0x6f5a3a, position: [0, 0.47, 0], vary: 0.08 },
-    ...roots(0x5f4a2f, 0.14),
-    { geometry: blob(0.42), color: 0x93b552, position: [0, 1.15, 0], scale: [1.1, 0.75, 1.1], vary: 0.1 },
-    // Drooping fronds
-    ...[0, 1, 2, 3, 4, 5, 6].map((k) => {
-      const a = (k / 7) * Math.PI * 2;
+    { geometry: trunk(0.16, 1.5), color: 0x6f5a3a, position: [0, 0.75, 0], rotation: [0.06, 0, 0.05], vary: 0.08 },
+    ...roots(0x5f4a2f, 0.16),
+    { geometry: blob(0.5), color: 0x93b552, position: [0, 1.85, 0], scale: [1.15, 0.7, 1.15], vary: 0.1 },
+    { geometry: blob(0.3), color: 0x9fc05e, position: [0.05, 2.15, 0.05], vary: 0.1 },
+    // Drooping fronds in two rings, the outer one reaching almost to the ground.
+    ...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((k) => {
+      const a = (k / 11) * Math.PI * 2;
+      const outer = k % 2 === 0;
+      const r = outer ? 0.55 : 0.36;
+      const len = outer ? 1.35 : 1.0;
       return {
-        geometry: new THREE.ConeGeometry(0.11, 0.85, 4).rotateX(Math.PI),
-        color: 0x86a84a,
-        position: [Math.cos(a) * 0.38, 0.78, Math.sin(a) * 0.38] as [number, number, number],
+        geometry: new THREE.ConeGeometry(0.13, 1, 4).rotateX(Math.PI),
+        color: outer ? 0x86a84a : 0x7c9e44,
+        position: [Math.cos(a) * r, 1.85 - len / 2, Math.sin(a) * r] as [number, number, number],
+        scale: [1, len, 1] as [number, number, number],
+        rotation: [Math.sin(a) * 0.12, 0, -Math.cos(a) * 0.12] as [number, number, number],
         vary: 0.12,
       };
     }),
   ],
   yew_tree: [
-    { geometry: trunk(0.16, 0.8), color: 0x3f2b1a, position: [0, 0.4, 0], vary: 0.08 },
-    ...roots(0x35241a, 0.16),
-    { geometry: new THREE.ConeGeometry(0.58, 0.9, 8), color: 0x1d4a2e, position: [0, 0.95, 0], vary: 0.1 },
-    { geometry: new THREE.ConeGeometry(0.47, 0.8, 8), color: 0x22553a, position: [0, 1.35, 0], vary: 0.1 },
-    { geometry: new THREE.ConeGeometry(0.34, 0.7, 8), color: 0x276042, position: [0, 1.72, 0], vary: 0.1 },
-    { geometry: new THREE.ConeGeometry(0.18, 0.45, 8), color: 0x2c6a48, position: [0, 2.05, 0], vary: 0.1 },
+    { geometry: trunk(0.18, 1.0), color: 0x3f2b1a, position: [0, 0.5, 0], vary: 0.08 },
+    ...roots(0x35241a, 0.18),
+    { geometry: new THREE.ConeGeometry(0.72, 1.0, 9), color: 0x1d4a2e, position: [0, 1.05, 0], vary: 0.1 },
+    { geometry: new THREE.ConeGeometry(0.6, 0.95, 9), color: 0x22553a, position: [0, 1.55, 0], vary: 0.1 },
+    { geometry: new THREE.ConeGeometry(0.48, 0.9, 9), color: 0x276042, position: [0, 2.02, 0], vary: 0.1 },
+    { geometry: new THREE.ConeGeometry(0.34, 0.8, 8), color: 0x2c6a48, position: [0, 2.45, 0], vary: 0.1 },
+    { geometry: new THREE.ConeGeometry(0.18, 0.55, 8), color: 0x317250, position: [0, 2.85, 0], vary: 0.1 },
   ],
   dead_tree: [
-    { geometry: trunk(0.13, 1.1), color: 0x5a5048, position: [0, 0.55, 0], vary: 0.12 },
-    ...roots(0x4e463e, 0.13),
-    { geometry: new THREE.CylinderGeometry(0.03, 0.06, 0.6, 5), color: 0x5a5048, position: [0.18, 1.05, 0], rotation: [0, 0, -0.8], vary: 0.12 },
-    { geometry: new THREE.CylinderGeometry(0.025, 0.05, 0.5, 5), color: 0x544a42, position: [-0.15, 1.15, 0.05], rotation: [0.3, 0, 0.9], vary: 0.12 },
-    { geometry: new THREE.CylinderGeometry(0.02, 0.04, 0.45, 5), color: 0x5a5048, position: [0.02, 1.25, -0.14], rotation: [-0.8, 0, 0.1], vary: 0.12 },
-    { geometry: new THREE.CylinderGeometry(0.015, 0.03, 0.3, 4), color: 0x4e463e, position: [0.36, 1.32, 0], rotation: [0, 0, -0.2] },
+    { geometry: trunk(0.14, 1.8), color: 0x5a5048, position: [0, 0.9, 0], vary: 0.12 },
+    ...roots(0x4e463e, 0.14),
+    { geometry: new THREE.CylinderGeometry(0.03, 0.07, 0.9, 5), color: 0x5a5048, position: [0.26, 1.55, 0], rotation: [0, 0, -0.8], vary: 0.12 },
+    { geometry: new THREE.CylinderGeometry(0.025, 0.06, 0.75, 5), color: 0x544a42, position: [-0.22, 1.7, 0.08], rotation: [0.3, 0, 0.9], vary: 0.12 },
+    { geometry: new THREE.CylinderGeometry(0.02, 0.05, 0.7, 5), color: 0x5a5048, position: [0.03, 1.85, -0.22], rotation: [-0.8, 0, 0.1], vary: 0.12 },
+    { geometry: new THREE.CylinderGeometry(0.015, 0.035, 0.45, 4), color: 0x4e463e, position: [0.55, 1.95, 0], rotation: [0, 0, -0.2] },
+    { geometry: new THREE.CylinderGeometry(0.012, 0.03, 0.4, 4), color: 0x4e463e, position: [-0.05, 1.95, 0.2], rotation: [0.5, 0, -0.3] },
   ],
   // Felled trees wait as stumps until they grow back.
   tree_stump: [
@@ -142,12 +186,10 @@ export const RESOURCE_STYLES: Record<string, PartStyle[]> = {
   glacite_rock_stump: rockParts(0x6f6a62).slice(0, 3),
   // Starwood: pale bark and a canopy with a faint light in it.
   starwood_tree: [
-    { geometry: trunk(0.15, 0.95), color: 0xd8d0c0, position: [0, 0.47, 0], vary: 0.06 },
-    ...roots(0xc8c0b0, 0.15),
-    { geometry: blob(0.4), color: 0x7fd8c8, emissive: 0x16483f, position: [0, 1.2, 0], scale: [1.1, 0.85, 1.1], vary: 0.1 },
-    { geometry: blob(0.3), color: 0x9fe8dc, emissive: 0x1d5a50, position: [0.26, 1.3, 0.1], vary: 0.1 },
-    { geometry: blob(0.27), color: 0x6fc8bc, emissive: 0x16483f, position: [-0.24, 1.32, -0.1], vary: 0.1 },
-    { geometry: blob(0.22), color: 0xcdf6ef, emissive: 0x2a7a6c, position: [0.02, 1.55, 0.02], vary: 0.1 },
+    { geometry: trunk(0.16, 1.6), color: 0xd8d0c0, position: [0, 0.8, 0], vary: 0.06 },
+    ...roots(0xc8c0b0, 0.16),
+    branch(0xd8d0c0, 0.18, 1.35, 1.2, 0.8),
+    ...canopy([0x7fd8c8, 0x9fe8dc, 0x6fc8bc, 0xcdf6ef], 2.05, 0.52, 0.95, [0x16483f, 0x1d5a50, 0x16483f, 0x2a7a6c]),
   ],
   oak_tree_stump: [
     { geometry: trunk(0.2, 0.22), color: 0x5e3f24, position: [0, 0.11, 0], vary: 0.08 },

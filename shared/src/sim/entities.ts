@@ -56,6 +56,8 @@ export interface ObjectEntity {
   name: string;
   x: number;
   y: number;
+  /** Tiles per side when bigger than one (big trees cover 2 x 2 from x, y). */
+  size?: number;
   /** Resources only: tick at which a used-up node comes back. */
   depletedUntil?: number;
 }

@@ -124,7 +124,7 @@ export class Renderer {
     else hasGround = this.raycaster.ray.intersectPlane(this.groundPlane, groundHit) !== null;
     const groundDist = hasGround ? this.raycaster.ray.origin.distanceTo(groundHit) : Infinity;
 
-    const roofs = this.buildings.roofPickables.filter((r) => r.visible);
+    const roofs = this.buildings.pickables.filter((r) => r.visible);
     const hits = this.raycaster.intersectObjects([...this.entities.pickables, ...this.terrain.pickables, ...roofs], true);
     for (const hit of hits) {
       if (hit.distance > groundDist + 0.5) break;

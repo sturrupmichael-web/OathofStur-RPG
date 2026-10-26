@@ -75,8 +75,12 @@ export function tileInfo(map: MapData): TileInfo {
   const placementKind: (string | null)[] = new Array(size).fill(null);
   for (const p of map.placements) {
     if (p.kind === 'monster') continue;
-    placementKey[p.y * map.width + p.x] = p.defKey;
-    placementKind[p.y * map.width + p.x] = p.kind;
+    const size = p.size ?? 1;
+    for (let dy = 0; dy < size; dy++)
+      for (let dx = 0; dx < size; dx++) {
+        placementKey[(p.y + dy) * map.width + p.x + dx] = p.defKey;
+        placementKind[(p.y + dy) * map.width + p.x + dx] = p.kind;
+      }
   }
   return { terrainKey, placementKey, placementKind };
 }

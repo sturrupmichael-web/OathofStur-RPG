@@ -45,6 +45,8 @@ export interface PublicEntity {
   y: number;
   name: string;
   defKey?: string;
+  /** Tiles per side for objects bigger than one tile (big trees). */
+  size?: number;
   combatLevel?: number;
   /** Resources: used up and waiting to grow back (a stump). */
   depleted?: boolean;

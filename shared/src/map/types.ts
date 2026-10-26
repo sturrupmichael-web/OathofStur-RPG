@@ -67,6 +67,8 @@ export interface Placement {
   defKey: string;
   x: number;
   y: number;
+  /** Tiles per side, from (x, y) toward +x/+y. Big trees are 2; everything else 1. */
+  size?: number;
   /** Per-spawn level, when the map gives one (monsters). */
   level?: number;
   /** Where a spawned creature may roam. */

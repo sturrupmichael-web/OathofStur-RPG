@@ -46,10 +46,10 @@ describe('Woodcutting', () => {
 
   it('walks to a tree, chops logs and gains XP', () => {
     const { sim, id, player, messages, run } = setup();
-    const tree = find(sim, 'tree', 26, 62);
+    const tree = find(sim, 'tree', 26, 60);
     sim.queueIntent(id, { type: 'interact', targetId: tree.id, action: 'gather' });
     run(150);
-    expect(Math.max(Math.abs(player.x - kx(26)), Math.abs(player.y - ky(62)))).toBe(1);
+    expect(Math.max(Math.abs(player.x - kx(26)), Math.abs(player.y - ky(60)))).toBe(1);
     const logs = player.inventory.filter((s) => s?.itemId === 'logs').length;
     expect(logs).toBeGreaterThan(0);
     expect(player.skills.woodcutting).toBe(logs * 25);
@@ -59,9 +59,9 @@ describe('Woodcutting', () => {
 
   it('turns a tree into a stump that grows back', () => {
     const { sim, id, player, run } = setup(3);
-    const tree = find(sim, 'tree', 26, 62);
+    const tree = find(sim, 'tree', 26, 60);
     player.x = kx(25);
-    player.y = ky(62);
+    player.y = ky(60);
     sim.queueIntent(id, { type: 'interact', targetId: tree.id, action: 'gather' });
     let ticks = 0;
     while (tree.depletedUntil === undefined && ticks < 2000) {
@@ -73,6 +73,20 @@ describe('Woodcutting', () => {
     expect(player.action).toBeNull();
     run(10);
     expect(tree.depletedUntil).toBeUndefined();
+  });
+
+  it('chops a big tree from any side of its 2 x 2 footprint', () => {
+    const { sim, id, player, messages, run } = setup(2);
+    const tree = find(sim, 'tree', 25, 62);
+    expect(tree.size).toBe(2);
+    sim.queueIntent(id, { type: 'interact', targetId: tree.id, action: 'gather' });
+    run(150);
+    // Next to the footprint, never inside it.
+    const dx = Math.max(tree.x - player.x, player.x - (tree.x + 1), 0);
+    const dy = Math.max(tree.y - player.y, player.y - (tree.y + 1), 0);
+    expect(Math.max(dx, dy)).toBe(1);
+    expect(player.inventory.some((s) => s?.itemId === 'logs')).toBe(true);
+    expect(texts(messages)).toContain('You swing your axe at the tree.');
   });
 
   it('needs Woodcutting 15 for dead trees', () => {
@@ -88,9 +102,9 @@ describe('Woodcutting', () => {
 
   it('needs an axe and inventory space', () => {
     const { sim, id, player, messages, run } = setup();
-    const tree = find(sim, 'tree', 26, 62);
+    const tree = find(sim, 'tree', 26, 60);
     player.x = kx(25);
-    player.y = ky(62);
+    player.y = ky(60);
     player.inventory = emptyInventory();
     sim.queueIntent(id, { type: 'interact', targetId: tree.id, action: 'gather' });
     run(2);
@@ -106,9 +120,9 @@ describe('Woodcutting', () => {
   it('sends a level-up when XP crosses a level', () => {
     const { sim, id, player, messages, run } = setup(5);
     player.skills.woodcutting = xpForLevel(2) - 1;
-    const tree = find(sim, 'tree', 26, 62);
+    const tree = find(sim, 'tree', 26, 60);
     player.x = kx(25);
-    player.y = ky(62);
+    player.y = ky(60);
     sim.queueIntent(id, { type: 'interact', targetId: tree.id, action: 'gather' });
     while (player.skills.woodcutting < xpForLevel(2)) {
       run(1);
@@ -119,9 +133,9 @@ describe('Woodcutting', () => {
 
   it('walking away stops chopping', () => {
     const { sim, id, player, run } = setup();
-    const tree = find(sim, 'tree', 26, 62);
+    const tree = find(sim, 'tree', 26, 60);
     player.x = kx(25);
-    player.y = ky(62);
+    player.y = ky(60);
     sim.queueIntent(id, { type: 'interact', targetId: tree.id, action: 'gather' });
     run(2);
     expect(player.action).not.toBeNull();

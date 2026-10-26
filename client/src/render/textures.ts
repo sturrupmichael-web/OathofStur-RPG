@@ -126,6 +126,32 @@ export const textures = {
       }
     }),
 
+  /** Lime plaster for timber-framed upper floors: near white, softly mottled. */
+  plaster: () =>
+    make('plaster', (ctx, r) => {
+      ctx.fillStyle = grey(236);
+      ctx.fillRect(0, 0, SIZE, SIZE);
+      for (let i = 0; i < 260; i++) {
+        ctx.fillStyle = grey(205 + r(1) * 50, 0.35);
+        ctx.beginPath();
+        ctx.ellipse(r(2) * SIZE, r(3) * SIZE, 2 + r(4) * 7, 1.5 + r(5) * 5, r(6) * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (let i = 0; i < 4; i++) {
+        ctx.strokeStyle = grey(190, 0.4);
+        ctx.beginPath();
+        let x = r(7) * SIZE;
+        let y = r(8) * SIZE;
+        ctx.moveTo(x, y);
+        for (let k = 0; k < 3; k++) {
+          x += (r(9) - 0.5) * 16;
+          y += r(10) * 10;
+          ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+    }),
+
   shingles: () =>
     make('shingles', (ctx, r) => {
       ctx.fillStyle = grey(120);

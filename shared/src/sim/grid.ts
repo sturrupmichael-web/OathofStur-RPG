@@ -31,7 +31,9 @@ export class WorldGrid {
       if (def.requires) this.gateAt[i] = map.terrain[i];
     }
     for (const p of map.placements) {
-      if (p.kind !== 'monster') this.blocked[this.index(p.x, p.y)] = 1;
+      if (p.kind === 'monster') continue;
+      const size = p.size ?? 1;
+      for (let dy = 0; dy < size; dy++) for (let dx = 0; dx < size; dx++) this.blocked[this.index(p.x + dx, p.y + dy)] = 1;
     }
     this.computeGateZones();
   }

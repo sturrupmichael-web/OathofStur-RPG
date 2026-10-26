@@ -4,9 +4,12 @@ import { JsonMapSource, type JsonMapFile } from '../src/map/JsonMapSource';
 
 const dir = fileURLToPath(new URL('../data/maps/', import.meta.url));
 
+export function loadWorldFile(): JsonMapFile {
+  return JSON.parse(readFileSync(dir + 'vell-reaches.json', 'utf8')) as JsonMapFile;
+}
+
 export function loadWorld() {
-  const file = JSON.parse(readFileSync(dir + 'vell-reaches.json', 'utf8')) as JsonMapFile;
-  return new JsonMapSource('vell-reaches', file).load();
+  return new JsonMapSource('vell-reaches', loadWorldFile()).load();
 }
 
 /** Where Kelmoor sits inside the region, so tests can use town coordinates. */

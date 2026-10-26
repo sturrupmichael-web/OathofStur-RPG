@@ -63,6 +63,57 @@ export class Batcher {
   }
 }
 
+/**
+ * Axis-aligned boxes merged into one mesh, with UVs in world units so a
+ * texture keeps its scale however long a wall runs. No bottom faces.
+ */
+export class BoxBuilder {
+  private readonly positions: number[] = [];
+  private readonly normals: number[] = [];
+  private readonly uvs: number[] = [];
+  private readonly colors: number[] = [];
+
+  get empty(): boolean {
+    return this.positions.length === 0;
+  }
+
+  box(min: [number, number, number], max: [number, number, number], color: number): void {
+    const [x0, y0, z0] = min;
+    const [x1, y1, z1] = max;
+    const c = new THREE.Color(color);
+    // Each face: four corners (counter-clockwise seen from outside), its normal, and which coordinates make u and v.
+    const faces: [number[][], [number, number, number], (p: number[]) => [number, number]][] = [
+      [[[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]], [1, 0, 0], (p) => [-p[2], p[1]]],
+      [[[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], [-1, 0, 0], (p) => [p[2], p[1]]],
+      [[[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], [0, 0, 1], (p) => [p[0], p[1]]],
+      [[[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]], [0, 0, -1], (p) => [-p[0], p[1]]],
+      [[[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]], [0, 1, 0], (p) => [p[0], -p[2]]],
+    ];
+    for (const [corners, normal, uv] of faces) {
+      for (const k of [0, 1, 2, 0, 2, 3]) {
+        const p = corners[k];
+        this.positions.push(p[0], p[1], p[2]);
+        this.normals.push(...normal);
+        this.uvs.push(...uv(p));
+        this.colors.push(c.r, c.g, c.b);
+      }
+    }
+  }
+
+  build(material: THREE.Material): THREE.Mesh {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(this.normals, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(this.uvs, 2));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
+    geo.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+}
+
 /** Shared Lambert materials keyed by colour/flags, so batches can share them. */
 const materials = new Map<string, THREE.MeshLambertMaterial>();
 export function lambert(color = 0xffffff, opts: { emissive?: number; map?: THREE.Texture; flat?: boolean; side?: THREE.Side } = {}): THREE.MeshLambertMaterial {

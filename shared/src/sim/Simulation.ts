@@ -13,7 +13,7 @@ import { Rng } from '../rng';
 import { RECIPES, RECIPE_BY_ID, SELL_RATE, SHOPS, STATION_TITLES, burnChance, isBanker, shopBuys, shopForNpc, type StationKind } from './crafting';
 import type { Entity, EntityId, GroundItemEntity, ObjectEntity, PlayerEntity } from './entities';
 import { ATTEMPT_TICKS, EXAMINE, RESOURCE_DATA, gatherChance, requiredLevel } from './gathering';
-import { NEIGHBOURS_4, NEIGHBOURS_8, WorldGrid } from './grid';
+import { WorldGrid } from './grid';
 import {
   ITEMS,
   INVENTORY_SIZE,
@@ -344,7 +344,7 @@ export class Simulation {
     this.entities.set(item.id, item);
   }
 
-  private walkTo(player: PlayerEntity, target: Point): void {
+  private walkTo(player: PlayerEntity, target: Point & { size?: number }): void {
     const goals = this.goalsFor(target);
     const canStep = this.gateRule(player);
     let result = findPath(this.grid, player, goals, target, { canStep });
@@ -371,16 +371,26 @@ export class Simulation {
     if (!player.path.length && player.gateNotice) this.reportGate(player);
   }
 
-  /** Walkable targets are their own goal; blocked ones are reached from a neighbour. */
-  private goalsFor(target: Point): Point[] {
-    if (this.grid.isWalkable(target.x, target.y)) return [target];
-    const orthogonal = NEIGHBOURS_4.map(([dx, dy]) => ({ x: target.x + dx, y: target.y + dy })).filter((p) =>
-      this.grid.isWalkable(p.x, p.y),
-    );
-    if (orthogonal.length) return orthogonal;
-    return NEIGHBOURS_8.map(([dx, dy]) => ({ x: target.x + dx, y: target.y + dy })).filter((p) =>
-      this.grid.isWalkable(p.x, p.y),
-    );
+  /**
+   * Walkable targets are their own goal; blocked ones are reached from a
+   * neighbour, preferring the sides over the corners. A big tree's neighbours
+   * are the tiles around its whole footprint.
+   */
+  private goalsFor(target: Point & { size?: number }): Point[] {
+    const size = target.size ?? 1;
+    if (size === 1 && this.grid.isWalkable(target.x, target.y)) return [target];
+    const sides: Point[] = [];
+    const corners: Point[] = [];
+    for (let y = target.y - 1; y <= target.y + size; y++) {
+      for (let x = target.x - 1; x <= target.x + size; x++) {
+        const outsideX = x < target.x || x >= target.x + size;
+        const outsideY = y < target.y || y >= target.y + size;
+        if (!outsideX && !outsideY) continue;
+        if (!this.grid.isWalkable(x, y)) continue;
+        (outsideX && outsideY ? corners : sides).push({ x, y });
+      }
+    }
+    return sides.length ? sides : corners;
   }
 
   /** Gates check their requirement only when entered from outside their area. */
@@ -526,8 +536,9 @@ export class Simulation {
     player.action = null;
   }
 
-  private adjacent(player: PlayerEntity, target: { x: number; y: number }): boolean {
-    return Math.max(Math.abs(target.x - player.x), Math.abs(target.y - player.y)) <= 1;
+  private adjacent(player: PlayerEntity, target: { x: number; y: number; size?: number }): boolean {
+    const near = nearestTile(target, player);
+    return Math.max(Math.abs(near.x - player.x), Math.abs(near.y - player.y)) <= 1;
   }
 
   private skillName(skill: SkillId): string {
@@ -779,11 +790,20 @@ export class Simulation {
         y: e.y,
         name: e.name,
         combatLevel: combatLevel(e.skills),
-        ...(work && { workingOn: { x: work.target.x, y: work.target.y }, activity: work.activity }),
+        ...(work && { workingOn: nearestTile(work.target, e), activity: work.activity }),
       };
     }
     if (e.kind === 'item') return { id: e.id, kind: e.kind, x: e.x, y: e.y, name: e.name, defKey: e.itemId, qty: e.qty };
-    return { id: e.id, kind: e.kind, x: e.x, y: e.y, name: e.name, defKey: e.defKey, ...(e.depletedUntil !== undefined && { depleted: true }) };
+    return {
+      id: e.id,
+      kind: e.kind,
+      x: e.x,
+      y: e.y,
+      name: e.name,
+      defKey: e.defKey,
+      ...(e.size && { size: e.size }),
+      ...(e.depletedUntil !== undefined && { depleted: true }),
+    };
   }
 
   private flushDeltas(): void {
@@ -843,6 +863,7 @@ export class Simulation {
         name: table[p.defKey].name,
         x: p.x,
         y: p.y,
+        ...(p.size && p.size > 1 && { size: p.size }),
       };
       this.entities.set(entity.id, entity);
     }
@@ -858,4 +879,13 @@ const CRAFT_TEXT: Record<StationKind, (item: string) => string> = {
 function aOrSome(name: string): string {
   if (name.endsWith('s')) return `some ${name}`;
   return /^[aeiou]/i.test(name) ? `an ${name}` : `a ${name}`;
+}
+
+/** The tile of a (possibly multi-tile) object closest to a point. */
+function nearestTile(target: { x: number; y: number; size?: number }, from: Point): Point {
+  const last = (target.size ?? 1) - 1;
+  return {
+    x: Math.max(target.x, Math.min(target.x + last, from.x)),
+    y: Math.max(target.y, Math.min(target.y + last, from.y)),
+  };
 }

@@ -69,5 +69,16 @@ can examine, and start working in the phase that adds their skill. Buildings and
 take their names from the map's `areas`; `skills` lists where each skill is trained, which
 feeds the region map's skill finder.
 
+Many trees grow to cover 2 x 2 tiles: when loading, a tree takes the square it stands in
+over open grass (or over three more trees of its kind), but only where that blocks no way
+through and leaves every neighbouring object a reachable side. A test checks that nothing
+reachable in the map file becomes unreachable.
+
+Drawing (client only): building walls run down the middle of their tiles, with the outside
+ground and the inside floor meeting under them. Halls, shops, inns and many houses have a
+timber-framed upper floor, the keep is three storeys with battlements, and Qadir's
+sandstone houses have flat roofs. Grass, dirt, sand and rock blend into each other in the
+ground shader (`groundBlend.ts`) instead of meeting at tile edges, and shores wander.
+
 Characters saved before the region existed (save version 1) are moved by the same offset,
 so an old character wakes up where they left off.

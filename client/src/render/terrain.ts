@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import type { MapData } from '@rpg/shared';
 import type { Building } from './buildings';
-import { CITY_WALL_HEIGHT, WALL_HEIGHT } from './buildings';
+import { CITY_WALL_HEIGHT, WALL_HEIGHT, WALL_T } from './buildings';
 import type { Heightmap } from './heightmap';
-import { WALL_TONES, hash2, isBridge, isWaterKey, shade, type TileInfo } from './palette';
+import { WALL_TONES, WATER_COLORS, hash2, isBridge, isWaterKey, shade, type TileInfo } from './palette';
 
 const SURFACE_BY_KEY: Record<string, 'grass' | 'road' | 'dirt' | 'planks' | 'stone' | 'bed'> = {
   cobblestone: 'road',
@@ -32,6 +32,7 @@ const SURFACE_BY_KEY: Record<string, 'grass' | 'road' | 'dirt' | 'planks' | 'sto
   agility_obstacle: 'dirt',
   farming_patch: 'dirt',
 };
+import { blendedGroundMaterial, buildTileTexture, type Layer } from './groundBlend';
 import { textures } from './textures';
 
 /** Static world geometry built once from map data. */
@@ -76,9 +77,9 @@ class SurfaceBuilder {
   private uvs: number[] = [];
   private colors: number[] = [];
 
-  /** Quad corners in order NW, NE, SW, SE. */
-  quad(p: [number, number, number][], n: [number, number, number][], color: number, turn: number): void {
-    const c = new THREE.Color(color);
+  /** Quad corners in order NW, NE, SW, SE. `color` may give one colour per corner. */
+  quad(p: [number, number, number][], n: [number, number, number][], color: number | number[], turn: number): void {
+    const cs = (Array.isArray(color) ? color : [color, color, color, color]).map((c) => new THREE.Color(c));
     const baseUv: [number, number][] = [
       [0, 1],
       [1, 1],
@@ -95,7 +96,7 @@ class SurfaceBuilder {
       this.positions.push(...p[k]);
       this.normals.push(...n[k]);
       this.uvs.push(...uv[k]);
-      this.colors.push(c.r, c.g, c.b);
+      this.colors.push(cs[k].r, cs[k].g, cs[k].b);
     }
   }
 
@@ -126,21 +127,88 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
   const textured = (tex: THREE.Texture, flat = false) => new THREE.MeshLambertMaterial({ color: 0xffffff, map: tex, flatShading: flat });
   const groundMaterial = (tex: THREE.Texture) => new THREE.MeshLambertMaterial({ color: 0xffffff, map: tex, vertexColors: true });
 
-  // Smooth ground: one mesh per surface texture, vertex colours carry the area tint.
+  // Natural ground (grass, dirt, rock) is one mesh whose shader blends
+  // between tiles; built surfaces (roads, floors) and river beds keep crisp
+  // edges, one mesh per texture with the tint in the vertex colours.
+  const natural = new SurfaceBuilder();
   const surfaces = {
-    grass: new SurfaceBuilder(),
     road: new SurfaceBuilder(),
-    dirt: new SurfaceBuilder(),
     planks: new SurfaceBuilder(),
-    stone: new SurfaceBuilder(),
     bed: new SurfaceBuilder(),
   };
-  const surfaceFor = (key: string): keyof typeof surfaces => SURFACE_BY_KEY[key] ?? 'grass';
+  const layerOf = new Array<Layer | null>(size).fill(null);
+  const tintOf = new Array<number>(size).fill(0);
+  const surfaceFor = (key: string) => SURFACE_BY_KEY[key] ?? 'grass';
   const normalAt = (cx: number, cy: number): [number, number, number] => {
     const dx = (hm.corner(cx + 1, cy) - hm.corner(cx - 1, cy)) / 2;
     const dz = (hm.corner(cx, cy + 1) - hm.corner(cx, cy - 1)) / 2;
     const v = new THREE.Vector3(-dx, 1, -dz).normalize();
     return [v.x, v.y, v.z];
+  };
+
+  // Rectangular buildings draw their own walls down the middle of the wall
+  // tiles; the ground under those tiles is whatever lies just outside.
+  const groundOf = new Int32Array(size).map((_, i) => i);
+  const ownWalls = new Uint8Array(size);
+  // Inner walls of those buildings are drawn thin too: a post with arms to the walls beside it.
+  const innerWalls = new Uint8Array(size);
+  for (const b of buildings) {
+    if (b.shape !== 'rect') continue;
+    for (let y = b.y0; y <= b.y1; y++)
+      for (let x = b.x0; x <= b.x1; x++) {
+        const i = y * map.width + x;
+        if (x !== b.x0 && x !== b.x1 && y !== b.y0 && y !== b.y1) {
+          if (WALL_TONES[info.terrainKey[i]]) {
+            innerWalls[i] = 1;
+            // The floor runs under it from whichever room is beside it.
+            for (const [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
+              const j = (y + dy) * map.width + x + dx;
+              if (SURFACE_BY_KEY[info.terrainKey[j]] === 'planks' || info.terrainKey[j] === 'stone_floor' || info.terrainKey[j] === 'sandstone_paving') {
+                groundOf[i] = j;
+                break;
+              }
+            }
+          }
+          continue;
+        }
+        ownWalls[i] = 1;
+        const ox = x === b.x0 ? x - 1 : x === b.x1 ? x + 1 : x;
+        const oy = y === b.y0 ? y - 1 : y === b.y1 ? y + 1 : y;
+        if (ox >= 0 && oy >= 0 && ox < map.width && oy < map.height && !WALL_TONES[info.terrainKey[oy * map.width + ox]]) groundOf[i] = oy * map.width + ox;
+      }
+  }
+
+  /** Water level of the nearest water tile, if a dry tile has one beside it. */
+  const shoreLevel = (x: number, y: number): number | null => {
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= map.width || ny >= map.height) continue;
+        const j = ny * map.width + nx;
+        if (isWaterKey(info.terrainKey[j]) && !isBridge(info, j)) return hm.waterAt(nx, ny);
+      }
+    return null;
+  };
+
+  /** Water colour at a tile corner: the average of the water tiles around it, so deep water shades off smoothly. */
+  const waterTint = (cx: number, cy: number): number => {
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let n = 0;
+    for (const [x, y] of [[cx - 1, cy - 1], [cx, cy - 1], [cx - 1, cy], [cx, cy]]) {
+      if (x < 0 || y < 0 || x >= map.width || y >= map.height) continue;
+      const j = y * map.width + x;
+      if (!isWaterKey(info.terrainKey[j])) continue;
+      const c = tileColors[j];
+      r += (c >> 16) & 255;
+      g += (c >> 8) & 255;
+      b += c & 255;
+      n++;
+    }
+    if (!n) return WATER_COLORS.shallow;
+    return (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n);
   };
 
   const waterTexture = textures.water().clone();
@@ -151,7 +219,8 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
   for (let y = 0; y < map.height; y++) {
     for (let x = 0; x < map.width; x++) {
       const i = y * map.width + x;
-      const key = info.terrainKey[i];
+      const g = groundOf[i];
+      const key = info.terrainKey[g];
       const cornersXY: [number, number][] = [
         [x, y],
         [x + 1, y],
@@ -162,17 +231,29 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
       const nrm = cornersXY.map(([cx, cy]) => normalAt(cx, cy));
       const bridge = isBridge(info, i);
       const surface = bridge ? 'bed' : surfaceFor(key);
-      const natural = surface === 'grass' || surface === 'dirt' || surface === 'stone' || surface === 'bed' || key === 'cobblestone';
-      const turn = natural ? Math.floor(hash2(x, y, 11) * 4) : 0;
+      const rough = surface === 'bed' || key === 'cobblestone';
+      const turn = rough ? Math.floor(hash2(x, y, 11) * 4) : 0;
       // Higher ground is a touch lighter and drier; hollows a touch darker.
-      const lift = (hm.tileCentre(x, y) - 0.8) * 0.07;
-      const tint = surface === 'bed' ? shade(0x5a5a46, 0.9 + hash2(x, y, 3) * 0.2) : shade(tileColors[i], Math.max(0.75, Math.min(1.2, 1 + lift)));
-      surfaces[surface].quad(pts, nrm, tint, turn);
+      const lift = Math.max(0.75, Math.min(1.2, 1 + (hm.tileCentre(x, y) - 0.8) * 0.07));
+      if (surface === 'grass' || surface === 'dirt' || surface === 'stone') {
+        layerOf[i] = surface;
+        tintOf[i] = tileColors[g];
+        natural.quad(pts, nrm, shade(0xffffff, lift), 0);
+      } else {
+        const tint = surface === 'bed' ? shade(0x5a5a46, 0.9 + hash2(x, y, 3) * 0.2) : shade(tileColors[g], lift);
+        surfaces[surface].quad(pts, nrm, tint, turn);
+      }
 
+      // Water also spreads one tile onto natural shores, where the bank dips under it.
+      const shore = !isWaterKey(key) && !bridge && layerOf[i] !== null ? shoreLevel(x, y) : null;
+      if (shore !== null) {
+        const flat: [number, number, number][] = cornersXY.map(([cx, cy]) => [cx, shore, cy]);
+        water.quad(flat, flat.map(() => [0, 1, 0]), cornersXY.map(([cx, cy]) => waterTint(cx, cy)), 0);
+      }
       if (isWaterKey(key) || bridge) {
         const level = hm.waterAt(x, y);
         const flat: [number, number, number][] = cornersXY.map(([cx, cy]) => [cx, level, cy]);
-        water.quad(flat, flat.map(() => [0, 1, 0]), bridge ? 0x2f6ba5 : tileColors[i], 0);
+        water.quad(flat, flat.map(() => [0, 1, 0]), bridge ? 0x2f6ba5 : cornersXY.map(([cx, cy]) => waterTint(cx, cy)), 0);
       }
       if (bridge) {
         const h = hm.groundAt(x + 0.5, y + 0.5);
@@ -208,12 +289,11 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
     edge(map.width, y + 1, map.width, y, [1, 0, 0]);
   }
 
+  const tiles = buildTileTexture(map, (i) => tintOf[i], (i) => layerOf[i]);
   const ground = [
-    surfaces.grass.build(groundMaterial(textures.grass())),
+    natural.build(blendedGroundMaterial(tiles, map.width, map.height)),
     surfaces.road.build(groundMaterial(textures.cobble())),
-    surfaces.dirt.build(groundMaterial(textures.dirt())),
     surfaces.planks.build(groundMaterial(textures.planks())),
-    surfaces.stone.build(groundMaterial(textures.rock())),
     surfaces.bed.build(groundMaterial(textures.dirt())),
     deck.build(groundMaterial(textures.planks())),
   ];
@@ -226,7 +306,9 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
 
   // Raised features. Each extends well below its tile so slopes never show a gap.
   const box = new THREE.BoxGeometry(1, 1, 1);
-  const walls = tiledMesh(box, textured(textures.bricks()), count('building_wall', 'city_wall', 'sandstone_wall'));
+  let inner = 0;
+  for (let i = 0; i < size; i++) inner += innerWalls[i];
+  const walls = tiledMesh(box, textured(textures.bricks()), count('building_wall', 'city_wall', 'sandstone_wall') + inner * 4);
   const postGeo = new THREE.BoxGeometry(0.12, 1.15, 0.12);
   postGeo.translate(0, 0.175, 0);
   const posts = tiledMesh(postGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), count('fence') + count('bridge') * 2);
@@ -264,8 +346,23 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
         }
       }
 
-      const wall = WALL_TONES[key];
-      if (wall) {
+      const wall = ownWalls[i] ? undefined : WALL_TONES[key];
+      if (wall && innerWalls[i]) {
+        const T = WALL_T;
+        const tone = shade(wall.tone, 0.9 + hash2(x, y, 5) * 0.18);
+        const top = base + WALL_HEIGHT;
+        const bottom = low - 0.2;
+        const mid = (top + bottom) / 2;
+        m.compose(new THREE.Vector3(cx, mid, cz), q.identity(), new THREE.Vector3(T, top - bottom, T));
+        pushInstance(walls, m, tone, i);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const k = at(x + dx, y + dy);
+          if (!WALL_TONES[k] && k !== 'door') continue;
+          // Arm from the post to the tile edge (a door's frame meets it there).
+          m.compose(new THREE.Vector3(cx + dx * 0.25, mid, cz + dy * 0.25), q.identity(), new THREE.Vector3(dx ? 0.5 : T, top - bottom, dy ? 0.5 : T));
+          pushInstance(walls, m, tone, i);
+        }
+      } else if (wall) {
         // Buildings are warm sandstone; town walls and ruins are cut stone.
         const city = wall.city;
         const tone = shade(city ? wall.tone : inBuilding(x, y) ? wall.tone : 0x8a8070, 0.9 + hash2(x, y, 5) * 0.18);

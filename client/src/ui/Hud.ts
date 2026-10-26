@@ -10,6 +10,7 @@ import {
   type AttackStyle,
   type EquipSlot,
   type Inventory,
+  type QuestView,
   type SelfState,
   type SkillId,
   type UiView,
@@ -40,6 +41,11 @@ export interface WindowHandlers {
   examine: (itemId: string) => void;
 }
 
+/** What the conversation box asks the game to do: carry on (option 0) or pick an option. */
+export interface DialogueHandlers {
+  choose: (option: number) => void;
+}
+
 /** What the Equipment tab asks the game to do. */
 export interface EquipmentHandlers {
   unequip: (slot: EquipSlot) => void;
@@ -64,6 +70,13 @@ export class Hud {
   private equipmentKey = '';
   private equipment: SelfState['equipment'] = {};
   equipmentHandlers: EquipmentHandlers = { unequip: () => {}, setStyle: () => {}, examine: () => {} };
+  dialogueHandlers: DialogueHandlers = { choose: () => {} };
+  private readonly dialogue = el('dialogue');
+  private dialogueOptions: string[] | null = null;
+  private questsKey = '';
+  private readonly openQuests = new Set<string>();
+  private readonly questDone = el('quest-complete');
+  private questDoneTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.buildTabs();
@@ -82,6 +95,103 @@ export class Hud {
     window.addEventListener('blur', () => this.hideMenu());
     this.levelUpBox.addEventListener('click', () => (this.levelUpBox.hidden = true));
     el('win-close').addEventListener('click', () => this.windowHandlers.close());
+    // Anywhere on a page without options carries the conversation on.
+    this.dialogue.addEventListener('click', (e) => {
+      if (!this.dialogueOptions && !(e.target as HTMLElement).closest('button')) this.dialogueHandlers.choose(0);
+    });
+    this.questDone.addEventListener('click', () => (this.questDone.hidden = true));
+  }
+
+  /** Whether a conversation is showing, and its options (null when it just carries on). */
+  get dialogueOpen(): { options: string[] | null } | null {
+    return this.dialogue.hidden ? null : { options: this.dialogueOptions };
+  }
+
+  private drawDialogue(ui: Extract<UiView, { kind: 'dialogue' }>): void {
+    this.dialogue.hidden = false;
+    this.dialogue.className = `dialogue-${ui.speaker}`;
+    this.dialogueOptions = ui.options ?? null;
+    const name = span(ui.name, 'dlg-name');
+    const words = document.createElement('p');
+    words.className = 'dlg-text';
+    words.textContent = ui.text;
+    const actions = document.createElement('div');
+    actions.className = 'dlg-actions';
+    if (ui.options) {
+      ui.options.forEach((label, i) => {
+        const b = document.createElement('button');
+        b.className = 'dlg-option';
+        b.append(span(`${i + 1}.`, 'dlg-num'), text(` ${label}`));
+        b.addEventListener('click', () => this.dialogueHandlers.choose(i));
+        actions.appendChild(b);
+      });
+    } else {
+      const more = document.createElement('button');
+      more.className = 'dlg-continue';
+      more.textContent = 'Click here to continue';
+      more.addEventListener('click', () => this.dialogueHandlers.choose(0));
+      actions.appendChild(more);
+    }
+    this.dialogue.replaceChildren(name, words, actions);
+  }
+
+  /** The Quests tab: every quest, coloured by progress, with its journal underneath. */
+  renderQuests(quests: QuestView[], points: number): void {
+    const key = JSON.stringify([quests, points, [...this.openQuests]]);
+    if (key === this.questsKey) return;
+    this.questsKey = key;
+    const list = el('quest-list');
+    list.replaceChildren();
+    el('quest-points').textContent = `Quest points: ${points}`;
+    for (const q of quests) {
+      const item = document.createElement('div');
+      item.className = `quest quest-${q.status}`;
+      const head = document.createElement('button');
+      head.className = 'quest-name';
+      head.textContent = q.name;
+      head.setAttribute('aria-expanded', String(this.openQuests.has(q.id)));
+      head.addEventListener('click', () => {
+        if (this.openQuests.has(q.id)) this.openQuests.delete(q.id);
+        else this.openQuests.add(q.id);
+        this.renderQuests(quests, points);
+      });
+      item.appendChild(head);
+      if (this.openQuests.has(q.id)) {
+        const journal = document.createElement('div');
+        journal.className = 'quest-journal';
+        for (const step of q.steps) {
+          const line = document.createElement('p');
+          line.textContent = step.text;
+          if (step.done) line.className = 'done';
+          journal.appendChild(line);
+        }
+        if (q.status === 'done') journal.appendChild(span('QUEST COMPLETE!', 'quest-done-line'));
+        else {
+          journal.appendChild(span('Rewards', 'quest-rewards-title'));
+          for (const r of q.rewards) journal.appendChild(span(r, 'quest-reward'));
+        }
+        item.appendChild(journal);
+      }
+      list.appendChild(item);
+    }
+  }
+
+  /** The scroll that unrolls when a quest is finished. */
+  showQuestComplete(name: string, rewards: string[], points: number): void {
+    const title = span('Quest complete!', 'qc-title');
+    const quest = span(`You have completed ${name}.`, 'qc-name');
+    const list = document.createElement('ul');
+    for (const r of rewards) {
+      const li = document.createElement('li');
+      li.textContent = r;
+      list.appendChild(li);
+    }
+    const total = span(`Quest points: ${points}`, 'qc-points');
+    const hint = span('Click to close', 'lu-hint');
+    this.questDone.replaceChildren(title, quest, span('You are awarded:', 'qc-sub'), list, total, hint);
+    this.questDone.hidden = false;
+    if (this.questDoneTimer) clearTimeout(this.questDoneTimer);
+    this.questDoneTimer = setTimeout(() => (this.questDone.hidden = true), 12000);
   }
 
   /** Draws the open bank, shop or crafting window, or hides it. */
@@ -91,8 +201,13 @@ export class Hud {
     const key = JSON.stringify(ui?.kind === 'craft' ? [ui, self.inventory, self.skills] : ui);
     if (key === this.windowKey) return;
     this.windowKey = key;
-    if (!ui) {
+    if (ui?.kind !== 'dialogue') {
+      this.dialogue.hidden = true;
+      this.dialogueOptions = null;
+    }
+    if (!ui || ui.kind === 'dialogue') {
       this.win.hidden = true;
+      if (ui) this.drawDialogue(ui);
       return;
     }
     this.win.hidden = false;

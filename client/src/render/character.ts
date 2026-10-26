@@ -43,7 +43,7 @@ export interface CharacterStyle {
 type WeaponKind = 'dagger' | 'sword' | 'scimitar' | 'axe' | 'pickaxe';
 
 /** Colours for each metal tier, used on worn gear. */
-export const METALS: Record<string, number> = { bronze: 0xb8793a, iron: 0x7d7f86, steel: 0xb4bec8 };
+export const METALS: Record<string, number> = { bronze: 0xb8793a, iron: 0x7d7f86, steel: 0xb4bec8, cinder: 0x6a2418, drakescale: 0xa8401e };
 
 /**
  * A look with gear on top: helmets and shields are added, a chainbody
@@ -979,6 +979,12 @@ const ACTIVITIES: Record<string, { period: number; pose: (u: number) => Pose }> 
   },
 };
 
+/** Where a work cycle is (0..1) right now, matching the pose shown, or null for no such activity. */
+export function activityPhase(rig: CharacterRig, activity: string, now: number): number | null {
+  const anim = ACTIVITIES[activity];
+  return anim ? ((now + rig.seed * 1000) % anim.period) / anim.period : null;
+}
+
 /**
  * One-off moves, `u` running 0..1 over `ms`. Poses blend in and out at the
  * ends, so they sit on top of standing, walking or fighting stances.
@@ -1049,6 +1055,23 @@ const ONE_SHOTS: Record<string, { ms: number; pose: (u: number) => Pose }> = {
     pose: (u) => {
       const k = Math.sin(u * Math.PI);
       return { shoulderLx: -1.3 * k, elbowL: -1.3 * k, shoulderLz: 0.3 * k, torsoX: -0.18 * k, headX: -0.15 * k, hipsY: -0.02 * k };
+    },
+  },
+  // Talking: an open hand out and a nod, the other hand moving with the words.
+  talk: {
+    ms: 1500,
+    pose: (u) => {
+      const k = Math.min(1, Math.sin(u * Math.PI) * 1.5);
+      const beat = Math.sin(u * Math.PI * 5);
+      return {
+        shoulderRx: -0.75 * k - 0.15 * beat * k,
+        shoulderRz: 0.25 * k,
+        elbowR: -0.9 * k,
+        shoulderLx: -0.35 * k + 0.12 * beat * k,
+        elbowL: -0.7 * k,
+        headX: 0.08 * Math.sin(u * Math.PI * 4) * k,
+        torsoY: 0.06 * beat * k,
+      };
     },
   },
   // Food to the mouth, a couple of chews.

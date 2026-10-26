@@ -45,6 +45,7 @@ import {
   type ItemStack,
 } from './items';
 import { findPath } from './pathfinding';
+import { QUESTS, QUEST_IDS, conversation, doneStage, questView, type QuestId, type TalkActions } from './quests';
 import { SAVE_VERSION, type SaveData } from './save';
 import { MAX_XP, SKILLS, combatLevel, levelForXp, requirementLevel, startingXp, type SkillId } from './skills';
 
@@ -150,6 +151,7 @@ export class Simulation {
       equipment: save ? { ...save.equipment } : {},
       attackStyle: save?.attackStyle ?? 'accurate',
       bank: save ? save.bank.map((s) => ({ ...s })) : [],
+      quests: save ? { ...save.quests } : {},
       ui: null,
       createdAt: save?.createdAt ?? now,
       path: [],
@@ -182,7 +184,7 @@ export class Simulation {
       player.id,
       save
         ? `Welcome back, ${player.name}.`
-        : 'Welcome to Kelmoor, in the Vell Reaches. Click the ground to walk, right-click for options. Chop trees with your axe, net fish in the River Vell, and visit the General Store for more tools. Goblins camp to the south-west if you fancy a fight.',
+        : 'Welcome to Kelmoor, in the Vell Reaches. Click the ground to walk, right-click for options. Elder Maren, by the fountain, has a task for newcomers.',
     );
     return player.id;
   }
@@ -201,7 +203,7 @@ export class Simulation {
       hp: p.hp,
       attackStyle: p.attackStyle,
       bank: p.bank.map((s) => ({ ...s })),
-      quests: {},
+      quests: { ...p.quests },
       createdAt: p.createdAt || now,
       updatedAt: now,
     };
@@ -239,6 +241,7 @@ export class Simulation {
       if (e.pickup !== null) this.pickUp(e);
       if (e.action?.kind === 'gather') this.gather(e);
       else if (e.action?.kind === 'use') this.arriveToUse(e);
+      else if (e.action?.kind === 'talk') this.arriveToTalk(e);
       else if (e.action?.kind === 'craft') this.craftStep(e);
     }
     for (const e of [...this.entities.values()]) {
@@ -307,6 +310,9 @@ export class Simulation {
       case 'closeInterface':
         player.ui = null;
         return;
+      case 'dialogueChoice':
+        this.dialogueChoice(player, msg.option);
+        return;
       case 'craft':
         this.startCraft(player, msg.recipeId, msg.qty);
         return;
@@ -356,7 +362,7 @@ export class Simulation {
     player.ui = null;
   }
 
-  private interact(player: PlayerEntity, targetId: EntityId, action: 'gather' | 'take' | 'use'): void {
+  private interact(player: PlayerEntity, targetId: EntityId, action: 'gather' | 'take' | 'use' | 'talk'): void {
     const target = this.entities.get(targetId);
     this.stopActions(player);
     if (action === 'take' && target?.kind === 'item') {
@@ -366,6 +372,11 @@ export class Simulation {
     }
     if (action === 'gather' && target?.kind === 'resource' && RESOURCE_DATA[target.defKey]) {
       player.action = { kind: 'gather', targetId: target.id, nextAttempt: 0, started: false };
+      this.walkTo(player, target);
+      return;
+    }
+    if (action === 'talk' && target?.kind === 'npc') {
+      player.action = { kind: 'talk', targetId: target.id };
       this.walkTo(player, target);
       return;
     }
@@ -386,7 +397,9 @@ export class Simulation {
     else if (target.kind === 'monster') text = MONSTERS[target.defKey]?.examine ?? `It's a ${target.name.toLowerCase()}.`;
     else {
       const key = target.depletedUntil !== undefined ? `${target.defKey}_stump` : target.defKey;
-      text = EXAMINE[key] ?? EXAMINE[target.defKey] ?? `It's a ${target.name.toLowerCase()}.`;
+      // People without their own line are described by what they do.
+      const role = target.kind === 'npc' ? this.map.defs.npcs[target.defKey]?.role : undefined;
+      text = EXAMINE[key] ?? EXAMINE[target.defKey] ?? (role ? `${target.name}, ${aOrSome(role.toLowerCase())} of the Reaches.` : `It's ${aOrSome(target.name.toLowerCase())}.`);
     }
     this.message(player.id, text, 'examine');
   }
@@ -702,11 +715,29 @@ export class Simulation {
 
   private monsterAttack(monster: MonsterEntity, player: PlayerEntity): void {
     const stats = MONSTERS[monster.defKey];
+    if (stats.breath && this.rng.chance(stats.breath.chance)) return this.breathe(monster, player);
     const defender = playerFighter(player.skills, player.equipment, player.attackStyle);
     const landed = this.rng.chance(hitChance(monsterFighter(stats), defender));
     const damage = landed ? Math.min(player.hp, this.rng.int(1, stats.maxHit)) : 0;
     monster.nextAttack = this.tick + stats.attackSpeed;
     this.animate(monster, stats.attackAnim);
+    this.landMonsterHit(monster, player, damage);
+  }
+
+  /** Fire: it always lands, armour doesn't help, and only a fireward shield takes the edge off. */
+  private breathe(monster: MonsterEntity, player: PlayerEntity): void {
+    const stats = MONSTERS[monster.defKey];
+    const warded = !!(player.equipment.shield && ITEMS[player.equipment.shield]?.fireward);
+    const max = warded ? Math.floor(stats.breath!.maxHit / 3) : stats.breath!.maxHit;
+    const damage = Math.min(player.hp, this.rng.int(0, max));
+    monster.nextAttack = this.tick + stats.attackSpeed;
+    this.animate(monster, 'breath');
+    if (warded) this.message(player.id, 'Your shield turns most of the fire aside.');
+    else if (damage >= max / 2) this.message(player.id, `You are badly burnt by the ${monster.name.toLowerCase()}'s fire.`, 'warn');
+    this.landMonsterHit(monster, player, damage);
+  }
+
+  private landMonsterHit(monster: MonsterEntity, player: PlayerEntity, damage: number): void {
     player.hp -= damage;
     player.attackedBy = monster.id;
     this.broadcastHit(monster, player, damage, player.hp, levelForXp(player.skills.hitpoints));
@@ -738,6 +769,8 @@ export class Simulation {
     for (const [id, dealt] of monster.damageBy) {
       if (dealt > best && this.entities.has(id)) [killer, best] = [id, dealt];
     }
+    const winner = killer !== undefined ? this.entities.get(killer) : undefined;
+    if (winner?.kind === 'player') this.questKill(winner, monster.defKey);
     for (const drop of MONSTERS[monster.defKey].drops) {
       if (!this.rng.chance(drop.chance)) continue;
       const qty = rollQty(drop.qty, (a, b) => this.rng.int(a, b));
@@ -885,13 +918,18 @@ export class Simulation {
     if (target && (target.kind !== 'player' || target.deadUntil !== undefined || distance(m, target) > MAX_CHASE || home > m.wander.radius + LEASH)) {
       target = undefined;
     }
-    if (!target && stats.aggressive) target = this.findPrey(m, stats.aggroRange ?? 3);
+    if (!target && stats.aggressive) target = this.findPrey(m, stats.aggroRange ?? 3, !!stats.boss);
     m.target = target?.kind === 'player' ? target.id : null;
 
     if (target?.kind === 'player') {
       m.path = [];
       if (inReach(m, target)) {
         if (this.tick >= m.nextAttack) this.monsterAttack(m, target);
+        return;
+      }
+      // Fire reaches further than teeth: a fleeing or approaching player may get breathed on.
+      if (stats.breath && this.tick >= m.nextAttack && distance(m, target) <= stats.breath.range && this.rng.chance(0.5)) {
+        this.breathe(m, target);
         return;
       }
       const route = findPath(this.grid, m, this.meleeGoals(target), target, { maxNodes: 600, canStep: this.monsterCanStep(m) });
@@ -933,12 +971,12 @@ export class Simulation {
     };
   }
 
-  /** The nearest player an aggressive monster will pick on: in range, alive, and not too strong for it. */
-  private findPrey(m: MonsterEntity, range: number): PlayerEntity | undefined {
+  /** The nearest player an aggressive monster will pick on: in range, alive, and (bosses aside) not too strong for it. */
+  private findPrey(m: MonsterEntity, range: number, boss: boolean): PlayerEntity | undefined {
     let best: PlayerEntity | undefined;
     for (const e of this.entities.values()) {
       if (e.kind !== 'player' || e.deadUntil !== undefined) continue;
-      if (distance(m, e) > range || combatLevel(e.skills) > m.level * 2) continue;
+      if (distance(m, e) > range || (!boss && combatLevel(e.skills) > m.level * 2)) continue;
       if (!best || distance(m, e) < distance(m, best)) best = e;
     }
     return best;
@@ -1118,6 +1156,18 @@ export class Simulation {
   private uiView(player: PlayerEntity): UiView | null {
     const ui = player.ui;
     if (!ui) return null;
+    if (ui.kind === 'dialogue') {
+      const page = ui.pages[ui.index];
+      const npc = this.entities.get(ui.at);
+      return {
+        kind: 'dialogue',
+        npcId: ui.at,
+        speaker: page.speaker,
+        name: page.speaker === 'player' ? player.name : npc?.kind === 'npc' ? npc.name : '',
+        text: page.text,
+        ...(page.options && { options: page.options.map((o) => o.label) }),
+      };
+    }
     if (ui.kind === 'bank') return { kind: 'bank', items: player.bank.map((b) => ({ ...b })) };
     if (ui.kind === 'shop') {
       const shop = SHOPS[ui.shopId];
@@ -1173,6 +1223,110 @@ export class Simulation {
       const name = SKILLS.find((s) => s.id === skill)!.name;
       const article = /^[AEIOU]/.test(name) ? 'an' : 'a';
       this.message(player.id, `Congratulations, you've just advanced ${article} ${name} level. You are now level ${after}.`, 'levelup');
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Conversations and quests
+  // -------------------------------------------------------------------------
+
+  /** Starts a conversation once the player is next to whoever they want to talk to. */
+  private arriveToTalk(player: PlayerEntity): void {
+    const action = player.action;
+    if (action?.kind !== 'talk') return;
+    player.action = null;
+    const target = this.entities.get(action.targetId);
+    if (target?.kind !== 'npc') return;
+    // People behind counters can be talked to across them.
+    if (Math.max(Math.abs(target.x - player.x), Math.abs(target.y - player.y)) > 2) return;
+    const def = this.map.defs.npcs[target.defKey];
+    if (!def) return;
+    this.showPages(player, target.id, conversation(def, this.talkActions(player, target)));
+  }
+
+  /** Shows the first of `pages`, or ends the conversation when there are none. */
+  private showPages(player: PlayerEntity, at: EntityId, pages: ReturnType<typeof conversation>): void {
+    // An option like "Let's trade" opens another window instead of more talk.
+    if (player.ui && player.ui.kind !== 'dialogue') return;
+    if (!pages.length) {
+      player.ui = null;
+      return;
+    }
+    player.ui = { kind: 'dialogue', at, pages, index: 0 };
+    pages[0].effect?.();
+  }
+
+  private dialogueChoice(player: PlayerEntity, option: number): void {
+    const ui = player.ui;
+    if (ui?.kind !== 'dialogue' || !Number.isInteger(option)) return;
+    const page = ui.pages[ui.index];
+    if (page.options) {
+      const chosen = page.options[option];
+      if (!chosen) return;
+      // Cleared first, so a choice that opens a shop or bank isn't overwritten.
+      player.ui = null;
+      const npc = this.entities.get(ui.at);
+      const pages = chosen.then();
+      if (player.ui === null && npc) this.showPages(player, ui.at, pages);
+      return;
+    }
+    ui.index++;
+    if (ui.index >= ui.pages.length) {
+      player.ui = null;
+      return;
+    }
+    ui.pages[ui.index].effect?.();
+  }
+
+  /** What a conversation with `npc` may do for this player. */
+  private talkActions(player: PlayerEntity, npc: ObjectEntity): TalkActions {
+    const def = this.map.defs.npcs[npc.defKey];
+    const shop = shopForNpc(npc.defKey);
+    const carried = () => [...player.inventory, player.equipment.weapon ? { itemId: player.equipment.weapon, qty: 1 } : null];
+    return {
+      playerName: player.name,
+      stage: (quest) => player.quests[quest] ?? 0,
+      setStage: (quest, stage) => this.setQuestStage(player, quest, stage),
+      has: (itemId, qty = 1) => hasItem(player.inventory, itemId, qty),
+      hasTool: (skill) => hasAnyTool(carried(), skill),
+      take: (itemId, qty = 1) => hasItem(player.inventory, itemId, qty) && removeItem(player.inventory, itemId, qty) === qty,
+      give: (itemId, qty = 1) => {
+        if (!addItem(player.inventory, itemId, qty)) this.spawnItem(itemId, qty, player, player.id, PRIVATE_TICKS, GROUND_ITEM_TICKS);
+      },
+      complete: (quest) => this.completeQuest(player, quest),
+      ...(shop && { trade: () => void (player.ui = { kind: 'shop', shopId: shop.id, at: npc.id }) }),
+      ...(isBanker(def) && { bank: () => void (player.ui = { kind: 'bank', at: npc.id }) }),
+    };
+  }
+
+  private setQuestStage(player: PlayerEntity, quest: QuestId, stage: number): void {
+    const before = player.quests[quest] ?? 0;
+    player.quests[quest] = stage;
+    if (before === 0 && stage > 0) this.message(player.id, `You have started a new quest: ${QUESTS[quest].name}. Check the Quests tab to see what to do next.`, 'quest');
+    else if (stage > before) this.message(player.id, 'Your quest journal has been updated.', 'quest');
+  }
+
+  private completeQuest(player: PlayerEntity, quest: QuestId): void {
+    const q = QUESTS[quest];
+    if ((player.quests[quest] ?? 0) >= doneStage(q)) return;
+    player.quests[quest] = doneStage(q);
+    for (const [itemId, qty] of q.reward.items) {
+      if (!addItem(player.inventory, itemId, qty)) this.spawnItem(itemId, qty, player, player.id, PRIVATE_TICKS, GROUND_ITEM_TICKS);
+    }
+    for (const [skill, xp] of q.reward.xp) this.addXp(player, skill, xp);
+    this.message(player.id, `Congratulations! You have completed ${q.name}.`, 'quest');
+    this.sessions.get(player.id)?.outbox.push({ type: 'questComplete', name: q.name, rewards: q.rewards, questPoints: this.questPoints(player) });
+  }
+
+  private questPoints(player: PlayerEntity): number {
+    return QUEST_IDS.filter((id) => (player.quests[id] ?? 0) >= doneStage(QUESTS[id])).length;
+  }
+
+  /** Kills that move a quest on. */
+  private questKill(player: PlayerEntity, defKey: string): void {
+    if (defKey === 'goblin' && player.quests.first_oath === 4) {
+      this.setQuestStage(player, 'first_oath', 5);
+      this.message(player.id, "That's the goblin beaten. Elder Maren will want to hear about it.", 'quest');
     }
   }
 
@@ -1299,6 +1453,8 @@ export class Simulation {
       bonuses: equipmentBonuses(player.equipment),
       maxHit: playerMaxHit(playerFighter(player.skills, player.equipment, player.attackStyle)),
       ui: this.uiView(player),
+      quests: QUEST_IDS.map((id) => questView(id, player.quests[id] ?? 0)),
+      questPoints: this.questPoints(player),
     };
     const json = JSON.stringify(state);
     if (json === session.lastSelf) return;

@@ -69,6 +69,9 @@
     { "id": "burnt_meat", "name": "Burnt meat", "examine": "Charcoal with a memory of beef.", "value": 1 },
     { "id": "cowhide", "name": "Cowhide", "examine": "A tough hide. A tanner would pay for this.", "value": 10 },
     { "id": "crimson_feathers", "name": "Crimson feathers", "examine": "Bright red feathers from a crimson swift.", "stackable": true, "value": 2 },
-    { "id": "lizard_scales", "name": "Lizard scales", "examine": "Hard, glittering scales. Traders in Qadir collect them.", "value": 30 }
+    { "id": "lizard_scales", "name": "Lizard scales", "examine": "Hard, glittering scales. Traders in Qadir collect them.", "value": 30 },
+    { "id": "drake_scale", "name": "Drake scale", "examine": "A scale the size of a hand, still warm. Traders pay well for these.", "value": 400 },
+    { "id": "cinder_blade", "name": "Cinder blade", "examine": "A dark blade forged in drakefire. It never quite cools.", "value": 4800, "equip": { "slot": "weapon", "style": "slash", "attack": 24, "strength": 26, "level": 30 } },
+    { "id": "drakescale_shield", "name": "Drakescale shield", "examine": "Drake scales riveted to an iron frame. Fire slides off it.", "value": 3600, "fireward": true, "equip": { "slot": "shield", "defence": 18, "level": 30 } }
   ]
 }

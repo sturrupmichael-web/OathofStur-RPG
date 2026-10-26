@@ -1,62 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { Point } from '../src/map/types';
 import type { ServerMessage } from '../src/protocol/messages';
 import { MONSTERS, hitChance, monsterFighter, playerFighter, playerMaxHit } from '../src/sim/combat';
-import type { Entity, GroundItemEntity, MonsterEntity, PlayerEntity } from '../src/sim/entities';
-import { INVENTORY_SIZE, ITEMS, addItem, countItem, emptyInventory, type Equipment, type Inventory } from '../src/sim/items';
+import type { GroundItemEntity, MonsterEntity } from '../src/sim/entities';
+import { INVENTORY_SIZE, ITEMS, countItem } from '../src/sim/items';
 import { parseSave } from '../src/sim/save';
 import { DEATH_PILE_TICKS, PRIVATE_TICKS, Simulation } from '../src/sim/Simulation';
-import { combatLevel, startingXp, xpForLevel, type SkillId } from '../src/sim/skills';
-import { kx, ky, loadWorld } from './helpers';
+import { combatLevel, startingXp, xpForLevel } from '../src/sim/skills';
+import { addPlayer, besides, entities, kx, ky, loadWorld, monsters, run } from './helpers';
 
 const map = loadWorld();
-
-function run(sim: Simulation, ticks: number, until?: () => boolean) {
-  for (let i = 0; i < ticks; i++) {
-    sim.step();
-    if (until?.()) return;
-  }
-}
-
-function entities(sim: Simulation): Entity[] {
-  const out: Entity[] = [];
-  for (let id = 1; id < 20000; id++) {
-    const e = sim.getEntity(id);
-    if (e) out.push(e);
-  }
-  return out;
-}
-
-function monsters(sim: Simulation, defKey: string): MonsterEntity[] {
-  return entities(sim).filter((e): e is MonsterEntity => e.kind === 'monster' && e.defKey === defKey);
-}
-
-interface Setup {
-  at: Point;
-  levels?: Partial<Record<SkillId, number>>;
-  items?: [string, number][];
-  equipment?: Equipment;
-  hp?: number;
-}
-
-/** Adds a player through a save, so tests can choose where they stand and what they carry. */
-function addPlayer(sim: Simulation, { at, levels = {}, items = [], equipment = {}, hp }: Setup): PlayerEntity {
-  const skills = startingXp();
-  for (const [skill, level] of Object.entries(levels)) skills[skill as SkillId] = xpForLevel(level);
-  const inventory: Inventory = emptyInventory();
-  for (const [itemId, qty] of items) addItem(inventory, itemId, qty);
-  const save = parseSave({ version: 3, name: 'Tester', position: at, skills, inventory, equipment, bank: [], quests: {}, hp, createdAt: '', updatedAt: '' })!;
-  return sim.getEntity(sim.addPlayer('Tester', save)) as PlayerEntity;
-}
-
-/** A walkable tile straight beside a monster. */
-function besides(sim: Simulation, m: MonsterEntity): Point {
-  const spot = [{ x: m.x + 1, y: m.y }, { x: m.x - 1, y: m.y }, { x: m.x, y: m.y + 1 }, { x: m.x, y: m.y - 1 }].find(
-    (p) => sim.grid.isWalkable(p.x, p.y) && !entities(sim).some((e) => e.kind === 'monster' && e.x === p.x && e.y === p.y),
-  );
-  if (!spot) throw new Error('no room beside the monster');
-  return spot;
-}
 
 const hits = (log: ServerMessage[]) => log.filter((m): m is Extract<ServerMessage, { type: 'hit' }> => m.type === 'hit');
 

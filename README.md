@@ -62,7 +62,8 @@ The world is The Vell Reaches: 384 x 288 tiles, with Kelmoor inside it at offset
 (130, 70), six towns, the Ashen Waste to the north, desert, swamp, mountains and a south
 coast. `tools/vell-reaches.html` is both the viewer and the generator: edit it and
 regenerate `shared/data/maps/vell-reaches.json` from its Copy button (or
-`window.__REGION.json()`), never by hand.
+`window.__REGION.json()`), never by hand. `python3 tools/format-map.py <copied json> shared/data/maps/vell-reaches.json`
+lays it out one entry per line so diffs stay readable.
 
 The legend only gives a name and walkable flag, so `JsonMapSource` decides by name which
 tiles are objects (trees, rocks, anvils, bank booths, stalls, tents, ...) and gives each
@@ -103,3 +104,29 @@ Monster stats and drops live in `shared/data/monsters.json`, gear stats in `item
 - When you die you wake at the spawn point with full health, keeping your three most
   valuable items (counted one by one, so coins rarely make the cut). The rest waits where
   you fell for ten minutes, seen only by you.
+- Axes and pickaxes can be wielded, and still work as tools from the weapon slot.
+
+## Quests and the Cinder Drake
+
+Conversations and quests live in `shared/src/sim/quests.ts`. Talk to anyone (left-click
+for people without a shop or bank, or Talk-to in the right-click menu); bankers and
+shopkeepers offer their window from the conversation too. Space or a click carries a
+conversation on, and number keys pick an option.
+
+- **The First Oath**, from Elder Maren by the fountain in Kelmoor Square, walks a new
+  player through the basics: 3 logs, a cooked fish, a bronze bar (she gives you a
+  pickaxe), then defeating a goblin. The reward is 300 coins, an iron sword and 150 XP in
+  each skill used. Progress is the quest's stage, kept in the save's `quests`.
+- **The Cinder Drake** (level 60) lives in the Cinder Pools, far north in the Ashen Waste.
+  It attacks anyone nearby, whatever their level. Now and then it breathes fire instead of
+  biting, from up to 4 tiles away: fire always lands, for up to 18, and armour does nothing.
+  A drakescale shield cuts it to a third. It drops coins, drake scales and food, and
+  sometimes a cinder blade (Attack 30) or a drakescale shield (Defence 30).
+
+## Sound
+
+Every sound is synthesised in the browser (`client/src/audio/Sound.ts`), so there are no
+audio files. Each work activity has its own sound, timed to when the tool lands, and so do
+each monster's attack, hits, misses, eating, deaths, level-ups and quests. Sounds from
+other people and monsters get quieter with distance. Options has an on/off switch and
+volume, kept in this browser.

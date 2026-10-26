@@ -12,3 +12,4 @@ export { findPath } from './sim/pathfinding';
 export * from './sim/skills';
 export { Simulation, TICK_MS, type SimulationOptions } from './sim/Simulation';
 export * from './sim/combat';
+export { QUESTS, QUEST_IDS, questView, type QuestId, type QuestView, type DialoguePage } from './sim/quests';

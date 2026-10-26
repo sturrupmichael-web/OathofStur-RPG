@@ -682,6 +682,263 @@ body {
   color: var(--gold);
 }
 
+/* ---- Conversations ---------------------------------------------------- */
+#dialogue[hidden] {
+  display: none;
+}
+
+#dialogue {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 16;
+  width: min(560px, calc(100% - 24px));
+  padding: 10px 16px 12px;
+  background: #d8c9a3;
+  color: #1a1209;
+  border: 3px solid var(--edge);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  animation: dlg-in 0.18s ease-out;
+}
+
+#dialogue .dlg-name {
+  display: block;
+  font-weight: bold;
+  font-size: 15px;
+  color: #7a1e12;
+  text-align: center;
+}
+
+#dialogue.dialogue-player .dlg-name {
+  color: #1f3f8a;
+}
+
+#dialogue .dlg-text {
+  margin: 6px 0 8px;
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+#dialogue .dlg-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+#dialogue button {
+  font: inherit;
+  font-size: 14px;
+  background: none;
+  border: 0;
+  color: #1f3f8a;
+  cursor: pointer;
+  padding: 3px 8px;
+}
+
+#dialogue button:hover,
+#dialogue button:focus-visible {
+  color: #b02a12;
+  text-decoration: underline;
+}
+
+#dialogue .dlg-num {
+  color: #5a4a30;
+}
+
+@keyframes dlg-in {
+  from { transform: translateX(-50%) translateY(10px); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* ---- Quests ------------------------------------------------------------- */
+#quest-points {
+  margin-bottom: 8px;
+  color: var(--gold);
+  font-weight: bold;
+}
+
+.quest-name {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 15px;
+  padding: 6px 8px;
+  background: var(--panel-dark);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.quest-not_started .quest-name { color: #ff6a5a; }
+.quest-in_progress .quest-name { color: #ffe44a; }
+.quest-done .quest-name { color: #5ae06a; }
+
+.quest-journal {
+  margin: 6px 0 10px;
+  padding: 8px 10px;
+  background: #d8c9a3;
+  color: #1a1209;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.quest-journal p {
+  margin: 0 0 6px;
+}
+
+.quest-journal p.done {
+  text-decoration: line-through;
+  color: #6a5a40;
+}
+
+.quest-journal .quest-done-line,
+.quest-journal .quest-rewards-title {
+  display: block;
+  font-weight: bold;
+  color: #7a1e12;
+  margin-top: 4px;
+}
+
+.quest-journal .quest-reward {
+  display: block;
+  padding-left: 10px;
+}
+
+#quest-complete[hidden] {
+  display: none;
+}
+
+#quest-complete {
+  position: absolute;
+  left: 50%;
+  top: 14%;
+  transform: translateX(-50%);
+  z-index: 21;
+  width: min(340px, calc(100% - 32px));
+  padding: 16px 22px;
+  text-align: center;
+  background: linear-gradient(#e8dcb8, #d2c095);
+  color: #1a1209;
+  border: 3px solid var(--edge);
+  border-radius: 10px / 22px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  animation: level-pop 0.45s ease-out;
+}
+
+#quest-complete span {
+  display: block;
+}
+
+#quest-complete .qc-title {
+  font-size: 20px;
+  font-weight: bold;
+  color: #7a1e12;
+}
+
+#quest-complete .qc-name {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+#quest-complete .qc-sub {
+  margin-top: 10px;
+  font-weight: bold;
+}
+
+#quest-complete ul {
+  margin: 4px 0 8px;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+#quest-complete .lu-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #5a4a30;
+}
+
+#quest-complete .qc-points {
+  font-weight: bold;
+  color: #1f3f8a;
+}
+
+/* ---- Boss health -------------------------------------------------------- */
+#boss-bar[hidden] {
+  display: none;
+}
+
+#boss-bar {
+  position: absolute;
+  left: 50%;
+  top: 34px;
+  transform: translateX(-50%);
+  z-index: 12;
+  width: min(360px, calc(100% - 140px));
+  text-align: center;
+  pointer-events: none;
+}
+
+#boss-name {
+  display: block;
+  font-weight: bold;
+  color: #ffb070;
+  text-shadow: 1px 1px 0 #000, 0 0 6px #000;
+}
+
+#boss-hp {
+  height: 14px;
+  margin-top: 3px;
+  background: #7a1010;
+  border: 2px solid #000;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#boss-hp-fill {
+  height: 100%;
+  background: linear-gradient(#5ee05a, #2a9a2a);
+  transition: width 0.25s;
+}
+
+/* ---- Sound options -------------------------------------------------------- */
+.sound-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.sound-row input[type='range'] {
+  flex: 1;
+  accent-color: var(--gold);
+}
+
+.quest-marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: bold;
+  font-size: 22px;
+  color: var(--gold);
+  text-shadow: 1px 1px 0 #000, 0 0 6px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  animation: marker-bob 1.4s ease-in-out infinite;
+}
+
+@keyframes marker-bob {
+  50% { margin-top: -5px; }
+}
+
 @media (pointer: coarse) {
   .hint-mouse {
     display: none;
@@ -707,6 +964,15 @@ body {
 
 /* Phones: the game fills the screen; minimap, chat and panels float over it. */
 @media (max-width: 720px) {
+  #dialogue {
+    bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+  }
+
+  #boss-bar {
+    top: calc(150px + env(safe-area-inset-top, 0px));
+    width: calc(100% - 32px);
+  }
+
   #app {
     display: block;
     position: relative;

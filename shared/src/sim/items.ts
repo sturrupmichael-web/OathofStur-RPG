@@ -10,6 +10,8 @@ export interface ItemDef {
   value: number;
   /** Hitpoints restored when eaten. */
   heals?: number;
+  /** Shields that turn fire: breath attacks do a third of the damage. */
+  fireward?: boolean;
   /** Set on things that can be worn or wielded. */
   equip?: EquipStats;
   /** Set on tools: the skill it is used for, the level needed, and its success bonus. */

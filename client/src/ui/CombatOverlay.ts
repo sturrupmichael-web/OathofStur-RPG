@@ -1,4 +1,4 @@
-import type { EntityId } from '@rpg/shared';
+import { MONSTERS, type EntityId } from '@rpg/shared';
 import type { Renderer } from '../render/Renderer';
 import type { ClientState } from '../state/ClientState';
 
@@ -7,7 +7,7 @@ const BAR_MS = 6000;
 const SPLAT_MS = 1100;
 
 /** Height above the ground (tiles) where splats and bars float, by monster. */
-const HEIGHTS: Record<string, number> = { cow: 1.15, desert_lizard: 0.55, scorpion: 0.7, cave_creeper: 0.75, crimson_swift: 1.35, goblin: 1.0 };
+const HEIGHTS: Record<string, number> = { cow: 1.15, desert_lizard: 0.55, scorpion: 0.7, cave_creeper: 0.75, crimson_swift: 1.35, goblin: 1.0, cinder_drake: 3.3 };
 
 /**
  * Hit splats and health bars over the 3D view, drawn as DOM elements that
@@ -16,6 +16,8 @@ const HEIGHTS: Record<string, number> = { cow: 1.15, desert_lizard: 0.55, scorpi
 export class CombatOverlay {
   private readonly splats: { el: HTMLElement; target: EntityId; at: number; offset: number }[] = [];
   private readonly bars = new Map<EntityId, HTMLElement>();
+  private readonly bossBar = document.getElementById('boss-bar')!;
+  private bossKey = '';
 
   constructor(
     private readonly layer: HTMLElement,
@@ -78,5 +80,22 @@ export class CombatOverlay {
         this.bars.delete(id);
       }
     }
+    this.updateBossBar();
+  }
+
+  /** A big health bar across the top while you fight a boss. */
+  private updateBossBar(): void {
+    const me = this.state.player?.data;
+    let boss = me?.interacting !== undefined ? this.state.entities.get(me.interacting)?.data : undefined;
+    if (!boss || boss.kind !== 'monster' || !MONSTERS[boss.defKey ?? '']?.boss) {
+      boss = [...this.state.entities.values()].map((v) => v.data).find((d) => d.kind === 'monster' && d.interacting === me?.id && MONSTERS[d.defKey ?? '']?.boss);
+    }
+    const key = boss && !boss.dead ? `${boss.name}:${boss.hp}:${boss.maxHp}` : '';
+    if (key === this.bossKey) return;
+    this.bossKey = key;
+    this.bossBar.hidden = !key;
+    if (!boss || !key) return;
+    document.getElementById('boss-name')!.textContent = `${boss.name} (level-${boss.combatLevel})`;
+    document.getElementById('boss-hp-fill')!.style.width = `${(Math.max(0, boss.hp ?? 0) / (boss.maxHp || 1)) * 100}%`;
   }
 }

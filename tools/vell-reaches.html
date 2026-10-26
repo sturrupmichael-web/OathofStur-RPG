@@ -638,6 +638,10 @@ const KEEPERS=[
   {type:'Agility trainer Lio',role:'Agility trainer',shop:'Brightwater Agility Course',box:[141,218,20,6]}
 ];
 for(const k of KEEPERS)NPC_GROUPS.push({type:k.type,role:k.role,shop:k.shop,stock:k.stock,n:k.n||1,box:k.box,ok:k.ok});
+// Added after everyone else so their places don't move. Elder Maren gives the
+// starter quest beside the spawn; the Cinder Drake guards the Cinder Pools.
+NPC_GROUPS.push({type:'Elder Maren',role:'Village elder',shop:'Kelmoor Square',n:1,box:KB(63,47,1,1)});
+NPC_GROUPS.push({type:'Cinder Drake',level:60,n:1,box:[297,35,8,3]});
 const NPCS=[];const occ=new Set();
 for(const g of NPC_GROUPS){g.ok=g.ok||(()=>true);let placed=0,tries=0;
   while(placed<g.n&&tries++<500){const x=g.box[0]+(rnd()*g.box[2]|0),y=g.box[1]+(rnd()*g.box[3]|0);

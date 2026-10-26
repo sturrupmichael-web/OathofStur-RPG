@@ -240,7 +240,9 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
       const low = Math.min(hm.corner(x, y), hm.corner(x + 1, y), hm.corner(x, y + 1), hm.corner(x + 1, y + 1));
 
       if (isBridge(info, i)) {
-        for (const side of [-0.46, 0.46]) {
+        // Rails only along the deck's outer edges.
+        const open = [-1, 1].filter((dy) => !(y + dy >= 0 && y + dy < map.height && isBridge(info, i + dy * map.width)));
+        for (const side of open.map((dy) => dy * 0.46)) {
           m.compose(new THREE.Vector3(cx, base + 0.35, cz + side), q.identity(), new THREE.Vector3(1, 1, 1));
           pushInstance(rails, m, 0x5e3f22, i);
           m.compose(new THREE.Vector3(cx - 0.5, base, cz + side), q.identity(), new THREE.Vector3(1, 1, 1));

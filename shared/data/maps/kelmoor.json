@@ -301,9 +301,9 @@
   {
    "name": "Standing Stones",
    "x": 9,
-   "y": 52,
+   "y": 53,
    "w": 11,
-   "h": 11
+   "h": 10
   },
   {
    "name": "Goblin Encampment",
@@ -465,7 +465,7 @@
   "aaaaaaaaaaaaaaaaaaaaataaaaaaataaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaataaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~~~~aaaaaaaaaaaaaaa",
   "aaaaaaaaaaaaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~~~Baaaaaaaaaaaaaaa",
   "aaaaaaaaaaaaaaaaaaaaBBBBBaaaaaaaaaaaaaataaaaaaaaaaaaaaataaadddaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaaaaaaaa~~~Baaaaaaataaaaaaa",
-  "aaaaaaaaaaaaaaaataaaBaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~~B~aaaaaaaaaaaaaa",
+  "aaaaaaaaaaaaaaaataaaBaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~~~~aaaaaaaaaaaaaa",
   "aaaaaaataaaaaaaaaaaaBaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaaaaaBBBBaaaaaaaaaaaaaaaaaa~~~~aaaataaaaaaaaa",
   "aaaaaaaaaaaaaaaaaaaaBaaaaaaaaaaaaaaaaaaaaaaaaaaaataaaaaaaaadddaaaaaaaaaaaaaaaaaaBaaaaataaaaaaaaaaaaaaa~~~~aaaaaaaaaaaaaa",
   "aaaaaaaaaaaaaaaataataaaaaaaaaaaaataaaaaaBBBaaaaaaaaaaataaaadddaaaaaaaaaaaaaaaaaaBaaaaaaaaaaaaaaaaaaaaa~~~~aaaaaaaaaaaaaa",
@@ -473,7 +473,7 @@
   "aaaaataataaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaataaaaaaaaaaaaaaaaaaaaaataa~~~~aaaaaaaaaaaaaa",
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaaaaaaaaa~~~~aaaaaaaaaaataa",
   "aaaaaaaaaaataaataaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddaaaaaaaaaaaaaaaaaataaaaaaaaaaaaaaaaataaa~~~~aaaaaaaaaaaaaa",
-  "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDdddDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD~~~~DDDDDDDDDDDDDD",
+  "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDdddDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD~~~~DDDDdddDDDDDDD",
   ",,,,,......................................................ddd.........,,,,,,,,,......................~~~~..............",
   ",,,,,T...........T......................................T..ddd.........,,,,,,,,,T.T......,,,,,....,T,.~~~~..............",
   ",,,,,,,.............BB+BB..................................ddd.........,,,,,,,,,...T.FFFFFFFFFFFFFF,T,~~~~..............",
@@ -505,9 +505,9 @@
   "....dBB+BBddBBB+BBBdB+BBd......dd.W..BsssssssB......ccccccccccccccccc....BsssssssssB..W.....dd...~~~~.....SSSSSSSdddSS..",
   "....ddddddddddddddddddddd......dd.W..BsssssssB......ccccccccccccccccc....BsssssssssB..W.....dd...~~~~.....SSSSSSSdddSS..",
   "....ddddddddddddddddddddd......dd.W..BBBB+BBBB......ccccccccccccccccc....BBBBB+BBBBB..W.....dd...~~~~.....SSSSSSSdddSS..",
-  "...dddddddddddddddddddddddddddddddccccccccccccccccccccccccc~~~cccccccccccccccccccccccccddddddddddddddddddddddddddddddddd",
-  "...dddddddddddddddddddddddddddddddccccccccccccccccccccccccc~O~cccccccccccccccccccccccccddddddddddddddddddddddddddddddddd",
-  ".T.dddddddddddddddddddddddddddddddccccccccccccccccccccccccc~~~cccccccccccccccccccccccccddddddddddddddddddddddddddddddddd",
+  "...dddddddddddddddddddddddddddddddccccccccccccccccccccccccc~~~cccccccccccccccccccccccccdddddddddddbbbbdddddddddddddddddd",
+  "...dddddddddddddddddddddddddddddddccccccccccccccccccccccccc~O~cccccccccccccccccccccccccdddddddddddbbbbdddddddddddddddddd",
+  ".T.dddddddddddddddddddddddddddddddccccccccccccccccccccccccc~~~cccccccccccccccccccccccccdddddddddddbbbbdddddddddddddddddd",
   "....ddddddddddddddddddddd.........W.....c,,,,..,c,,,ccccccccccccccccc....c.......c....W...........~~~~....SSSSSSSSSSSS..",
   "....ddBB+BBdddddBB+BBBddd..T......W.BBBB+BBBB.BB+BBBccccccccccccccccc.BBB+BBB.BBB+BBB.W........T..~~~~....SSSddddSSSSS..",
   "....ddBwwwBdddddBwwwwBddd.........W.BsssssssB.BwwwwBccccccccccccccccc.BwwwwwB.BwwwwwB.W............~~~~...SSSddddSSSSS..",

@@ -21,6 +21,11 @@ describe('findPath', () => {
     }
   });
 
+  it('reaches the north-east Ashen Waste over the second ditch crossing', () => {
+    const target = { x: 115, y: 5 };
+    expect(findPath(grid, map.spawn, [target], target).reachedGoal).toBe(true);
+  });
+
   it('never cuts corners diagonally', () => {
     const { path } = findPath(grid, map.spawn, [{ x: 10, y: 40 }], { x: 10, y: 40 });
     let prev = map.spawn;

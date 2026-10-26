@@ -39,11 +39,16 @@ describe('JsonMapSource', () => {
     expect(terrainAt(1, 66)).toBe('long_grass'); // Thornwood tree
   });
 
+  it('bridges the River Vell where the east road crosses it', () => {
+    for (let y = 45; y <= 47; y++) for (let x = 98; x <= 101; x++) expect(terrainAt(x, y)).toBe('bridge');
+  });
+
   it('finds the smallest named area at a tile', () => {
     expect(areaAt(map, 39, 52)?.name).toBe('Smithy');
     expect(areaAt(map, 60, 49)?.name).toBe('Kelmoor Square');
     expect(areaAt(map, 22, 86)?.name).toBe('Goblin Encampment');
     expect(areaAt(map, 2, 90)?.name).toBe('Thornwood');
+    expect(areaAt(map, 16, 52)?.name).toBe('Brakk Village'); // hut wall, no longer shared with Standing Stones
   });
 
   it('rejects malformed maps with a clear error', () => {

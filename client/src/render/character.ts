@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { shared } from './dispose';
+import { BODY, buildBody } from './humanoid';
+import { paint, vertexMaterial } from './skin';
 
 /**
- * Jointed procedural humanoid (~1.15 tiles tall, facing +Z) and its
- * animation. Limbs hang from pivot groups, so a walk cycle is just a few
- * rotations per frame. Purely visual: the simulation only knows tiles.
+ * Procedural people (~1.2 tiles tall, facing +Z) and their animation. The
+ * body is one skinned mesh (see humanoid.ts), so a walk cycle is just a few
+ * bone rotations per frame. Purely visual: the simulation only knows tiles.
  */
 
 export interface CharacterStyle {
@@ -39,6 +41,15 @@ export interface CharacterStyle {
   ghost?: boolean;
   /** Bare bones: ribs over the chest, no nose or ears. */
   bones?: boolean;
+  /** Broader (above 1) or slighter build. */
+  bulk?: number;
+  /** A round belly, 0..1. */
+  belly?: number;
+  /** Long pointed ears and a long nose (goblins). */
+  pointyEars?: boolean;
+  /** Wearing a chainbody or platelegs: shiny instead of cloth. */
+  bodyMetal?: boolean;
+  legsMetal?: boolean;
 }
 
 type WeaponKind = 'dagger' | 'sword' | 'scimitar' | 'axe' | 'pickaxe';
@@ -56,8 +67,8 @@ export function withGear(base: CharacterStyle, gear: Partial<Record<string, stri
   const s: CharacterStyle = { ...base };
   if (gear.helmet) [s.helm, s.hat, s.hairStyle] = [metal(gear.helmet), undefined, 'none'];
   if (gear.shield) s.shield = metal(gear.shield);
-  if (gear.body) [s.tunic, s.trim] = [shadeHex(metal(gear.body)!, 0.82), metal(gear.body)];
-  if (gear.legs) [s.trousers, s.bootCuff] = [shadeHex(metal(gear.legs)!, 0.9), undefined];
+  if (gear.body) [s.tunic, s.trim, s.bodyMetal] = [shadeHex(metal(gear.body)!, 0.82), metal(gear.body), true];
+  if (gear.legs) [s.trousers, s.bootCuff, s.legsMetal] = [shadeHex(metal(gear.legs)!, 0.9), undefined, true];
   if (gear.weapon) s.weapon = { kind: weaponKind(gear.weapon), color: metal(gear.weapon) ?? 0x9a9ca4 };
   return s;
 }
@@ -120,6 +131,8 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     hair: 0x8a6a3a,
     hairStyle: 'short',
     beard: 0x8a6a3a,
+    bulk: 1.08,
+    belly: 0.7,
   },
   elder_maren: {
     tunic: 0x8a8fb0,
@@ -144,6 +157,7 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     hair: 0x2b2018,
     hairStyle: 'short',
     beard: 0x2b2018,
+    bulk: 1.14,
   },
   banker: {
     tunic: 0x1f3f6a,
@@ -167,6 +181,8 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     hat: 'chef',
     hatColor: 0xffffff,
     holding: 'ladle',
+    bulk: 1.1,
+    belly: 1,
   },
   priest: {
     tunic: 0xe8e2d0,
@@ -191,6 +207,7 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     hair: 0x3a2a1a,
     hairStyle: 'short',
     cape: 0x7a1f3a,
+    belly: 0.4,
   },
   guard: {
     tunic: 0x8a8f99,
@@ -204,6 +221,7 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     hat: 'cap',
     hatColor: 0x9aa0aa,
     holding: 'staff',
+    bulk: 1.08,
   },
   ranger: {
     tunic: 0x3f6a3a,
@@ -226,6 +244,8 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     hairStyle: 'none',
     holding: 'club',
     scale: 0.78,
+    pointyEars: true,
+    bulk: 0.95,
   },
   skeleton: {
     tunic: 0xe6dfc8,
@@ -250,6 +270,7 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     shield: 0x2f4f8a,
     weapon: { kind: 'sword', color: 0x9a9ca4 },
     cape: 0x2f4f8a,
+    bulk: 1.08,
   },
   desert_bandit: {
     tunic: 0xc8a878,
@@ -300,6 +321,7 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     hairStyle: 'short',
     hat: 'cap',
     hatColor: 0xd8c070,
+    belly: 0.3,
   },
 };
 
@@ -360,19 +382,28 @@ export interface CharacterRig {
   root: THREE.Group;
   /** Everything above the feet; tips over when the character dies. */
   body: THREE.Group;
-  hips: THREE.Group;
-  torso: THREE.Group;
-  head: THREE.Group;
-  shoulderL: THREE.Group;
-  shoulderR: THREE.Group;
-  elbowL: THREE.Group;
-  elbowR: THREE.Group;
-  hipL: THREE.Group;
-  hipR: THREE.Group;
-  kneeL: THREE.Group;
-  kneeR: THREE.Group;
+  hips: THREE.Object3D;
+  /** The hang of a tunic hem or robe, swaying with the walk. */
+  skirt: THREE.Object3D;
+  torso: THREE.Object3D;
+  neck: THREE.Object3D;
+  head: THREE.Object3D;
+  /** Both eyes; squashed flat to blink. */
+  eyes: THREE.Object3D;
+  shoulderL: THREE.Object3D;
+  shoulderR: THREE.Object3D;
+  elbowL: THREE.Object3D;
+  elbowR: THREE.Object3D;
+  handL: THREE.Object3D;
+  handR: THREE.Object3D;
+  hipL: THREE.Object3D;
+  hipR: THREE.Object3D;
+  kneeL: THREE.Object3D;
+  kneeR: THREE.Object3D;
+  ankleL: THREE.Object3D;
+  ankleR: THREE.Object3D;
   cape: THREE.Group | null;
-  robe: THREE.Object3D | null;
+  robe: boolean;
   /** Tools held while working (axe, pickaxe, net...), each hidden until used. Players only. */
   tools: Map<string, THREE.Object3D>;
   /** 0 = not working, 1 = fully into the activity's pose; eased like `walk`. */
@@ -383,6 +414,10 @@ export interface CharacterRig {
   phase: number;
   /** 0 = standing, 1 = full walk; eased so starts and stops blend. */
   walk: number;
+  /** How far the character still has to turn (radians, eased): the head leads and the feet shuffle. */
+  turn: number;
+  /** When the next blink starts (ms). */
+  blinkAt: number;
   /** Per-character offset so idle motion isn't in sync. */
   seed: number;
   /** Wielded weapon, hidden while a tool is out. */
@@ -394,268 +429,54 @@ export interface CharacterRig {
   ghost: boolean;
 }
 
-// Proportions: about 1.2 tiles tall and seven heads high.
-const HIP_Y = 0.61;
-const THIGH = 0.29;
-const SHIN = 0.27;
-const WAIST = 0.06;
-const TORSO = 0.3;
-const UPPER_ARM = 0.24;
-const FOREARM = 0.21;
-
-const materials = new Map<string, THREE.MeshLambertMaterial>();
-function mat(color: number, emissive = 0, doubleSided = false): THREE.MeshLambertMaterial {
-  const key = `${color}|${emissive}|${doubleSided}`;
+const materials = new Map<string, THREE.Material>();
+function mat(color: number, emissive = 0, metal = false): THREE.Material {
+  const key = `${color}|${emissive}|${metal}`;
   let m = materials.get(key);
   if (!m) {
-    m = shared(new THREE.MeshLambertMaterial({ color, emissive, side: doubleSided ? THREE.DoubleSide : THREE.FrontSide }));
+    m = shared(metal ? new THREE.MeshPhongMaterial({ color, emissive, shininess: 70, specular: 0x777777 }) : new THREE.MeshLambertMaterial({ color, emissive }));
     materials.set(key, m);
   }
   return m;
 }
 
-function part(geo: THREE.BufferGeometry, color: number, x = 0, y = 0, z = 0, emissive = 0): THREE.Mesh {
-  const m = new THREE.Mesh(geo, mat(color, emissive));
+/** A loose part (tool, weapon, shield): smooth unless it's a box. */
+function part(geo: THREE.BufferGeometry, color: number, x = 0, y = 0, z = 0, emissive = 0, metal = false): THREE.Mesh {
+  const m = new THREE.Mesh(geo, mat(color, emissive, metal));
   m.position.set(x, y, z);
   m.castShadow = true;
   return m;
 }
-
-/**
- * One ring of a body-part profile: height, half-width (x), half-depth (z)
- * and an optional forward offset (z), so a calf can bulge backward or a jaw
- * jut forward. Elliptical cross-sections read as human instead of tubes.
- */
-type Ring = [y: number, halfWidth: number, halfDepth: number, zOffset?: number];
-
-function profiled(rings: Ring[], radial = 12, open = false): THREE.BufferGeometry {
-  const positions: number[] = [];
-  const indices: number[] = [];
-  for (const [y, hw, hd, zo = 0] of rings) {
-    for (let k = 0; k < radial; k++) {
-      const a = (k / radial) * Math.PI * 2;
-      positions.push(Math.sin(a) * hw, y, Math.cos(a) * hd + zo);
-    }
-  }
-  for (let r = 0; r < rings.length - 1; r++) {
-    for (let k = 0; k < radial; k++) {
-      const a = r * radial + k;
-      const b = r * radial + ((k + 1) % radial);
-      const c = a + radial;
-      const d = b + radial;
-      if (rings[r + 1][0] > rings[r][0]) indices.push(a, b, d, a, d, c);
-      else indices.push(a, d, b, a, c, d);
-    }
-  }
-  if (!open) {
-    // Cap both ends with a centre vertex.
-    for (const [ri, flip] of [[0, true], [rings.length - 1, false]] as const) {
-      const [y, , , zo = 0] = rings[ri];
-      const centre = positions.length / 3;
-      positions.push(0, y, zo);
-      const up = rings[rings.length - 1][0] > rings[0][0];
-      for (let k = 0; k < radial; k++) {
-        const a = ri * radial + k;
-        const b = ri * radial + ((k + 1) % radial);
-        if (flip === up) indices.push(centre, b, a);
-        else indices.push(centre, a, b);
-      }
-    }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function pivot(parent: THREE.Object3D, x: number, y: number, z = 0): THREE.Group {
-  const g = new THREE.Group();
-  g.position.set(x, y, z);
-  parent.add(g);
-  return g;
-}
-
-// Shared body-part shapes (y = 0 at the joint they hang from or sit on).
-const SHAPES = {
-  pelvis: profiled([[-0.09, 0.1, 0.07], [-0.05, 0.128, 0.082], [0.0, 0.13, 0.083], [0.06, 0.118, 0.078]]),
-  torso: profiled([
-    [0, 0.118, 0.078],
-    [0.06, 0.124, 0.08, 0.004],
-    [0.13, 0.148, 0.092, 0.01],
-    [0.2, 0.162, 0.094, 0.008],
-    [0.25, 0.165, 0.084],
-    [0.285, 0.13, 0.066, -0.005],
-    [TORSO, 0.06, 0.05, -0.005],
-  ], 14),
-  neck: profiled([[0, 0.036, 0.038], [0.08, 0.032, 0.034, 0.004]], 10),
-  head: profiled([
-    [0.0, 0.026, 0.026, 0.035],
-    [0.02, 0.048, 0.05, 0.028],
-    [0.045, 0.062, 0.068, 0.014],
-    [0.08, 0.07, 0.08, 0.004],
-    [0.115, 0.073, 0.084, 0],
-    [0.145, 0.068, 0.08, -0.004],
-    [0.17, 0.052, 0.064, -0.008],
-    [0.188, 0.026, 0.034, -0.01],
-    [0.194, 0.004, 0.004, -0.01],
-  ], 14),
-  hair: profiled([
-    [0.09, 0.077, 0.089, -0.006],
-    [0.12, 0.08, 0.091, -0.005],
-    [0.15, 0.075, 0.087, -0.008],
-    [0.175, 0.058, 0.07, -0.01],
-    [0.194, 0.032, 0.042, -0.012],
-    [0.203, 0.004, 0.004, -0.012],
-  ], 14),
-  thigh: profiled([[-THIGH, 0.044, 0.048], [-0.2, 0.054, 0.058, 0.004], [-0.07, 0.066, 0.072, 0.006], [0, 0.066, 0.07]]),
-  shin: profiled([[-SHIN, 0.032, 0.034], [-0.19, 0.038, 0.044, -0.006], [-0.1, 0.048, 0.056, -0.012], [0, 0.044, 0.048]]),
-  boot: profiled([[-SHIN - 0.005, 0.042, 0.044], [-0.16, 0.047, 0.05, -0.004], [-0.11, 0.054, 0.058, -0.008]]),
-  upperArm: profiled([[-UPPER_ARM, 0.033, 0.034], [-0.12, 0.042, 0.042], [0, 0.048, 0.05]]),
-  forearm: profiled([[-FOREARM, 0.026, 0.02], [-0.12, 0.036, 0.032], [0, 0.036, 0.034]]),
-  cuff: profiled([[-FOREARM + 0.005, 0.031, 0.026], [-FOREARM + 0.04, 0.034, 0.03]]),
-  hand: (() => {
-    const g = new THREE.BoxGeometry(0.045, 0.085, 0.026);
-    g.translate(0, -0.045, 0);
-    return g;
-  })(),
-  thumb: new THREE.BoxGeometry(0.016, 0.04, 0.018),
-  foot: profiled([[-0.03, 0.038, 0.035, 0.0], [0.03, 0.04, 0.08, 0.04], [0.05, 0.036, 0.075, 0.035]]),
-  hem: profiled([[0.02, 0.124, 0.084], [-0.06, 0.14, 0.095], [-0.13, 0.152, 0.104]], 14, true),
-  robe: profiled([[0.02, 0.124, 0.084], [-0.2, 0.17, 0.13], [-0.56, 0.22, 0.17]], 16, true),
-};
-for (const geo of Object.values(SHAPES)) shared(geo);
+const metalPart = (geo: THREE.BufferGeometry, color: number, x = 0, y = 0, z = 0) => part(geo, color, x, y, z, 0, true);
 
 /** Builds a character from a named look or a look of its own; `tools` gives it the skilling tools players carry. */
 export function buildCharacter(style: string | CharacterStyle, seed: number, tools_ = false): CharacterRig {
   const s = typeof style === 'string' ? (CHARACTER_STYLES[style] ?? CHARACTER_STYLES.other_player) : style;
-  const skin = s.skin ?? 0xd9a77e;
   const root = new THREE.Group();
-  const body = pivot(root, 0, 0);
+  const body = new THREE.Group();
+  root.add(body);
   if (s.scale) body.scale.setScalar(s.scale);
-  const hips = pivot(body, 0, HIP_Y);
-
-  hips.add(part(SHAPES.pelvis, s.trousers));
-
-  // Legs: hip -> thigh -> knee -> shin/boot -> foot
-  const legs = ([-1, 1] as const).map((side) => {
-    const hip = pivot(hips, side * 0.07, -0.03);
-    hip.add(part(SHAPES.thigh, s.trousers));
-    const knee = pivot(hip, 0, -THIGH);
-    knee.add(part(SHAPES.shin, s.trousers));
-    knee.add(part(SHAPES.boot, s.boots));
-    if (s.bootCuff) knee.add(part(profiled([[-0.115, 0.056, 0.06, -0.008], [-0.095, 0.058, 0.062, -0.008]]), s.bootCuff));
-    knee.add(part(SHAPES.foot, s.boots, 0, -0.26, 0.0));
-    return { hip, knee };
-  });
-
-  // Torso from the waist up, with the tunic hem flaring over the hips.
-  const torso = pivot(hips, 0, WAIST);
-  torso.add(part(SHAPES.torso, s.tunic));
-  const hem = new THREE.Mesh(s.robe ? SHAPES.robe : SHAPES.hem, mat(s.robe ?? s.tunic, 0, true));
-  hem.castShadow = true;
-  hips.add(hem);
-  hem.position.y = WAIST;
-  const robe = s.robe ? hem : null;
-  if (s.trim) {
-    torso.add(part(profiled([[0.0, 0.122, 0.082], [0.025, 0.124, 0.083]], 14), s.trim));
-    hips.add(part(profiled([[WAIST - 0.13, 0.154, 0.106], [WAIST - 0.115, 0.152, 0.104]], 14), s.trim));
-    torso.add(part(new THREE.BoxGeometry(0.03, 0.2, 0.012), s.trim, 0, 0.17, 0.097));
-  }
-  if (s.belt) {
-    torso.add(part(profiled([[-0.005, 0.124, 0.084], [0.03, 0.126, 0.086]], 14), s.belt));
-    if (s.buckle) torso.add(part(new THREE.BoxGeometry(0.045, 0.032, 0.012), s.buckle, 0, 0.012, 0.088, 0x1a1200));
-    if (s.pouch) torso.add(part(new THREE.BoxGeometry(0.055, 0.065, 0.035), s.pouch, 0.11, -0.03, 0.06));
-  }
-  if (s.apron) {
-    torso.add(part(new THREE.BoxGeometry(0.2, 0.24, 0.01), s.apron, 0, 0.1, 0.096));
-    hips.add(part(new THREE.BoxGeometry(0.23, 0.28, 0.01), s.apron, 0, WAIST - 0.12, 0.1));
-  }
-
-  // Neck and head
-  const neck = pivot(torso, 0, TORSO - 0.02);
-  neck.add(part(SHAPES.neck, skin));
-  const head = pivot(neck, 0, 0.065);
-  head.add(part(SHAPES.head, skin));
-  const ear = new THREE.BoxGeometry(0.014, 0.04, 0.028);
-  head.add(part(ear, skin, -0.073, 0.095, -0.005), part(ear, skin, 0.073, 0.095, -0.005));
-  for (const x of [-0.03, 0.03]) {
-    if (s.glowEyes !== undefined) {
-      if (s.bones) head.add(part(new THREE.BoxGeometry(0.034, 0.03, 0.01), 0x1a1410, x, 0.104, 0.078));
-      head.add(part(new THREE.BoxGeometry(0.014, 0.012, 0.012), s.glowEyes, x, 0.104, 0.082, s.glowEyes));
-      continue;
-    }
-    head.add(part(new THREE.BoxGeometry(0.022, 0.011, 0.006), 0xf4efe6, x, 0.104, 0.08));
-    head.add(part(new THREE.BoxGeometry(0.01, 0.011, 0.007), 0x2a2018, x, 0.104, 0.081));
-    head.add(part(new THREE.BoxGeometry(0.03, 0.007, 0.01), s.hair ?? 0x3a2a1a, x, 0.122, 0.079));
-  }
-  if (s.bones) {
-    // Grinning teeth and a ribcage over the chest.
-    head.add(part(new THREE.BoxGeometry(0.06, 0.016, 0.01), 0xf4efe0, 0, 0.045, 0.074));
-    for (let k = 0; k < 4; k++) torso.add(part(profiled([[0.08 + k * 0.045, 0.15 - k * 0.006, 0.096], [0.095 + k * 0.045, 0.152 - k * 0.006, 0.098]], 14), 0x3a3428));
-    torso.add(part(new THREE.BoxGeometry(0.03, 0.22, 0.012), 0xf4efe0, 0, 0.16, 0.099));
-  } else {
-    const nose = new THREE.ConeGeometry(0.013, 0.045, 4).rotateX(Math.PI / 2 + 0.5);
-    head.add(part(nose, skin, 0, 0.082, 0.088));
-    head.add(part(new THREE.BoxGeometry(0.03, 0.006, 0.006), 0x9a5a4a, 0, 0.05, 0.072));
-  }
-  if (s.skin === CHARACTER_STYLES.goblin.skin) {
-    // Long pointed ears and a big nose.
-    for (const side of [-1, 1]) head.add(part(new THREE.ConeGeometry(0.02, 0.1, 4).rotateZ(-side * 1.2), skin, side * 0.1, 0.11, -0.01));
-    head.add(part(new THREE.ConeGeometry(0.02, 0.07, 5).rotateX(Math.PI / 2 + 0.3), skin, 0, 0.08, 0.1));
-  }
-  if (s.hair && s.hairStyle !== 'none') {
-    head.add(part(SHAPES.hair, s.hair));
-    // Back of the head down to the nape.
-    head.add(part(profiled([[0.04, 0.064, 0.05, -0.04], [0.1, 0.076, 0.06, -0.035]], 12), s.hair));
-    if (s.hairStyle === 'long') head.add(part(new THREE.BoxGeometry(0.15, 0.16, 0.04), s.hair, 0, 0.02, -0.07));
-    if (s.hairStyle === 'bun') head.add(part(new THREE.SphereGeometry(0.035, 8, 6), s.hair, 0, 0.17, -0.08));
-  }
-  if (s.beard) head.add(part(profiled([[0.0, 0.03, 0.03, 0.04], [0.03, 0.055, 0.05, 0.03], [0.07, 0.068, 0.07, 0.012]], 12), s.beard));
-  if (s.hat === 'cap') {
-    head.add(part(profiled([[0.15, 0.08, 0.092, -0.004], [0.2, 0.065, 0.078, -0.006], [0.215, 0.002, 0.002, -0.006]], 12), s.hatColor!));
-    head.add(part(new THREE.BoxGeometry(0.12, 0.008, 0.06), s.hatColor!, 0, 0.155, 0.1));
-  }
-  if (s.hat === 'chef') {
-    head.add(part(profiled([[0.15, 0.08, 0.09], [0.2, 0.078, 0.088]], 12), s.hatColor!));
-    head.add(part(profiled([[0.2, 0.08, 0.088], [0.25, 0.1, 0.1], [0.29, 0.09, 0.09], [0.305, 0.01, 0.01]], 12), s.hatColor!));
-  }
-  if (s.helm !== undefined) {
-    head.add(part(profiled([[0.06, 0.082, 0.094, -0.004], [0.13, 0.083, 0.095, -0.004], [0.18, 0.068, 0.08, -0.006], [0.215, 0.03, 0.036, -0.008], [0.224, 0.002, 0.002, -0.008]], 12), s.helm));
-    head.add(part(new THREE.BoxGeometry(0.02, 0.07, 0.02), s.helm, 0, 0.09, 0.094)); // nose guard
-    head.add(part(new THREE.BoxGeometry(0.17, 0.016, 0.17), shadeHex(s.helm, 0.8), 0, 0.13, -0.004));
-  }
-  if (s.hat === 'hood') head.add(part(profiled([[0.02, 0.085, 0.07, -0.04], [0.1, 0.088, 0.1, -0.008], [0.17, 0.07, 0.08, -0.012], [0.215, 0.004, 0.004, -0.015]], 14), s.hatColor!));
-
-  // Arms: shoulder -> upper arm -> elbow -> forearm -> hand
-  const arms = ([-1, 1] as const).map((side) => {
-    const shoulder = pivot(torso, side * 0.165, TORSO - 0.05);
-    shoulder.add(part(profiled([[-0.05, 0.048, 0.05], [0.0, 0.055, 0.056], [0.03, 0.035, 0.04]], 10), s.tunic));
-    shoulder.add(part(SHAPES.upperArm, s.tunic));
-    const elbow = pivot(shoulder, 0, -UPPER_ARM);
-    elbow.add(part(SHAPES.forearm, s.tunic));
-    if (s.trim) elbow.add(part(SHAPES.cuff, s.trim));
-    const hand = pivot(elbow, 0, -FOREARM);
-    hand.add(part(SHAPES.hand, skin));
-    hand.add(part(SHAPES.thumb, skin, -side * 0.026, -0.03, 0.01));
-    return { shoulder, elbow, hand };
-  });
+  const ghost = !!s.ghost;
+  const bones = buildBody(s, body, { transparent: ghost ? 0.55 : undefined });
 
   // Held item in the right hand
-  const grip = arms[1].hand;
+  const grip = bones.handR;
   if (s.holding === 'staff') {
-    grip.add(part(new THREE.CylinderGeometry(0.016, 0.02, 1.3, 6), 0x7a5230, 0, 0.12, 0.02));
+    grip.add(part(new THREE.CylinderGeometry(0.016, 0.02, 1.3, 7), 0x7a5230, 0, 0.12, 0.02));
     grip.add(part(new THREE.OctahedronGeometry(0.05), 0x8fe0ff, 0, 0.8, 0.02, 0x2a6aa0));
   }
-  if (s.holding === 'scroll') grip.add(part(new THREE.CylinderGeometry(0.022, 0.022, 0.18, 8).rotateX(Math.PI / 2), 0xeee0b8, 0, -0.06, 0.03));
-  if (s.holding === 'ladle') {
-    grip.add(part(new THREE.CylinderGeometry(0.008, 0.008, 0.28, 5), 0x8a6a3a, 0, -0.12, 0.02));
-    grip.add(part(new THREE.SphereGeometry(0.04, 8, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), 0x9a9a9a, 0, -0.26, 0.02));
+  if (s.holding === 'scroll') {
+    grip.add(part(new THREE.CylinderGeometry(0.022, 0.022, 0.18, 10).rotateX(Math.PI / 2), 0xeee0b8, 0, -0.06, 0.03));
+    for (const z of [-0.06, 0.12]) grip.add(part(new THREE.CylinderGeometry(0.026, 0.026, 0.012, 10).rotateX(Math.PI / 2), 0x8a6a3a, 0, -0.06, z));
   }
-
+  if (s.holding === 'ladle') {
+    grip.add(part(new THREE.CylinderGeometry(0.008, 0.008, 0.28, 6), 0x8a6a3a, 0, -0.12, 0.02));
+    grip.add(metalPart(new THREE.SphereGeometry(0.04, 10, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), 0x9a9a9a, 0, -0.26, 0.02));
+  }
   if (s.holding === 'club') {
     const club = new THREE.Group();
-    club.add(part(new THREE.CylinderGeometry(0.045, 0.02, 0.42, 6).translate(0, 0.21, 0), 0x6b4a2b));
+    club.add(part(new THREE.CylinderGeometry(0.045, 0.02, 0.42, 7).translate(0, 0.21, 0), 0x6b4a2b));
+    club.add(part(new THREE.SphereGeometry(0.047, 8, 6).translate(0, 0.42, 0), 0x5a3c22));
     club.rotation.x = Math.PI / 2 + 0.5;
     club.position.set(0, -0.06, 0.02);
     grip.add(club);
@@ -667,10 +488,10 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
   }
   if (s.shield !== undefined) {
     const kite = new THREE.Shape([new THREE.Vector2(0, 0.17), new THREE.Vector2(0.12, 0.1), new THREE.Vector2(0.1, -0.06), new THREE.Vector2(0, -0.2), new THREE.Vector2(-0.1, -0.06), new THREE.Vector2(-0.12, 0.1)]);
-    const geo = new THREE.ExtrudeGeometry(kite, { depth: 0.02, bevelEnabled: false }).rotateY(-Math.PI / 2);
-    const board = part(geo, s.shield, -0.06, -0.11, 0.02);
-    board.add(part(new THREE.SphereGeometry(0.03, 8, 6), shadeHex(s.shield, 1.25), -0.022, 0.0, 0));
-    arms[0].elbow.add(board);
+    const geo = new THREE.ExtrudeGeometry(kite, { depth: 0.014, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.008, bevelSegments: 2 }).rotateY(-Math.PI / 2);
+    const board = metalPart(geo, s.shield, -0.06, -0.11, 0.02);
+    board.add(metalPart(new THREE.SphereGeometry(0.03, 10, 8), shadeHex(s.shield, 1.25), -0.026, 0.0, 0));
+    bones.elbowL.add(board);
   }
 
   // Players carry a tool for each activity; only the one in use shows.
@@ -687,59 +508,50 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
   // Cape hangs from the shoulders and trails when walking.
   let cape: THREE.Group | null = null;
   if (s.cape) {
-    cape = pivot(torso, 0, TORSO - 0.03, -0.085);
-    const cloth = new THREE.PlaneGeometry(0.3, 0.68, 4, 6).translate(0, -0.34, 0);
+    cape = new THREE.Group();
+    cape.position.set(0, BODY.shoulderY - 0.01, -0.088 * (s.bulk ?? 1));
+    bones.torso.add(cape);
+    const cloth = new THREE.PlaneGeometry(0.3, 0.66, 6, 10).translate(0, -0.33, 0);
     const pos = cloth.attributes.position;
     for (let i = 0; i < pos.count; i++) {
-      const t = -pos.getY(i) / 0.68;
-      const x = pos.getX(i) * (0.95 + t * 0.4);
+      const t = -pos.getY(i) / 0.66;
+      const x = pos.getX(i) * (0.95 + t * 0.45);
       pos.setX(i, x);
-      pos.setZ(i, -Math.abs(x) * 0.35 - t * 0.02);
+      // Wrapped round the shoulders at the top, with soft folds lower down.
+      pos.setZ(i, -x * x * (2.4 - t * 1.6) - t * 0.02 + Math.sin(x * 40) * 0.008 * t);
     }
     cloth.computeVertexNormals();
-    const capeMesh = new THREE.Mesh(cloth, mat(s.cape, 0, true));
+    const trim = s.trim ?? shadeHex(s.cape, 0.7);
+    const capeMesh = new THREE.Mesh(paint(cloth, (p) => (p.y < -0.63 ? trim : shadeHex(s.cape!, 0.9 + 0.1 * (1 + p.y / 0.66)))), vertexMaterial('cloth', true));
     capeMesh.castShadow = true;
     cape.add(capeMesh);
-    torso.add(part(new THREE.BoxGeometry(0.26, 0.025, 0.04), s.trim ?? s.cape, 0, TORSO - 0.035, -0.07));
   }
 
-  const ghost = !!s.ghost;
-  if (ghost) {
-    // See-through and legless: the robe trails into nothing.
-    for (const leg of legs) leg.hip.visible = false;
-    root.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!m.isMesh) return;
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || (m as THREE.SkinnedMesh).isSkinnedMesh) return;
+    if (!ghost) m.castShadow = true;
+    else {
+      // See-through like the rest of the spirit.
       const material = (m.material as THREE.MeshLambertMaterial).clone();
-      material.transparent = true;
-      material.opacity = 0.55;
-      material.depthWrite = false;
-      material.emissive = new THREE.Color(0x1a3040);
+      Object.assign(material, { transparent: true, opacity: 0.55, depthWrite: false });
       m.material = material;
       m.castShadow = false;
-    });
-  } else root.traverse((o) => (o.castShadow = true));
+    }
+  });
   return {
     root,
     body,
-    hips,
-    torso,
-    head,
-    shoulderL: arms[0].shoulder,
-    shoulderR: arms[1].shoulder,
-    elbowL: arms[0].elbow,
-    elbowR: arms[1].elbow,
-    hipL: legs[0].hip,
-    hipR: legs[1].hip,
-    kneeL: legs[0].knee,
-    kneeR: legs[1].knee,
+    ...bones,
     cape,
-    robe,
+    robe: s.robe !== undefined,
     tools,
     work: 0,
     activity: null,
     phase: 0,
     walk: 0,
+    turn: 0,
+    blinkAt: 1500 + (seed % 1) * 3000,
     seed,
     weapon,
     oneShot: null,
@@ -754,12 +566,12 @@ function buildBlade(kind: WeaponKind, color: number): THREE.Group {
   if (kind === 'axe' || kind === 'pickaxe') {
     // The same shapes as the skilling tools, with the head in the metal's colour.
     g.add(part(new THREE.CylinderGeometry(0.014, 0.017, 0.44, 6).translate(0, 0.16, 0), 0x7a5230, 0, 0, 0.02));
-    if (kind === 'axe') g.add(part(new THREE.BoxGeometry(0.02, 0.09, 0.12), color, 0, 0.33, 0.08));
+    if (kind === 'axe') g.add(metalPart(new THREE.BoxGeometry(0.02, 0.09, 0.12), color, 0, 0.33, 0.08));
     else {
       const pick = new THREE.Group();
       pick.position.set(0, 0.37, 0.02);
-      pick.add(part(new THREE.ConeGeometry(0.018, 0.17, 5).rotateX(Math.PI / 2).translate(0, 0, 0.085), color));
-      pick.add(part(new THREE.ConeGeometry(0.018, 0.17, 5).rotateX(-Math.PI / 2).translate(0, 0, -0.085), color));
+      pick.add(metalPart(new THREE.ConeGeometry(0.018, 0.17, 6).rotateX(Math.PI / 2).translate(0, 0, 0.085), color));
+      pick.add(metalPart(new THREE.ConeGeometry(0.018, 0.17, 6).rotateX(-Math.PI / 2).translate(0, 0, -0.085), color));
       g.add(pick);
     }
     g.rotation.x = Math.PI / 2 + 0.45;
@@ -767,8 +579,9 @@ function buildBlade(kind: WeaponKind, color: number): THREE.Group {
   }
   const length = kind === 'dagger' ? 0.22 : 0.5;
   g.add(part(new THREE.CylinderGeometry(0.014, 0.016, 0.1, 6), 0x5a3a20, 0, -0.01, 0.02));
-  g.add(part(new THREE.BoxGeometry(0.03, 0.022, kind === 'dagger' ? 0.08 : 0.14), 0x6b5a3a, 0, 0.045, 0.02));
-  const blade = new THREE.BoxGeometry(0.012, length, 0.045).translate(0, 0.055 + length / 2, 0.02);
+  g.add(metalPart(new THREE.BoxGeometry(0.03, 0.022, kind === 'dagger' ? 0.08 : 0.14), 0x8a7a52, 0, 0.045, 0.02));
+  g.add(metalPart(new THREE.SphereGeometry(0.018, 8, 6), 0x8a7a52, 0, -0.065, 0.02));
+  const blade = new THREE.BoxGeometry(0.012, length, 0.045, 1, 8, 1).translate(0, 0.055 + length / 2, 0.02);
   if (kind === 'scimitar') {
     // Curve the blade back toward the tip.
     const pos = blade.attributes.position;
@@ -780,7 +593,7 @@ function buildBlade(kind: WeaponKind, color: number): THREE.Group {
   }
   // A narrowing point.
   const tip = new THREE.ConeGeometry(0.025, 0.07, 4).scale(0.5, 1, 1).translate(0, 0.055 + length + 0.035, kind === 'scimitar' ? -0.1 : 0.02);
-  g.add(part(blade, color, 0, 0, 0, 0x101010), part(tip, color));
+  g.add(metalPart(blade, color), metalPart(tip, color));
   g.rotation.x = Math.PI / 2 + 0.45;
   return g;
 }
@@ -788,16 +601,12 @@ function buildBlade(kind: WeaponKind, color: number): THREE.Group {
 /** One full stride (two steps) per 1.2 s, matching one tile per 0.6 s tick. */
 const STRIDE_RATE = (Math.PI * 2) / 1.2;
 
-/**
- * Advance a rig. `moving` says whether the entity is between tiles this
- * frame; `speed` scales the stride (diagonal steps cover more ground).
- */
 /** Tool models, built from primitives, held in the right hand with the handle along the forearm. */
 const TOOL_MODELS: Record<string, () => THREE.Group> = {
   axe: () => {
     const g = new THREE.Group();
     g.add(part(new THREE.CylinderGeometry(0.014, 0.017, 0.42, 6), 0x7a5230, 0, -0.04, 0.02));
-    g.add(part(new THREE.BoxGeometry(0.02, 0.09, 0.12), 0xb8793a, 0, 0.13, 0.08));
+    g.add(metalPart(new THREE.BoxGeometry(0.02, 0.09, 0.12), 0xb8793a, 0, 0.13, 0.08));
     g.rotation.x = Math.PI / 2;
     return g;
   },
@@ -806,8 +615,8 @@ const TOOL_MODELS: Record<string, () => THREE.Group> = {
     g.add(part(new THREE.CylinderGeometry(0.014, 0.017, 0.46, 6), 0x7a5230, 0, -0.02, 0.02));
     const head = new THREE.Group();
     head.position.set(0, 0.19, 0.02);
-    head.add(part(new THREE.ConeGeometry(0.018, 0.17, 5).rotateX(Math.PI / 2).translate(0, 0, 0.085), 0x8a8c92));
-    head.add(part(new THREE.ConeGeometry(0.018, 0.17, 5).rotateX(-Math.PI / 2).translate(0, 0, -0.085), 0x8a8c92));
+    head.add(metalPart(new THREE.ConeGeometry(0.018, 0.17, 5).rotateX(Math.PI / 2).translate(0, 0, 0.085), 0x8a8c92));
+    head.add(metalPart(new THREE.ConeGeometry(0.018, 0.17, 5).rotateX(-Math.PI / 2).translate(0, 0, -0.085), 0x8a8c92));
     head.rotation.x = 0.25;
     g.add(head);
     g.rotation.x = Math.PI / 2;
@@ -816,7 +625,7 @@ const TOOL_MODELS: Record<string, () => THREE.Group> = {
   hammer: () => {
     const g = new THREE.Group();
     g.add(part(new THREE.CylinderGeometry(0.012, 0.014, 0.26, 6), 0x7a5230, 0, 0.02, 0.02));
-    g.add(part(new THREE.BoxGeometry(0.05, 0.05, 0.11), 0x6c6e74, 0, 0.15, 0.03));
+    g.add(metalPart(new THREE.BoxGeometry(0.05, 0.05, 0.11), 0x6c6e74, 0, 0.15, 0.03));
     g.rotation.x = Math.PI / 2;
     return g;
   },
@@ -850,7 +659,7 @@ const TOOL_MODELS: Record<string, () => THREE.Group> = {
   pan: () => {
     const g = new THREE.Group();
     g.add(part(new THREE.CylinderGeometry(0.01, 0.012, 0.2, 6), 0x2a2a2a, 0, 0.02, 0.02));
-    g.add(part(new THREE.CylinderGeometry(0.09, 0.08, 0.025, 12), 0x3a3a3a, 0, 0.2, 0.02));
+    g.add(metalPart(new THREE.CylinderGeometry(0.09, 0.08, 0.025, 16), 0x3a3a3a, 0, 0.2, 0.02));
     g.add(part(new THREE.CylinderGeometry(0.035, 0.035, 0.012, 8), 0xc99a52, 0.01, 0.215, 0.02));
     g.rotation.x = Math.PI / 2;
     return g;
@@ -1097,39 +906,63 @@ export function characterBusy(rig: CharacterRig, now: number): boolean {
   return !!rig.oneShot && now - rig.oneShot.start < ONE_SHOTS[rig.oneShot.kind].ms;
 }
 
-export function animateCharacter(rig: CharacterRig, dt: number, now: number, moving: boolean, speed = 1, activity: string | null = null, dead = false): void {
-  rig.walk += ((moving ? 1 : 0) - rig.walk) * Math.min(1, dt * 8);
-  if (rig.walk > 0.01) rig.phase += dt * STRIDE_RATE * speed;
+/**
+ * Advance a rig. `moving` says whether the entity is between tiles this
+ * frame; `speed` scales the stride (diagonal steps cover more ground).
+ * `turn` is how far it still has to turn to face where it's going.
+ */
+export function animateCharacter(rig: CharacterRig, dt: number, now: number, moving: boolean, speed = 1, activity: string | null = null, dead = false, turn = 0): void {
+  rig.walk += ((moving ? 1 : 0) - rig.walk) * Math.min(1, dt * 7);
+  rig.turn += (turn - rig.turn) * Math.min(1, dt * 10);
+  // Turning on the spot: a couple of small steps rather than spinning on a pin.
+  const shuffle = moving || dead ? 0 : Math.min(1, Math.max(0, Math.abs(rig.turn) - 0.25) * 2) * (1 - rig.work);
+  const w = Math.max(rig.walk, shuffle * 0.35);
+  if (w > 0.01) rig.phase += dt * STRIDE_RATE * (moving ? speed : 1.4);
   else rig.phase = 0;
-  const w = rig.walk;
-  const idle = 1 - w;
+  const idle = 1 - rig.walk;
   const t = now / 1000 + rig.seed;
   const s = Math.sin(rig.phase);
   const c = Math.cos(rig.phase);
 
-  // Legs swing opposite each other; the knee bends as the leg passes under.
-  rig.hipL.rotation.x = -s * 0.5 * w;
-  rig.hipR.rotation.x = s * 0.5 * w;
-  rig.kneeL.rotation.x = Math.max(0, c) * 0.8 * w + 0.02;
-  rig.kneeR.rotation.x = Math.max(0, -c) * 0.8 * w + 0.02;
+  // Legs swing opposite each other. A leg bends most as it swings through,
+  // a little as it takes the weight, and the hips dip as the legs part.
+  rig.hipL.rotation.set(-s * 0.48 * w, 0, 0);
+  rig.hipR.rotation.set(s * 0.48 * w, 0, 0);
+  rig.kneeL.rotation.x = (Math.pow(Math.max(0, c), 1.4) * 1.0 + Math.max(0, -c) * 0.12) * w + 0.03;
+  rig.kneeR.rotation.x = (Math.pow(Math.max(0, -c), 1.4) * 1.0 + Math.max(0, c) * 0.12) * w + 0.03;
+  // Push off the toes as a leg leaves the ground; land on the heel.
+  const toeL = Math.max(0, -s) * Math.max(0, c + 0.3) * 0.7 * w - Math.max(0, s) * Math.max(0, 0.3 - c) * 0.25 * w;
+  const toeR = Math.max(0, s) * Math.max(0, -c + 0.3) * 0.7 * w - Math.max(0, -s) * Math.max(0, 0.3 + c) * 0.25 * w;
 
-  // Arms counter-swing; elbows stay a little bent.
-  const breathe = Math.sin(t * 1.8) * 0.03 * idle;
-  rig.shoulderL.rotation.x = s * 0.5 * w + breathe;
-  rig.shoulderR.rotation.x = -s * 0.5 * w + breathe;
-  rig.shoulderL.rotation.z = -0.06 - 0.02 * idle;
-  rig.shoulderR.rotation.z = 0.06 + 0.02 * idle;
-  rig.elbowL.rotation.x = -0.12 - 0.35 * w - Math.max(0, s) * 0.3 * w;
-  rig.elbowR.rotation.x = -0.12 - 0.35 * w - Math.max(0, -s) * 0.3 * w;
+  // Weight shifts from foot to foot at rest, slowly; side to side when walking.
+  const shift = Math.sin(t * 0.55) * idle;
+  rig.hips.position.set(0.012 * c * w + 0.014 * shift, BODY.hipsY - (0.008 + 0.034 * s * s) * w - 0.004 * Math.abs(shift), 0);
+  rig.hips.rotation.set(0, s * 0.14 * w, 0.05 * c * w + 0.035 * shift);
+  rig.kneeL.rotation.x += 0.1 * Math.max(0, shift);
+  rig.kneeR.rotation.x += 0.1 * Math.max(0, -shift);
+  // Legs hang straight down whatever the pelvis does.
+  rig.hipL.rotation.z = rig.hipR.rotation.z = -rig.hips.rotation.z;
 
-  // Body: bob twice per stride, lean into the walk, slight twist, breathing at rest.
-  rig.hips.position.y = HIP_Y + Math.abs(c) * 0.035 * w - 0.01 * w;
-  rig.hips.rotation.y = s * 0.12 * w;
-  rig.torso.rotation.y = -s * 0.2 * w;
-  rig.torso.rotation.x = 0.08 * w;
-  rig.torso.scale.y = 1 + Math.sin(t * 1.8) * 0.012 * idle;
-  rig.head.rotation.y = s * 0.08 * w + Math.sin(t * 0.45) * 0.35 * idle * Math.max(0, Math.sin(t * 0.13));
-  rig.head.rotation.x = -0.05 * w + Math.sin(t * 0.7) * 0.03 * idle;
+  // Chest counter-twists, leans into the walk and breathes at rest.
+  const breathe = Math.sin(t * 1.7);
+  rig.torso.rotation.set(0.07 * w * Math.min(speed, 1.2) + breathe * 0.012 * idle, -s * 0.26 * w + rig.turn * 0.12, -0.07 * c * w - 0.04 * shift);
+  rig.neck.rotation.set(-0.03 * w, 0, 0.03 * shift);
+
+  // Arms counter-swing; elbows bend more as the arm comes forward.
+  rig.shoulderL.rotation.set(s * 0.42 * w + breathe * 0.02 * idle, 0, -0.07 - 0.02 * idle);
+  rig.shoulderR.rotation.set(-s * 0.42 * w + breathe * 0.02 * idle, 0, 0.07 + 0.02 * idle);
+  rig.elbowL.rotation.x = -0.14 - 0.25 * w - Math.max(0, -s) * 0.4 * w;
+  rig.elbowR.rotation.x = -0.14 - 0.25 * w - Math.max(0, s) * 0.4 * w;
+  rig.handL.rotation.set(-0.1 * w, 0, 0);
+  rig.handR.rotation.set(-0.1 * w, 0, 0);
+
+  // Head: steady while walking, glancing about at rest, leading any turn.
+  const glance = Math.sin(t * 0.45) * 0.4 * idle * Math.max(0, Math.sin(t * 0.13));
+  rig.head.rotation.set(-0.04 * w + Math.sin(t * 0.7) * 0.03 * idle, s * 0.1 * w + glance + Math.max(-0.6, Math.min(0.6, rig.turn)) * 0.45, 0);
+
+  // Blink every few seconds.
+  if (now > rig.blinkAt + 140) rig.blinkAt = now + 1800 + ((Math.sin(rig.blinkAt * 0.017 + rig.seed) + 1) / 2) * 3800;
+  rig.eyes.scale.y = now > rig.blinkAt ? 0.12 : 1;
 
   // Working: blend from the walk/idle pose into the activity's pose.
   const target = activity && !moving ? activity : null;
@@ -1167,11 +1000,17 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
       rig.kneeR.rotation.x += 0.7 * Math.sin(f * Math.PI);
       rig.shoulderL.rotation.z -= 0.9 * f;
       rig.shoulderR.rotation.z += 0.9 * f;
+      if (dead) rig.eyes.scale.y = 0.12;
     }
   }
 
-  if (rig.cape) rig.cape.rotation.x = 0.06 + 0.45 * w + Math.sin(rig.phase * 2) * 0.06 * w + Math.sin(t * 1.3) * 0.02;
-  if (rig.robe) rig.robe.rotation.z = s * 0.06 * w;
+  // Feet stay flat on the ground whatever the legs are doing, bar the toe push.
+  rig.ankleL.rotation.x = -(rig.hipL.rotation.x + rig.kneeL.rotation.x + rig.hips.rotation.x) * 0.9 + toeL;
+  rig.ankleR.rotation.x = -(rig.hipR.rotation.x + rig.kneeR.rotation.x + rig.hips.rotation.x) * 0.9 + toeR;
+
+  if (rig.cape) rig.cape.rotation.x = 0.06 + 0.24 * rig.walk + Math.sin(rig.phase * 2) * 0.06 * w + Math.sin(t * 1.3) * 0.02;
+  // Hems trail behind and sway with the hips.
+  rig.skirt.rotation.set((rig.robe ? 0.1 : 0.06) * rig.walk, 0, s * 0.05 * w);
 }
 
 /** Blends a rig toward a pose by `k` (0 = untouched, 1 = exactly the pose). */

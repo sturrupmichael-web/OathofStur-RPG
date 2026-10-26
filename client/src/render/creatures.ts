@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { shared } from './dispose';
+import { paint, vertexMaterial, warp } from './skin';
 
 /**
- * Four-, six- and eight-legged monsters and birds, built from primitives
- * like the humanoids in character.ts. Humanoid monsters (goblins, skeletons,
+ * Four-, six- and eight-legged monsters and birds, built from smooth
+ * rounded shapes on pivot groups. Humanoid monsters (goblins, skeletons,
  * guards) use the character rig instead; see CHARACTER_STYLES.
  */
 
@@ -45,24 +46,26 @@ export interface CreatureRig {
   seed: number;
 }
 
-const materials = new Map<number, THREE.MeshLambertMaterial>();
-function mat(color: number, emissive = 0): THREE.MeshLambertMaterial {
-  const key = color * 31 + emissive;
+const materials = new Map<string, THREE.Material>();
+function mat(color: number, emissive = 0, shiny = false): THREE.Material {
+  const key = `${color}|${emissive}|${shiny}`;
   let m = materials.get(key);
   if (!m) {
-    m = shared(new THREE.MeshLambertMaterial({ color, emissive, flatShading: true }));
+    m = shared(shiny ? new THREE.MeshPhongMaterial({ color, emissive, shininess: 45, specular: 0x555555 }) : new THREE.MeshLambertMaterial({ color, emissive }));
     materials.set(key, m);
   }
   return m;
 }
 
-function part(parent: THREE.Object3D, geo: THREE.BufferGeometry, color: number, x = 0, y = 0, z = 0, emissive = 0): THREE.Mesh {
-  const m = new THREE.Mesh(geo, mat(color, emissive));
+/** A part in one colour (`shiny` for chitin and claws), or coloured per vertex by a function of position. */
+function part(parent: THREE.Object3D, geo: THREE.BufferGeometry, color: number | ((p: THREE.Vector3) => number), x = 0, y = 0, z = 0, emissive = 0, shiny = false): THREE.Mesh {
+  const m = typeof color === 'number' ? new THREE.Mesh(geo, mat(color, emissive, shiny)) : new THREE.Mesh(paint(geo, color), vertexMaterial(shiny ? 'metal' : 'cloth'));
   m.position.set(x, y, z);
   m.castShadow = true;
   parent.add(m);
   return m;
 }
+const shell = (parent: THREE.Object3D, geo: THREE.BufferGeometry, color: number | ((p: THREE.Vector3) => number), x = 0, y = 0, z = 0) => part(parent, geo, color, x, y, z, 0, true);
 
 function pivot(parent: THREE.Object3D, x: number, y: number, z = 0): THREE.Group {
   const g = new THREE.Group();
@@ -71,9 +74,48 @@ function pivot(parent: THREE.Object3D, x: number, y: number, z = 0): THREE.Group
   return g;
 }
 
-/** A limb segment hanging straight down from its pivot. */
-function limb(length: number, r0: number, r1: number): THREE.BufferGeometry {
-  return new THREE.CylinderGeometry(r1, r0, length, 6).translate(0, -length / 2, 0);
+/** A limb segment hanging straight down from its pivot, tapering from r0 to r1 with rounded ends. */
+function limb(length: number, r0: number, r1: number, segments = 10): THREE.BufferGeometry {
+  const pts: THREE.Vector2[] = [];
+  for (let i = 0; i <= 4; i++) {
+    const a = (i / 4) * (Math.PI / 2);
+    pts.push(new THREE.Vector2(Math.max(0.0001, r1 * Math.sin(a)), -length - r1 * 0.8 * Math.cos(a)));
+  }
+  for (let i = 0; i <= 4; i++) {
+    const a = (i / 4) * (Math.PI / 2);
+    pts.push(new THREE.Vector2(Math.max(0.0001, r0 * Math.cos(a)), r0 * 0.8 * Math.sin(a)));
+  }
+  return new THREE.LatheGeometry(pts, segments);
+}
+
+/** The same limb lying along -z (tails, necks), from its pivot backward. */
+const along = (length: number, r0: number, r1: number) => limb(length, r0, r1).rotateX(Math.PI / 2);
+/** ...or forward along +z. */
+const ahead = (length: number, r0: number, r1: number) => limb(length, r0, r1).rotateX(-Math.PI / 2);
+
+/**
+ * A rounded box: a sphere pushed toward a box shape (`p` 2 = ellipsoid,
+ * higher = squarer), for skulls, snouts and barrels.
+ */
+function rounded(rx: number, ry: number, rz: number, p = 3, segments = 20): THREE.BufferGeometry {
+  return warp(new THREE.SphereGeometry(1, segments, Math.round(segments * 0.7)), (v) => {
+    const f = (c: number) => Math.sign(c) * Math.pow(Math.abs(c), 2 / p);
+    v.set(f(v.x) * rx, f(v.y) * ry, f(v.z) * rz);
+  });
+}
+
+/** A horn or claw: a cone curving as it goes, pointing up (+y) from its base. */
+function horn(radius: number, length: number, bend: number): THREE.BufferGeometry {
+  return warp(new THREE.ConeGeometry(radius, length, 8, 5).translate(0, length / 2, 0), (p) => {
+    const t = p.y / length;
+    p.z += bend * t * t;
+  });
+}
+
+/** A smooth hash of a 3D position (0..1), for hide patches. */
+function noise(p: THREE.Vector3, seed: number, scale: number): number {
+  const s = (a: number, b: number, c: number) => Math.sin(p.x * scale * a + p.y * scale * b + p.z * scale * c + seed);
+  return (s(1.0, 0.3, 0.7) + s(-0.4, 1.1, 0.9) * 0.8 + s(0.6, -0.8, 1.3) * 0.6 + 2.4) / 4.8;
 }
 
 function base(kind: CreatureKind, seed: number): CreatureRig {
@@ -88,32 +130,46 @@ function cow(seed: number): CreatureRig {
   const r = base('cow', seed);
   const hide = 0xf0ece2;
   const patch = 0x2a2420;
+  const muzzle = 0xd8a090;
+  const hoof = 0x2a2018;
+  // Black patches over a white hide, different on every cow.
+  const coat = (p: THREE.Vector3) => mix(hide, patch, THREE.MathUtils.smoothstep(noise(p, seed * 7.3, 9), 0.6, 0.65));
   r.torso.position.y = 0.62;
-  part(r.torso, new THREE.SphereGeometry(0.3, 12, 8).scale(0.78, 0.82, 1.55), hide);
-  for (const [x, y, z, s] of [[0.2, 0.06, 0.1, 0.13], [-0.21, 0.02, -0.18, 0.16], [0.18, 0.1, -0.28, 0.1], [-0.12, 0.2, 0.2, 0.11]]) {
-    part(r.torso, new THREE.SphereGeometry(s, 8, 6).scale(0.5, 1, 1.3), patch, x, y, z);
-  }
-  part(r.torso, new THREE.SphereGeometry(0.08, 8, 6), 0xe8a0a0, 0, -0.22, -0.18); // udder
+  const barrel = warp(rounded(0.24, 0.25, 0.47, 2.6, 28), (p) => {
+    // A dip behind the shoulders, a deeper chest.
+    p.y += 0.025 * Math.cos(p.z * 7) * (p.y > 0 ? 1 : 0);
+    if (p.z > 0.15 && p.y < 0) p.y *= 1.1;
+  });
+  part(r.torso, barrel, coat);
+  part(r.torso, rounded(0.08, 0.06, 0.08, 2, 14), 0xe8a0a0, 0, -0.23, -0.2); // udder
+  for (const [x, z] of [[-0.03, -0.17], [0.03, -0.17], [-0.03, -0.23], [0.03, -0.23]]) part(r.torso, limb(0.04, 0.012, 0.01, 6), 0xe08a8a, x, -0.27, z);
+
   r.head.position.set(0, 0.12, 0.44);
-  part(r.head, new THREE.BoxGeometry(0.2, 0.22, 0.26), hide, 0, 0, 0.06);
-  part(r.head, new THREE.BoxGeometry(0.18, 0.13, 0.1), 0xd8a090, 0, -0.06, 0.22); // muzzle
-  part(r.head, new THREE.BoxGeometry(0.16, 0.08, 0.1), patch, 0, 0.08, 0.08);
+  const skull = warp(rounded(0.1, 0.11, 0.15, 2.6, 20), (p) => {
+    const front = Math.max(0, p.z / 0.15);
+    p.x *= 1 - 0.22 * front;
+    p.y -= 0.03 * front * front;
+  });
+  part(r.head, skull, (p) => (noise(p, seed * 3.1, 14) > 0.64 && p.y > -0.02 ? patch : hide), 0, 0.02, 0.06);
+  part(r.head, rounded(0.075, 0.06, 0.06, 2.4, 16), muzzle, 0, -0.06, 0.21);
   for (const side of [-1, 1]) {
-    part(r.head, new THREE.ConeGeometry(0.025, 0.12, 5).rotateZ(-side * 1.1), 0xe8e0c8, side * 0.13, 0.12, 0.02);
-    part(r.head, new THREE.BoxGeometry(0.1, 0.03, 0.06), hide, side * 0.15, 0.05, -0.02);
-    part(r.head, new THREE.BoxGeometry(0.025, 0.025, 0.01), 0x111111, side * 0.08, 0.04, 0.2);
+    part(r.head, horn(0.022, 0.12, -0.03).rotateZ(-side * 1.15), 0xe8e0c8, side * 0.08, 0.1, 0.0);
+    const ear = rounded(0.07, 0.022, 0.04, 2, 12).rotateZ(-side * 0.35);
+    part(r.head, ear, hide, side * 0.14, 0.06, -0.02);
+    part(r.head, new THREE.SphereGeometry(0.016, 10, 8), 0x111111, side * 0.075, 0.05, 0.16, 0, true);
+    part(r.head, new THREE.SphereGeometry(0.012, 8, 6), 0x3a1a1a, side * 0.03, -0.05, 0.265);
   }
   for (const [x, z, offset] of [[-0.14, 0.3, 0], [0.14, 0.3, Math.PI], [-0.14, -0.32, Math.PI], [0.14, -0.32, 0]] as const) {
     const hip = pivot(r.torso, x, -0.12, z);
-    part(hip, limb(0.34, 0.06, 0.045), hide);
+    part(hip, limb(0.34, 0.07, 0.042), coat);
     const knee = pivot(hip, 0, -0.34);
-    part(knee, limb(0.16, 0.045, 0.04), hide);
-    part(knee, new THREE.BoxGeometry(0.08, 0.05, 0.09), 0x2a2420, 0, -0.16, 0.01);
+    part(knee, limb(0.15, 0.042, 0.036), hide);
+    part(knee, rounded(0.042, 0.03, 0.05, 3, 12), hoof, 0, -0.165, 0.008);
     r.legs.push({ hip, knee, side: Math.sign(x), offset, splay: 0 });
   }
   const tail = pivot(r.torso, 0, 0.14, -0.46);
-  part(tail, limb(0.38, 0.02, 0.015), hide);
-  part(tail, new THREE.SphereGeometry(0.045, 6, 5), patch, 0, -0.4, 0);
+  part(tail, limb(0.38, 0.018, 0.012, 6), hide);
+  part(tail, rounded(0.035, 0.06, 0.035, 2, 10), patch, 0, -0.41, 0);
   tail.rotation.x = 0.25;
   r.tail.push(tail);
   return r;
@@ -123,27 +179,38 @@ function lizard(seed: number): CreatureRig {
   const r = base('desert_lizard', seed);
   const skin = 0xc49a5a;
   const stripe = 0x7a5a2a;
+  const belly = 0xe4c890;
+  // Banded back, pale belly.
+  const scales = (p: THREE.Vector3) => (p.y < -0.015 ? belly : Math.sin(p.z * 32) > 0.35 && p.y > 0.02 ? stripe : skin);
   r.torso.position.y = 0.17;
-  part(r.torso, new THREE.SphereGeometry(0.14, 10, 6).scale(0.9, 0.55, 2.4), skin);
-  for (let i = -2; i <= 2; i++) part(r.torso, new THREE.BoxGeometry(0.2 - Math.abs(i) * 0.03, 0.02, 0.04), stripe, 0, 0.07, i * 0.1);
-  r.head.position.set(0, 0.02, 0.34);
-  part(r.head, new THREE.ConeGeometry(0.08, 0.26, 6).rotateX(Math.PI / 2).scale(1, 0.55, 1), skin, 0, 0, 0.1);
-  for (const side of [-1, 1]) part(r.head, new THREE.SphereGeometry(0.022, 6, 4), 0xf0d040, side * 0.055, 0.03, 0.04, 0x302000);
+  part(r.torso, warp(rounded(0.12, 0.07, 0.32, 2.3, 24), (p) => (p.x *= 1 - 0.3 * Math.abs(p.z / 0.32) ** 2)), scales);
+  r.head.position.set(0, 0.02, 0.3);
+  const skull = warp(rounded(0.075, 0.045, 0.13, 2.4, 18), (p) => {
+    const front = Math.max(0, p.z / 0.13);
+    p.x *= 1 - 0.45 * front;
+    p.y *= 1 - 0.3 * front;
+  });
+  part(r.head, skull, (p) => (Math.abs(p.y + 0.004) < 0.004 && p.z > 0 ? 0x3a2410 : p.y < -0.01 ? belly : skin), 0, 0, 0.1);
+  for (const side of [-1, 1]) {
+    part(r.head, new THREE.SphereGeometry(0.022, 12, 8), 0xf0d040, side * 0.05, 0.028, 0.06, 0x302000, true);
+    part(r.head, new THREE.SphereGeometry(0.011, 8, 6).scale(0.5, 1, 1), 0x111111, side * 0.068, 0.03, 0.065);
+  }
   for (const [x, z, offset] of [[-1, 0.2, 0], [1, 0.2, Math.PI], [-1, -0.18, Math.PI], [1, -0.18, 0]] as const) {
     const hip = pivot(r.torso, x * 0.1, 0, z);
     hip.rotation.z = x * 1.1;
-    part(hip, limb(0.14, 0.03, 0.025), skin);
+    part(hip, limb(0.14, 0.034, 0.025), skin);
     const knee = pivot(hip, 0, -0.14);
     knee.rotation.z = -x * 1.4;
-    part(knee, limb(0.1, 0.025, 0.02), skin);
+    part(knee, limb(0.1, 0.025, 0.018), skin);
+    part(knee, rounded(0.03, 0.012, 0.035, 2, 10), stripe, 0, -0.11, 0.015);
     r.legs.push({ hip, knee, side: x, offset, splay: x * 1.1 });
   }
   let parent: THREE.Object3D = r.torso;
-  let z = -0.32;
+  let z = -0.29;
   for (let i = 0; i < 4; i++) {
     const seg = pivot(parent, 0, 0, z);
     const len = 0.18 - i * 0.02;
-    part(seg, new THREE.ConeGeometry(0.06 - i * 0.012, len, 6).rotateX(-Math.PI / 2).translate(0, 0, -len / 2), i % 2 ? stripe : skin);
+    part(seg, along(len, 0.06 - i * 0.012, 0.048 - i * 0.012), (p) => (p.y < -0.02 + i * 0.004 ? belly : Math.sin(p.z * 32 + i) > 0.35 ? stripe : skin));
     r.tail.push(seg);
     parent = seg;
     z = -len;
@@ -153,24 +220,24 @@ function lizard(seed: number): CreatureRig {
 
 function scorpion(seed: number): CreatureRig {
   const r = base('scorpion', seed);
-  const shell = 0x8a4a22;
+  const plate = 0x8a4a22;
   const dark = 0x4a2412;
+  // Overlapping plates: a darker seam between each.
+  const banded = (p: THREE.Vector3) => (Math.sin(p.z * 44) > 0.75 ? dark : plate);
   r.torso.position.y = 0.16;
-  part(r.torso, new THREE.SphereGeometry(0.16, 10, 6).scale(1, 0.45, 1.6), shell);
-  for (let i = 0; i < 3; i++) part(r.torso, new THREE.BoxGeometry(0.26 - i * 0.04, 0.03, 0.05), dark, 0, 0.065, -0.05 - i * 0.08);
+  shell(r.torso, warp(rounded(0.16, 0.065, 0.25, 2.6, 24), (p) => (p.y > 0 ? (p.y *= 1 + 0.15 * Math.cos(p.z * 20)) : 0)), banded);
   r.head.position.set(0, 0, 0.24);
-  part(r.head, new THREE.SphereGeometry(0.09, 8, 6).scale(1.2, 0.5, 0.9), shell);
-  for (const side of [-1, 1]) part(r.head, new THREE.SphereGeometry(0.018, 6, 4), 0x111111, side * 0.04, 0.04, 0.05);
+  shell(r.head, rounded(0.11, 0.05, 0.09, 2.6, 18), plate);
+  for (const side of [-1, 1]) shell(r.head, new THREE.SphereGeometry(0.016, 10, 8), 0x111111, side * 0.035, 0.045, 0.05);
   // Pincers on jointed arms.
   for (const side of [-1, 1]) {
     const arm = pivot(r.head, side * 0.08, 0, 0.02);
     arm.rotation.y = side * 0.5;
-    part(arm, new THREE.CylinderGeometry(0.025, 0.03, 0.2, 6).rotateX(Math.PI / 2).translate(0, 0, 0.1), shell);
+    shell(arm, ahead(0.2, 0.03, 0.025), plate);
     const claw = pivot(arm, 0, 0, 0.2);
     claw.rotation.y = -side * 0.9;
-    part(claw, new THREE.SphereGeometry(0.06, 8, 6).scale(0.8, 0.5, 1.4), shell, 0, 0, 0.07);
-    part(claw, new THREE.ConeGeometry(0.02, 0.1, 4).rotateX(Math.PI / 2), dark, side * 0.025, 0, 0.17);
-    part(claw, new THREE.ConeGeometry(0.02, 0.1, 4).rotateX(Math.PI / 2), dark, -side * 0.025, 0, 0.17);
+    shell(claw, rounded(0.05, 0.032, 0.085, 2.3, 16), plate, 0, 0, 0.07);
+    for (const k of [-1, 1]) shell(claw, horn(0.018, 0.1, k * side * 0.025).rotateX(Math.PI / 2), dark, k * side * 0.022, 0, 0.13);
     r.arms.push(arm);
   }
   for (let i = 0; i < 4; i++) {
@@ -178,10 +245,10 @@ function scorpion(seed: number): CreatureRig {
       const hip = pivot(r.torso, side * 0.12, 0, 0.12 - i * 0.09);
       hip.rotation.z = side * 1.2;
       hip.rotation.y = side * (0.3 - i * 0.25);
-      part(hip, limb(0.13, 0.018, 0.015), dark);
+      shell(hip, limb(0.13, 0.02, 0.015, 8), dark);
       const knee = pivot(hip, 0, -0.13);
       knee.rotation.z = -side * 1.6;
-      part(knee, limb(0.12, 0.015, 0.008), dark);
+      shell(knee, limb(0.12, 0.015, 0.006, 8), dark);
       r.legs.push({ hip, knee, side, offset: (i + (side > 0 ? 1 : 0)) * Math.PI, splay: side * 1.2 });
     }
   }
@@ -190,8 +257,8 @@ function scorpion(seed: number): CreatureRig {
   let z = -0.24;
   for (let i = 0; i < 5; i++) {
     const seg = pivot(parent, 0, 0, z);
-    part(seg, new THREE.SphereGeometry(0.055 - i * 0.004, 8, 6).scale(1, 0.9, 1.3), i === 4 ? dark : shell, 0, 0, -0.05);
-    if (i === 4) part(seg, new THREE.ConeGeometry(0.025, 0.12, 5).rotateX(-Math.PI / 2 - 0.9), 0x1a1008, 0, -0.03, -0.12);
+    shell(seg, rounded(0.055 - i * 0.004, 0.05 - i * 0.004, 0.07, 2.4, 14), i === 4 ? dark : plate, 0, 0, -0.05);
+    if (i === 4) shell(seg, horn(0.024, 0.13, 0.05).rotateX(-Math.PI / 2 - 0.9), 0x1a1008, 0, -0.03, -0.09);
     r.tail.push(seg);
     parent = seg;
     z = -0.1;
@@ -201,26 +268,30 @@ function scorpion(seed: number): CreatureRig {
 
 function creeper(seed: number): CreatureRig {
   const r = base('cave_creeper', seed);
-  const shell = 0x3a3046;
+  const carapace = 0x3a3046;
   const leg = 0x2a2232;
   r.body.scale.setScalar(1.35);
   r.torso.position.y = 0.3;
-  part(r.torso, new THREE.SphereGeometry(0.17, 12, 8).scale(1, 0.85, 1.25), 0x4a3a5a, 0, 0.06, -0.22);
-  part(r.torso, new THREE.SphereGeometry(0.06, 8, 6).scale(2.4, 0.4, 1), 0x8a6aa0, 0, 0.2, -0.24); // markings
-  part(r.torso, new THREE.SphereGeometry(0.11, 10, 6).scale(1, 0.75, 1.1), shell);
+  // A bloated abdomen with a pale hourglass mark, a hard front body.
+  const mark = (p: THREE.Vector3) => {
+    const dz = (p.z + 0.22) / 0.2;
+    return p.y > 0.12 && Math.abs(p.x) < 0.03 + 0.05 * Math.abs(dz) ? 0x8a6aa0 : 0x4a3a5a;
+  };
+  part(r.torso, rounded(0.17, 0.145, 0.21, 2.1, 22), mark, 0, 0.06, -0.22);
+  shell(r.torso, rounded(0.11, 0.08, 0.12, 2.3, 18), carapace);
   r.head.position.set(0, 0.0, 0.11);
-  for (const [x, y] of [[-0.03, 0.04], [0.03, 0.04], [-0.06, 0.02], [0.06, 0.02]]) part(r.head, new THREE.SphereGeometry(0.016, 6, 4), 0xff5a5a, x, y, 0.02, 0x801010);
-  for (const side of [-1, 1]) part(r.head, new THREE.ConeGeometry(0.018, 0.08, 4).rotateX(Math.PI - 0.3), 0xd8d0c0, side * 0.03, -0.05, 0.03);
+  for (const [x, y] of [[-0.03, 0.04], [0.03, 0.04], [-0.06, 0.02], [0.06, 0.02]]) part(r.head, new THREE.SphereGeometry(0.016, 10, 8), 0xff5a5a, x, y, 0.02, 0x801010);
+  for (const side of [-1, 1]) shell(r.head, horn(0.018, 0.08, 0.02).rotateX(Math.PI - 0.3), 0xd8d0c0, side * 0.03, -0.03, 0.03);
   for (let i = 0; i < 4; i++) {
     for (const side of [-1, 1]) {
       // Each leg arches up and out from the body, then down to the ground.
       const hip = pivot(r.torso, side * 0.08, 0.02, 0.06 - i * 0.05);
       hip.rotation.z = side * 2.2;
       hip.rotation.y = side * (0.7 - i * 0.45);
-      part(hip, limb(0.24, 0.022, 0.018), leg);
+      shell(hip, limb(0.24, 0.024, 0.019, 8), leg);
       const knee = pivot(hip, 0, -0.24);
       knee.rotation.z = -side * 1.8;
-      part(knee, limb(0.42, 0.018, 0.006), leg);
+      shell(knee, limb(0.42, 0.019, 0.005, 8), leg);
       r.legs.push({ hip, knee, side, offset: (i + (side > 0 ? 1 : 0)) * Math.PI, splay: side * 2.2 });
     }
   }
@@ -230,25 +301,30 @@ function creeper(seed: number): CreatureRig {
 function swift(seed: number): CreatureRig {
   const r = base('crimson_swift', seed);
   const red = 0xc8262a;
+  const breast = 0xf0d8c0;
   r.torso.position.y = 0.95;
-  part(r.torso, new THREE.SphereGeometry(0.08, 10, 8).scale(0.9, 0.85, 1.7), red);
-  part(r.torso, new THREE.SphereGeometry(0.06, 8, 6).scale(0.9, 0.7, 1.4), 0xf0d8c0, 0, -0.03, 0.03);
-  r.head.position.set(0, 0.04, 0.13);
-  part(r.head, new THREE.SphereGeometry(0.055, 8, 6), 0x8a1418);
-  part(r.head, new THREE.ConeGeometry(0.018, 0.07, 4).rotateX(Math.PI / 2), 0xf0c040, 0, -0.01, 0.07);
-  for (const side of [-1, 1]) part(r.head, new THREE.SphereGeometry(0.012, 5, 4), 0x111111, side * 0.035, 0.015, 0.035);
+  part(r.torso, warp(rounded(0.072, 0.068, 0.14, 2, 18), (p) => (p.z < 0 ? (p.y *= 1 + p.z * 2) : 0)), (p) => (p.y < -0.015 && p.z > -0.06 ? breast : red));
+  r.head.position.set(0, 0.04, 0.12);
+  part(r.head, new THREE.SphereGeometry(0.052, 16, 12), (p) => (p.y < -0.02 ? breast : 0x8a1418));
+  part(r.head, horn(0.016, 0.065, 0).rotateX(Math.PI / 2), 0xf0c040, 0, -0.01, 0.04);
+  for (const side of [-1, 1]) part(r.head, new THREE.SphereGeometry(0.011, 8, 6), 0x111111, side * 0.035, 0.015, 0.035, 0, true);
   for (const side of [-1, 1]) {
-    const wing = pivot(r.torso, side * 0.06, 0.03, 0);
-    const shape = new THREE.Shape([new THREE.Vector2(0, 0.06), new THREE.Vector2(0.28, 0.0), new THREE.Vector2(0.24, -0.05), new THREE.Vector2(0, -0.07)]);
+    const wing = pivot(r.torso, side * 0.055, 0.03, 0);
+    // A swept-back wing, darker toward the tips.
+    const shape = new THREE.Shape([new THREE.Vector2(0, 0.06), new THREE.Vector2(0.14, 0.05), new THREE.Vector2(0.3, -0.02), new THREE.Vector2(0.27, -0.06), new THREE.Vector2(0.15, -0.05), new THREE.Vector2(0, -0.07)]);
     const geo = new THREE.ShapeGeometry(shape).rotateX(-Math.PI / 2);
     if (side < 0) geo.scale(-1, 1, 1);
-    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x9a1a1e, side: THREE.DoubleSide }));
+    const m = new THREE.Mesh(
+      paint(geo, (p) => (Math.abs(p.x) > 0.2 ? 0x5a0a0e : 0x9a1a1e)),
+      vertexMaterial('cloth', true),
+    );
     m.castShadow = true;
     wing.add(m);
     r.arms.push(wing);
   }
   const tail = pivot(r.torso, 0, 0, -0.12);
-  const fan = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(0.06, -0.14), new THREE.Vector2(-0.06, -0.14)])).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0x7a1216, side: THREE.DoubleSide }));
+  const fork = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(0.05, -0.16), new THREE.Vector2(0, -0.11), new THREE.Vector2(-0.05, -0.16)]);
+  const fan = new THREE.Mesh(paint(new THREE.ShapeGeometry(fork).rotateX(-Math.PI / 2), 0x7a1216), vertexMaterial('cloth', true));
   tail.add(fan);
   r.tail.push(tail);
   return r;
@@ -267,21 +343,27 @@ function drake(seed: number): CreatureRig {
   const plate = 0x5a2618;
   const belly = 0xa8582a;
   const ember = 0xff7a1a;
-  const horn = 0xd8c8a8;
+  const bone = 0xd8c8a8;
   const membrane = 0x7a2a1a;
+  // Dark scales on top shading into a ridged, lighter belly.
+  const scales = (p: THREE.Vector3, low = -0.08) => (p.y < low ? (Math.sin(p.z * 40) > 0.6 ? shadeHex(belly, 0.8) : belly) : hide);
   r.torso.position.y = 0.95;
   // Set back on its tile, so the head (not the chest) is over whoever it fights next to.
   r.torso.position.z = -0.45;
-  part(r.torso, new THREE.SphereGeometry(0.36, 14, 10).scale(1, 0.85, 1.75), hide);
-  part(r.torso, new THREE.SphereGeometry(0.3, 12, 8).scale(0.95, 0.55, 1.6), belly, 0, -0.12, 0.04);
+  const trunk = warp(rounded(0.36, 0.3, 0.63, 2.2, 30), (p) => {
+    // Broad shoulders, a narrower waist and haunches.
+    p.x *= 1 + 0.08 * Math.cos((p.z / 0.63) * Math.PI);
+    if (p.z > 0.2 && p.y > 0) p.y *= 1.08;
+  });
+  part(r.torso, trunk, (p) => scales(p, -0.1));
   // Cracks of fire along the flanks.
   for (const side of [-1, 1]) {
     for (let i = 0; i < 4; i++) {
-      part(r.torso, new THREE.BoxGeometry(0.02, 0.05 + (i % 2) * 0.03, 0.16), ember, side * 0.35, 0.04 - i * 0.03, 0.28 - i * 0.2, 0xff4a00);
+      part(r.torso, rounded(0.01, 0.014 + (i % 2) * 0.01, 0.075, 2, 10), ember, side * 0.35, 0.04 - i * 0.03, 0.28 - i * 0.2, 0xff4a00);
     }
   }
   // Spines down the back.
-  for (let i = 0; i < 7; i++) part(r.torso, new THREE.ConeGeometry(0.045, 0.16 - i * 0.012, 5), plate, 0, 0.3 - i * 0.015, 0.45 - i * 0.16);
+  for (let i = 0; i < 7; i++) shell(r.torso, horn(0.045, 0.16 - i * 0.012, -0.04), plate, 0, 0.24 - i * 0.012, 0.45 - i * 0.16);
 
   // Neck: three segments rising forward from the shoulders.
   let parent: THREE.Object3D = r.torso;
@@ -290,28 +372,33 @@ function drake(seed: number): CreatureRig {
   for (let i = 0; i < 3; i++) {
     const seg = pivot(parent, 0, y, z);
     seg.rotation.x = -0.5 + i * 0.25;
-    part(seg, new THREE.CylinderGeometry(0.12 - i * 0.015, 0.15 - i * 0.015, 0.3, 8).rotateX(Math.PI / 2).translate(0, 0, 0.15), i % 2 ? plate : hide);
-    part(seg, new THREE.ConeGeometry(0.035, 0.1, 4), plate, 0, 0.12 - i * 0.01, 0.12);
+    part(seg, ahead(0.3, 0.15 - i * 0.017, 0.13 - i * 0.017), (p) => scales(p, -0.06 + i * 0.01));
+    shell(seg, horn(0.035, 0.11, -0.03), plate, 0, 0.1 - i * 0.012, 0.12);
     r.neck.push(seg);
     parent = seg;
     y = 0;
     z = 0.28;
   }
-  // Head at the end of the neck.
+  // Head at the end of the neck: a heavy brow, a long snout, horns swept back.
   parent.add(r.head);
   r.head.position.set(0, 0.02, 0.3);
   r.head.rotation.x = 0.35;
-  part(r.head, new THREE.BoxGeometry(0.22, 0.16, 0.26), hide, 0, 0.02, 0.02);
-  part(r.head, new THREE.BoxGeometry(0.16, 0.1, 0.24), plate, 0, 0.02, 0.24); // snout
+  shell(r.head, rounded(0.115, 0.085, 0.13, 2.6, 20), hide, 0, 0.03, 0.02);
+  const snout = warp(rounded(0.085, 0.055, 0.15, 2.6, 18), (p) => {
+    const front = Math.max(0, p.z / 0.15);
+    p.x *= 1 - 0.25 * front;
+  });
+  shell(r.head, snout, plate, 0, 0.02, 0.2);
   for (const side of [-1, 1]) {
-    part(r.head, new THREE.SphereGeometry(0.03, 6, 5), 0xffd040, side * 0.1, 0.07, 0.08, 0xffa000); // eyes
-    part(r.head, new THREE.ConeGeometry(0.03, 0.26, 5).rotateX(-Math.PI / 2 - 0.5), horn, side * 0.08, 0.12, -0.1);
-    part(r.head, new THREE.ConeGeometry(0.02, 0.14, 4).rotateX(-Math.PI / 2 - 0.2).rotateZ(side * 0.6), horn, side * 0.12, 0.02, -0.08);
-    part(r.head, new THREE.SphereGeometry(0.015, 5, 4), 0x1a0a06, side * 0.04, 0.06, 0.36); // nostrils
+    part(r.head, new THREE.SphereGeometry(0.028, 12, 8), 0xffd040, side * 0.095, 0.07, 0.09, 0xffa000);
+    shell(r.head, rounded(0.04, 0.012, 0.045, 2, 10), hide, side * 0.085, 0.105, 0.09); // brow ridge
+    shell(r.head, horn(0.032, 0.28, 0.12).rotateX(-Math.PI / 2 - 0.5), bone, side * 0.07, 0.11, -0.06);
+    shell(r.head, horn(0.02, 0.14, 0.04).rotateX(-Math.PI / 2 - 0.2).rotateZ(side * 0.6), bone, side * 0.11, 0.02, -0.06);
+    part(r.head, new THREE.SphereGeometry(0.014, 8, 6), 0x1a0a06, side * 0.035, 0.065, 0.34); // nostrils
   }
-  const jaw = pivot(r.head, 0, -0.05, 0.08);
-  part(jaw, new THREE.BoxGeometry(0.14, 0.05, 0.26), belly, 0, -0.02, 0.12);
-  for (const side of [-1, 1]) part(jaw, new THREE.ConeGeometry(0.012, 0.05, 4), 0xf0e8d8, side * 0.05, 0.02, 0.2);
+  const jaw = pivot(r.head, 0, -0.04, 0.08);
+  shell(jaw, warp(rounded(0.072, 0.03, 0.14, 2.6, 16), (p) => (p.x *= 1 - 0.2 * Math.max(0, p.z / 0.14))), belly, 0, -0.02, 0.12);
+  for (const side of [-1, 1]) for (const tz of [0.12, 0.18, 0.24]) shell(jaw, new THREE.ConeGeometry(0.01, 0.04, 6).translate(0, 0.02, 0), 0xf0e8d8, side * 0.05, 0.005, tz);
   r.jaw = jaw;
   const mouth = new THREE.Object3D();
   mouth.position.set(0, 0, 0.4);
@@ -321,20 +408,21 @@ function drake(seed: number): CreatureRig {
   // Legs: thick thighs, a backward knee and clawed feet.
   for (const [x, z, offset] of [[-0.24, 0.36, 0], [0.24, 0.36, Math.PI], [-0.24, -0.34, Math.PI], [0.24, -0.34, 0]] as const) {
     const hip = pivot(r.torso, x, -0.12, z);
-    part(hip, new THREE.SphereGeometry(0.14, 8, 6).scale(0.8, 1.2, 1), hide, 0, -0.08, 0);
-    part(hip, limb(0.42, 0.11, 0.07), hide);
+    shell(hip, rounded(0.12, 0.17, 0.14, 2.2, 16), hide, 0, -0.06, 0);
+    shell(hip, limb(0.42, 0.11, 0.07, 12), hide);
     const knee = pivot(hip, 0, -0.42);
     knee.rotation.x = z > 0 ? -0.2 : 0.3;
-    part(knee, limb(0.36, 0.07, 0.05), plate);
-    for (const dx of [-0.05, 0, 0.05]) part(knee, new THREE.ConeGeometry(0.02, 0.1, 4).rotateX(Math.PI / 2), horn, dx, -0.38, 0.08);
+    shell(knee, limb(0.34, 0.07, 0.05, 12), plate);
+    shell(knee, rounded(0.07, 0.035, 0.09, 2.4, 12), plate, 0, -0.37, 0.03);
+    for (const dx of [-0.045, 0, 0.045]) shell(knee, horn(0.016, 0.09, -0.04).rotateX(Math.PI / 2), bone, dx, -0.38, 0.1);
     r.legs.push({ hip, knee, side: Math.sign(x), offset, splay: 0 });
   }
 
   // Wings: a bony arm with a membrane fanned behind it, folded along the back at rest.
   for (const side of [-1, 1]) {
     const wing = pivot(r.torso, side * 0.24, 0.24, 0.24);
-    part(wing, new THREE.CylinderGeometry(0.03, 0.04, 0.9, 6).rotateZ(Math.PI / 2).translate(side * 0.45, 0, 0), plate);
-    part(wing, new THREE.ConeGeometry(0.03, 0.14, 4).rotateZ(-side * Math.PI / 2), horn, side * 0.92, 0, 0);
+    shell(wing, limb(0.9, 0.04, 0.026, 8).rotateZ(side * Math.PI / 2), plate);
+    shell(wing, horn(0.03, 0.14, 0.02).rotateZ(-side * Math.PI / 2), bone, side * 0.92, 0, 0);
     const shape = new THREE.Shape([
       new THREE.Vector2(0, 0),
       new THREE.Vector2(0.9, 0),
@@ -344,29 +432,42 @@ function drake(seed: number): CreatureRig {
       new THREE.Vector2(0.2, -0.38),
       new THREE.Vector2(0, -0.55),
     ]);
-    // Laid flat with the membrane trailing behind the arm.
-    const geo = new THREE.ShapeGeometry(shape).rotateX(Math.PI / 2);
+    // Laid flat with the membrane trailing behind the arm; darker at the edges, with ribs.
+    const geo = new THREE.ShapeGeometry(shape, 6).rotateX(Math.PI / 2);
     if (side < 0) geo.scale(-1, 1, 1);
-    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: membrane, side: THREE.DoubleSide, flatShading: true }));
+    const m = new THREE.Mesh(paint(geo, (p) => shadeHex(membrane, 1.1 - Math.min(0.5, -p.z * 0.9))), vertexMaterial('cloth', true));
     m.castShadow = true;
     wing.add(m);
+    for (const [fx, fz] of [[0.55, -0.22], [0.4, -0.6], [0.2, -0.38]]) {
+      const d = new THREE.Vector3(side * fx * 0.6, 0, fz);
+      const rib = limb(d.length(), 0.012, 0.006, 6).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), d.normalize()));
+      shell(wing, rib, plate, side * fx * 0.4, 0, 0);
+    }
     r.arms.push(wing);
   }
 
   // Tail: six tapering segments ending in a spade.
   parent = r.torso;
-  z = -0.58;
+  z = -0.56;
   for (let i = 0; i < 6; i++) {
     const seg = pivot(parent, 0, i === 0 ? -0.02 : 0, z);
     const len = 0.26 - i * 0.02;
-    part(seg, new THREE.ConeGeometry(0.11 - i * 0.016, len, 7).rotateX(-Math.PI / 2).translate(0, 0, -len / 2), i % 2 ? plate : hide);
-    if (i < 5) part(seg, new THREE.ConeGeometry(0.025, 0.08, 4), plate, 0, 0.08 - i * 0.012, -len / 2);
-    else part(seg, new THREE.ConeGeometry(0.1, 0.18, 4).rotateX(-Math.PI / 2).scale(1, 0.25, 1), plate, 0, 0, -len - 0.06);
+    part(seg, along(len, 0.12 - i * 0.017, 0.105 - i * 0.017), (p) => scales(p, -0.04 + i * 0.012));
+    if (i < 5) shell(seg, horn(0.025, 0.08, -0.02), plate, 0, 0.07 - i * 0.012, -len / 2);
+    else shell(seg, warp(rounded(0.1, 0.02, 0.1, 2.2, 12), (p) => (p.x *= 1 - Math.max(0, -p.z / 0.1) * 0.9)), plate, 0, 0, -len - 0.07);
     r.tail.push(seg);
     parent = seg;
     z = -len;
   }
   return r;
+}
+
+function mix(a: number, b: number, t: number): number {
+  return new THREE.Color(a).lerp(new THREE.Color(b), t).getHex();
+}
+
+function shadeHex(hex: number, k: number): number {
+  return new THREE.Color(hex).multiplyScalar(k).getHex();
 }
 
 const BUILDERS: Record<CreatureKind, (seed: number) => CreatureRig> = {

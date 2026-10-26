@@ -258,7 +258,8 @@ export class EntityLayer {
     const pos = this.state.renderPosition(view, now);
     const dx = view.toX - view.fromX;
     const dy = view.toY - view.fromY;
-    const moving = (dx !== 0 || dy !== 0) && now - view.movedAt < this.state.tickMs;
+    // Keep the legs going a little past the step, so a tick that lands late doesn't stutter the walk.
+    const moving = (dx !== 0 || dy !== 0) && now - view.movedAt < this.state.tickMs * 1.2;
     if (moving) this.facing.set(id, Math.atan2(dx, dy));
     const work = view.data.workingOn;
     if (work && !moving) this.facing.set(id, Math.atan2(work.x - view.toX, work.y - view.toY));
@@ -269,13 +270,15 @@ export class EntityLayer {
       const at = this.state.renderPosition(foe, now);
       if (at.x !== pos.x || at.y !== pos.y) this.facing.set(id, Math.atan2(at.x - pos.x, at.y - pos.y));
     }
+    // Turn at a steady pace that eases in at the end, rather than snapping round.
     const targetYaw = this.facing.get(id) ?? obj.rotation.y;
-    obj.rotation.y += shortestAngle(obj.rotation.y, targetYaw) * Math.min(1, dt * 12);
+    const turn = shortestAngle(obj.rotation.y, targetYaw);
+    obj.rotation.y += Math.sign(turn) * Math.min(Math.abs(turn), dt * 9, Math.abs(turn) * dt * 14);
     obj.position.set(pos.x + 0.5, this.hm.groundAt(pos.x + 0.5, pos.y + 0.5), pos.y + 0.5);
     const speed = Math.min(1.4, Math.hypot(dx, dy));
     const dead = !!view.data.dead;
     const rig = this.rigs.get(id);
-    if (rig) animateCharacter(rig, dt, now, moving, speed, work ? (view.data.activity ?? 'chop') : fighting ? 'fight' : null, dead);
+    if (rig) animateCharacter(rig, dt, now, moving, speed, work ? (view.data.activity ?? 'chop') : fighting ? 'fight' : null, dead, turn);
     if (rig && work && !moving && view.data.activity) {
       const u = activityPhase(rig, view.data.activity, now);
       const was = this.workPhase.get(id);

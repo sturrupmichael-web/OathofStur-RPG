@@ -33,6 +33,7 @@ type Events = {
   tick: number;
   hit: HitEvent;
   animation: { entityId: EntityId; kind: string };
+  questComplete: { name: string; rewards: string[]; questPoints: number };
 };
 
 /**
@@ -106,6 +107,9 @@ export class ClientState {
       }
       case 'animation':
         this.emit('animation', { entityId: msg.entityId, kind: msg.kind });
+        break;
+      case 'questComplete':
+        this.emit('questComplete', { name: msg.name, rewards: msg.rewards, questPoints: msg.questPoints });
         break;
       case 'reject':
         this.emit('gameMessage', { text: msg.reason, kind: 'warn' });

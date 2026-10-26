@@ -6,7 +6,7 @@ import * as THREE from 'three';
  * guards) use the character rig instead; see CHARACTER_STYLES.
  */
 
-export type CreatureKind = 'cow' | 'desert_lizard' | 'scorpion' | 'cave_creeper' | 'crimson_swift';
+export type CreatureKind = 'cow' | 'desert_lizard' | 'scorpion' | 'cave_creeper' | 'crimson_swift' | 'cinder_drake';
 
 interface Leg {
   hip: THREE.Group;
@@ -31,6 +31,12 @@ export interface CreatureRig {
   tail: THREE.Group[];
   /** Pincers or wings, mirrored left/right. */
   arms: THREE.Group[];
+  /** Neck segments from the shoulders to the head (the drake). */
+  neck: THREE.Group[];
+  /** Lower jaw, which opens to bite and breathe. */
+  jaw: THREE.Group | null;
+  /** Where fire leaves the mouth, for the breath effect. */
+  mouth: THREE.Object3D | null;
   phase: number;
   walk: number;
   oneShot: { kind: string; start: number } | null;
@@ -74,7 +80,7 @@ function base(kind: CreatureKind, seed: number): CreatureRig {
   const body = pivot(root, 0, 0);
   const torso = pivot(body, 0, 0);
   const head = pivot(torso, 0, 0);
-  return { kind, root, body, torso, head, legs: [], tail: [], arms: [], phase: 0, walk: 0, oneShot: null, fallen: 0, seed };
+  return { kind, root, body, torso, head, legs: [], tail: [], arms: [], neck: [], jaw: null, mouth: null, phase: 0, walk: 0, oneShot: null, fallen: 0, seed };
 }
 
 function cow(seed: number): CreatureRig {
@@ -247,12 +253,128 @@ function swift(seed: number): CreatureRig {
   return r;
 }
 
+
+/**
+ * The Cinder Drake: a coal-dark drake twice a man's height, with glowing
+ * cracks along its flanks, a long neck, folded wings and a spaded tail.
+ */
+function drake(seed: number): CreatureRig {
+  const r = base('cinder_drake', seed);
+  // Built at about a man's height, then scaled up to tower over one.
+  r.body.scale.setScalar(1.55);
+  const hide = 0x3a1a14;
+  const plate = 0x5a2618;
+  const belly = 0xa8582a;
+  const ember = 0xff7a1a;
+  const horn = 0xd8c8a8;
+  const membrane = 0x7a2a1a;
+  r.torso.position.y = 0.95;
+  // Set back on its tile, so the head (not the chest) is over whoever it fights next to.
+  r.torso.position.z = -0.45;
+  part(r.torso, new THREE.SphereGeometry(0.36, 14, 10).scale(1, 0.85, 1.75), hide);
+  part(r.torso, new THREE.SphereGeometry(0.3, 12, 8).scale(0.95, 0.55, 1.6), belly, 0, -0.12, 0.04);
+  // Cracks of fire along the flanks.
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 4; i++) {
+      part(r.torso, new THREE.BoxGeometry(0.02, 0.05 + (i % 2) * 0.03, 0.16), ember, side * 0.35, 0.04 - i * 0.03, 0.28 - i * 0.2, 0xff4a00);
+    }
+  }
+  // Spines down the back.
+  for (let i = 0; i < 7; i++) part(r.torso, new THREE.ConeGeometry(0.045, 0.16 - i * 0.012, 5), plate, 0, 0.3 - i * 0.015, 0.45 - i * 0.16);
+
+  // Neck: three segments rising forward from the shoulders.
+  let parent: THREE.Object3D = r.torso;
+  let y = 0.12;
+  let z = 0.5;
+  for (let i = 0; i < 3; i++) {
+    const seg = pivot(parent, 0, y, z);
+    seg.rotation.x = -0.5 + i * 0.25;
+    part(seg, new THREE.CylinderGeometry(0.12 - i * 0.015, 0.15 - i * 0.015, 0.3, 8).rotateX(Math.PI / 2).translate(0, 0, 0.15), i % 2 ? plate : hide);
+    part(seg, new THREE.ConeGeometry(0.035, 0.1, 4), plate, 0, 0.12 - i * 0.01, 0.12);
+    r.neck.push(seg);
+    parent = seg;
+    y = 0;
+    z = 0.28;
+  }
+  // Head at the end of the neck.
+  parent.add(r.head);
+  r.head.position.set(0, 0.02, 0.3);
+  r.head.rotation.x = 0.35;
+  part(r.head, new THREE.BoxGeometry(0.22, 0.16, 0.26), hide, 0, 0.02, 0.02);
+  part(r.head, new THREE.BoxGeometry(0.16, 0.1, 0.24), plate, 0, 0.02, 0.24); // snout
+  for (const side of [-1, 1]) {
+    part(r.head, new THREE.SphereGeometry(0.03, 6, 5), 0xffd040, side * 0.1, 0.07, 0.08, 0xffa000); // eyes
+    part(r.head, new THREE.ConeGeometry(0.03, 0.26, 5).rotateX(-Math.PI / 2 - 0.5), horn, side * 0.08, 0.12, -0.1);
+    part(r.head, new THREE.ConeGeometry(0.02, 0.14, 4).rotateX(-Math.PI / 2 - 0.2).rotateZ(side * 0.6), horn, side * 0.12, 0.02, -0.08);
+    part(r.head, new THREE.SphereGeometry(0.015, 5, 4), 0x1a0a06, side * 0.04, 0.06, 0.36); // nostrils
+  }
+  const jaw = pivot(r.head, 0, -0.05, 0.08);
+  part(jaw, new THREE.BoxGeometry(0.14, 0.05, 0.26), belly, 0, -0.02, 0.12);
+  for (const side of [-1, 1]) part(jaw, new THREE.ConeGeometry(0.012, 0.05, 4), 0xf0e8d8, side * 0.05, 0.02, 0.2);
+  r.jaw = jaw;
+  const mouth = new THREE.Object3D();
+  mouth.position.set(0, 0, 0.4);
+  r.head.add(mouth);
+  r.mouth = mouth;
+
+  // Legs: thick thighs, a backward knee and clawed feet.
+  for (const [x, z, offset] of [[-0.24, 0.36, 0], [0.24, 0.36, Math.PI], [-0.24, -0.34, Math.PI], [0.24, -0.34, 0]] as const) {
+    const hip = pivot(r.torso, x, -0.12, z);
+    part(hip, new THREE.SphereGeometry(0.14, 8, 6).scale(0.8, 1.2, 1), hide, 0, -0.08, 0);
+    part(hip, limb(0.42, 0.11, 0.07), hide);
+    const knee = pivot(hip, 0, -0.42);
+    knee.rotation.x = z > 0 ? -0.2 : 0.3;
+    part(knee, limb(0.36, 0.07, 0.05), plate);
+    for (const dx of [-0.05, 0, 0.05]) part(knee, new THREE.ConeGeometry(0.02, 0.1, 4).rotateX(Math.PI / 2), horn, dx, -0.38, 0.08);
+    r.legs.push({ hip, knee, side: Math.sign(x), offset, splay: 0 });
+  }
+
+  // Wings: a bony arm with a membrane fanned behind it, folded along the back at rest.
+  for (const side of [-1, 1]) {
+    const wing = pivot(r.torso, side * 0.24, 0.24, 0.24);
+    part(wing, new THREE.CylinderGeometry(0.03, 0.04, 0.9, 6).rotateZ(Math.PI / 2).translate(side * 0.45, 0, 0), plate);
+    part(wing, new THREE.ConeGeometry(0.03, 0.14, 4).rotateZ(-side * Math.PI / 2), horn, side * 0.92, 0, 0);
+    const shape = new THREE.Shape([
+      new THREE.Vector2(0, 0),
+      new THREE.Vector2(0.9, 0),
+      new THREE.Vector2(0.75, -0.35),
+      new THREE.Vector2(0.55, -0.22),
+      new THREE.Vector2(0.4, -0.6),
+      new THREE.Vector2(0.2, -0.38),
+      new THREE.Vector2(0, -0.55),
+    ]);
+    // Laid flat with the membrane trailing behind the arm.
+    const geo = new THREE.ShapeGeometry(shape).rotateX(Math.PI / 2);
+    if (side < 0) geo.scale(-1, 1, 1);
+    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: membrane, side: THREE.DoubleSide, flatShading: true }));
+    m.castShadow = true;
+    wing.add(m);
+    r.arms.push(wing);
+  }
+
+  // Tail: six tapering segments ending in a spade.
+  parent = r.torso;
+  z = -0.58;
+  for (let i = 0; i < 6; i++) {
+    const seg = pivot(parent, 0, i === 0 ? -0.02 : 0, z);
+    const len = 0.26 - i * 0.02;
+    part(seg, new THREE.ConeGeometry(0.11 - i * 0.016, len, 7).rotateX(-Math.PI / 2).translate(0, 0, -len / 2), i % 2 ? plate : hide);
+    if (i < 5) part(seg, new THREE.ConeGeometry(0.025, 0.08, 4), plate, 0, 0.08 - i * 0.012, -len / 2);
+    else part(seg, new THREE.ConeGeometry(0.1, 0.18, 4).rotateX(-Math.PI / 2).scale(1, 0.25, 1), plate, 0, 0, -len - 0.06);
+    r.tail.push(seg);
+    parent = seg;
+    z = -len;
+  }
+  return r;
+}
+
 const BUILDERS: Record<CreatureKind, (seed: number) => CreatureRig> = {
   cow,
   desert_lizard: lizard,
   scorpion,
   cave_creeper: creeper,
   crimson_swift: swift,
+  cinder_drake: drake,
 };
 
 export function isCreature(defKey: string): defKey is CreatureKind {
@@ -267,20 +389,29 @@ export function buildCreature(kind: CreatureKind, seed: number): CreatureRig {
 
 /** How long each one-off move takes (ms). Anything not listed is an attack lunge. */
 const SHOT_MS: Record<string, number> = { sting: 750, butt: 700, bite: 550, peck: 500, block: 400 };
+/** The drake is big and slow: its moves take longer. */
+const DRAKE_SHOT_MS: Record<string, number> = { bite: 750, breath: 1400, block: 550 };
+/** When, in a breath, the fire is coming out (fractions of the move). */
+export const BREATH_FIRE = { from: 0.3, to: 0.92 };
+
+export function shotMs(rig: CreatureRig, kind: string): number {
+  return (rig.kind === 'cinder_drake' ? DRAKE_SHOT_MS[kind] : SHOT_MS[kind]) ?? 600;
+}
 
 export function playCreature(rig: CreatureRig, kind: string, now: number): void {
   if (kind !== 'death') rig.oneShot = { kind, start: now };
 }
 
 export function creatureBusy(rig: CreatureRig, now: number): boolean {
-  return !!rig.oneShot && now - rig.oneShot.start < (SHOT_MS[rig.oneShot.kind] ?? 600);
+  return !!rig.oneShot && now - rig.oneShot.start < shotMs(rig, rig.oneShot.kind);
 }
 
 /** Gait, idle motion, attacks and death for every creature kind. */
 export function animateCreature(rig: CreatureRig, dt: number, now: number, moving: boolean, speed = 1, fighting = false, dead = false): void {
   rig.walk += ((moving ? 1 : 0) - rig.walk) * Math.min(1, dt * 8);
-  const stride = rig.kind === 'cow' ? 1.2 : 0.6; // seconds per cycle: little legs scurry
+  const stride = rig.kind === 'cinder_drake' ? 1.5 : rig.kind === 'cow' ? 1.2 : 0.6; // seconds per cycle: little legs scurry
   if (rig.walk > 0.01) rig.phase += (dt * Math.PI * 2 * speed) / stride;
+  if (rig.kind === 'cinder_drake') return animateDrake(rig, dt, now, fighting, dead);
   const w = rig.walk;
   const t = now / 1000 + rig.seed;
 
@@ -325,7 +456,7 @@ export function animateCreature(rig: CreatureRig, dt: number, now: number, movin
 
   // One-off moves.
   if (rig.oneShot) {
-    const ms = SHOT_MS[rig.oneShot.kind] ?? 600;
+    const ms = shotMs(rig, rig.oneShot.kind);
     const u = (now - rig.oneShot.start) / ms;
     if (u >= 1) rig.oneShot = null;
     else if (u >= 0) {
@@ -363,4 +494,106 @@ export function animateCreature(rig: CreatureRig, dt: number, now: number, movin
     rig.legs.forEach((leg) => (leg.hip.rotation.x = 0.4 * f));
     if (rig.kind === 'crimson_swift') rig.arms.forEach((wing, k) => (wing.rotation.z = (k === 0 ? -1 : 1) * 0.2 * f));
   } else rig.body.rotation.z = 0;
+}
+
+/** Rest angle of a part, remembered the first time it's animated. */
+function rest(o: THREE.Object3D, axis: 'x' | 'y' | 'z'): number {
+  const key = `rest${axis}`;
+  return (o.userData[key] ??= o.rotation[axis]) as number;
+}
+
+/**
+ * The drake's own motion: a heavy four-legged walk, a swaying neck, wings
+ * folded at rest and half-spread to fight, a bite, a rearing fire breath,
+ * wings thrown up to block, and a collapse onto its side.
+ */
+function animateDrake(rig: CreatureRig, dt: number, now: number, fighting: boolean, dead: boolean): void {
+  const w = rig.walk;
+  const idle = 1 - w;
+  const t = now / 1000 + rig.seed;
+
+  for (const leg of rig.legs) {
+    const s = Math.sin(rig.phase + leg.offset);
+    leg.hip.rotation.x = -s * 0.38 * w;
+    if (leg.knee) leg.knee.rotation.x = rest(leg.knee, 'x') + Math.max(0, Math.cos(rig.phase + leg.offset)) * 0.5 * w;
+  }
+  rig.body.position.set(0, Math.abs(Math.cos(rig.phase)) * 0.05 * w, 0);
+  rig.body.rotation.set(0, 0, 0);
+  rig.torso.rotation.set(0, Math.sin(rig.phase) * 0.05 * w, 0);
+  rig.torso.scale.y = 1 + Math.sin(t * 1.3) * 0.025;
+
+  // Neck sways and looks about; held lower and steadier when fighting.
+  const guard = fighting ? 1 : 0;
+  rig.neck.forEach((seg, i) => {
+    seg.rotation.x = rest(seg, 'x') + Math.sin(t * 0.9 + i * 0.6) * 0.04 + guard * (i === 0 ? 0.25 : -0.05);
+    seg.rotation.y = Math.sin(t * 0.35) * 0.14 * idle * (1 - guard) * ((i + 1) / 3);
+  });
+  rig.head.rotation.x = rest(rig.head, 'x') + guard * 0.1;
+  if (rig.jaw) rig.jaw.rotation.x = 0.04 + Math.max(0, Math.sin(t * 0.8)) * 0.06 + guard * 0.08;
+
+  // Wings: folded along the back, half open and beating slowly in a fight.
+  const open = 0.15 + 0.45 * guard;
+  rig.arms.forEach((wing, k) => {
+    const side = k === 0 ? -1 : 1;
+    const beat = Math.sin(t * (fighting ? 3 : 1.2) + k * 0.2) * (fighting ? 0.18 : 0.03);
+    wing.rotation.y = side * (1.25 - open * 1.6);
+    wing.rotation.z = side * (0.35 + open * 0.4 + beat);
+    wing.rotation.x = 0;
+  });
+
+  rig.tail.forEach((seg, i) => {
+    seg.rotation.y = Math.sin(t * (fighting ? 2.4 : 1.1) - i * 0.5) * (0.12 + guard * 0.1) * (1 + w);
+    seg.rotation.x = i === 0 ? 0.12 : -0.04;
+  });
+
+  if (rig.oneShot) {
+    const ms = shotMs(rig, rig.oneShot.kind);
+    const u = (now - rig.oneShot.start) / ms;
+    if (u >= 1) rig.oneShot = null;
+    else if (u >= 0) {
+      const k = Math.sin(u * Math.PI);
+      const kind = rig.oneShot.kind;
+      if (kind === 'breath') {
+        // Rear back and draw breath, then thrust the head forward and pour out fire.
+        const draw = u < BREATH_FIRE.from ? Math.sin((u / BREATH_FIRE.from) * (Math.PI / 2)) : 1 - (u - BREATH_FIRE.from) / (1 - BREATH_FIRE.from);
+        const pour = u < BREATH_FIRE.from ? 0 : Math.sin(((u - BREATH_FIRE.from) / (1 - BREATH_FIRE.from)) * Math.PI);
+        rig.neck[0].rotation.x += -0.55 * draw * (u < BREATH_FIRE.from ? 1 : 0) + 0.3 * pour;
+        rig.neck[1].rotation.x += -0.2 * draw * (u < BREATH_FIRE.from ? 1 : 0) + 0.1 * pour;
+        rig.head.rotation.x += -0.3 * draw * (u < BREATH_FIRE.from ? 1 : 0) - 0.1 * pour;
+        rig.torso.rotation.x = -0.12 * draw * (u < BREATH_FIRE.from ? 1 : 0) + 0.05 * pour;
+        rig.torso.scale.y += 0.05 * (u < BREATH_FIRE.from ? draw : 0);
+        if (rig.jaw) rig.jaw.rotation.x = 0.1 + 0.75 * pour;
+        rig.arms.forEach((wing, i) => (wing.rotation.z += (i === 0 ? -1 : 1) * 0.35 * pour));
+      } else if (kind === 'block') {
+        // Wings thrown up and forward like a shield, the body flinching back.
+        rig.arms.forEach((wing, i) => {
+          const side = i === 0 ? -1 : 1;
+          wing.rotation.y += -side * 0.9 * k;
+          wing.rotation.z += side * 0.3 * k;
+        });
+        rig.body.position.z = -0.1 * k;
+        rig.neck[0].rotation.x -= 0.25 * k;
+      } else {
+        // Bite: the neck snaps forward and down, jaws wide.
+        const strike = u < 0.35 ? -u / 0.35 : Math.sin(((u - 0.35) / 0.65) * Math.PI);
+        rig.neck[0].rotation.x += 0.45 * strike;
+        rig.neck[1].rotation.x += 0.15 * strike;
+        rig.head.rotation.x += 0.2 * strike;
+        rig.body.position.z = 0.15 * Math.max(0, strike);
+        if (rig.jaw) rig.jaw.rotation.x = 0.1 + 0.6 * k * (u < 0.6 ? 1 : 1 - (u - 0.6) / 0.4);
+      }
+    }
+  }
+
+  // Death: the legs give, it rolls onto its side, wings slumped and neck down.
+  rig.fallen += ((dead ? 1 : 0) - rig.fallen) * Math.min(1, dt * (dead ? 2.5 : 8));
+  if (rig.fallen > 0.001) {
+    const f = rig.fallen;
+    rig.body.rotation.z = (Math.PI / 2) * 0.85 * f;
+    rig.body.position.y += 0.3 * f;
+    rig.legs.forEach((leg) => (leg.hip.rotation.x = 0.3 * f));
+    rig.neck.forEach((seg) => (seg.rotation.x += 0.35 * f));
+    if (rig.jaw) rig.jaw.rotation.x = 0.35 * f;
+    rig.arms.forEach((wing, i) => (wing.rotation.z = (i === 0 ? -1 : 1) * -0.3 * f));
+  }
 }

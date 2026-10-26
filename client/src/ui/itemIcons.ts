@@ -92,6 +92,11 @@ const ICONS: Record<string, string> = {
   crimson_feathers: `<g stroke="#5a0a0e" stroke-width="0.9"><path d="M8 30 Q10 12 24 5 Q20 18 8 30 Z" fill="#c8262a"/><path d="M14 31 Q18 15 31 10 Q25 23 14 31 Z" fill="#e0403a"/></g>
     <path d="M8 30 L20 11 M14 31 L27 14" stroke="#f0c0a0" stroke-width="0.8"/>`,
   lizard_scales: `<g stroke="#5a4012" stroke-width="1"><path d="M6 20 Q10 12 16 18 Q11 24 6 20 Z" fill="#d8b050"/><path d="M15 12 Q20 4 26 10 Q21 17 15 12 Z" fill="#e8c860"/><path d="M17 26 Q22 18 29 24 Q23 31 17 26 Z" fill="#c8a040"/></g>`,
+  drake_scale: `<path d="M18 4 Q31 10 29 22 Q26 31 18 33 Q10 31 7 22 Q5 10 18 4 Z" fill="#5a2018" stroke="#1a0806" stroke-width="1.3"/>
+    <path d="M18 8 Q27 13 25 22 Q23 28 18 29 Q13 28 11 22 Q9 13 18 8 Z" fill="#8a3018"/>
+    <path d="M18 9 L18 28 M13 15 Q18 19 23 15 M12 21 Q18 25 24 21" stroke="#ff8a2a" stroke-width="1.2" fill="none"/>`,
+  cinder_blade: blade('#5a2018', 26) + '<path d="M18 9 L18.8 25" stroke="#ff7a1a" stroke-width="1.4"/>',
+  drakescale_shield: shield('#a8401e', '#5a1e14') + '<path d="M12 12 Q18 15 24 12 M11 17 Q18 20 25 17 M13 22 Q18 25 23 22" stroke="#5a1e14" stroke-width="1" fill="none"/>',
   bronze_axe: axe('#b8793a', '#f0c48a'),
   iron_axe: axe('#7d7f86', '#d8dbe2'),
   steel_axe: axe('#a9b3bd', '#f2f6fa'),

@@ -13,13 +13,16 @@
         <div id="tooltip" hidden></div>
         <div id="xp-drops" aria-hidden="true"></div>
         <div id="level-up" role="status" hidden></div>
+        <div id="quest-complete" role="status" hidden></div>
+        <div id="boss-bar" hidden><span id="boss-name"></span><div id="boss-hp"><div id="boss-hp-fill"></div></div></div>
+        <div id="dialogue" role="dialog" aria-live="polite" hidden></div>
         <div id="window" role="dialog" aria-labelledby="win-title" hidden>
           <div class="win-head"><span id="win-title"></span><button id="win-close" aria-label="Close">✕</button></div>
           <div id="win-body"></div>
           <div id="win-foot"></div>
         </div>
         <div id="controls-hint">
-          <span class="hint-mouse">Click to walk or attack · Right-click for options · Q/E or middle-drag to rotate · Wheel to zoom · R toggles roofs</span>
+          <span class="hint-mouse">Click to walk, attack or talk · Right-click for options · Q/E or middle-drag to rotate · Wheel to zoom · R toggles roofs</span>
           <span class="hint-touch">Tap to walk · Hold for options · Drag to turn · Pinch to zoom</span>
         </div>
         <div id="camera-buttons" aria-label="Camera">
@@ -68,9 +71,15 @@
           <div id="total-level"></div>
         </section>
         <section class="panel" id="panel-quests" hidden>
-          <p class="muted">No quests yet. Someone in town might have a task for you.</p>
+          <div id="quest-points"></div>
+          <div id="quest-list"></div>
         </section>
         <section class="panel" id="panel-options" hidden>
+          <h3>Sound</h3>
+          <div class="sound-row">
+            <button id="sound-toggle" aria-pressed="true">Sound on</button>
+            <input id="sound-volume" type="range" min="0" max="100" value="70" aria-label="Volume" />
+          </div>
           <h3>Your save</h3>
           <p class="muted" id="save-status">Your progress saves in this browser automatically.</p>
           <div class="option-buttons">

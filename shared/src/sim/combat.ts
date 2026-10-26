@@ -39,6 +39,10 @@ export interface MonsterStats {
   respawnTicks: number;
   /** Which attack animation the client plays. */
   attackAnim: string;
+  /** Bosses pick on anyone, whatever their combat level. */
+  boss?: boolean;
+  /** A fire attack used instead of a bite now and then, and from range. It always lands. */
+  breath?: { chance: number; maxHit: number; range: number };
   examine: string;
   drops: Drop[];
 }

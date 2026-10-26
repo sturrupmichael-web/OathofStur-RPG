@@ -218,7 +218,9 @@
   {"name":"Bryn","role":"Combat instructor","level":null,"shop":"Combat Training Yard","x":117,"y":109,"wander":{"x":112,"y":100,"w":9,"h":10}},
   {"name":"Kell","role":"Range master","level":null,"shop":"Combat Training Yard","x":127,"y":105,"wander":{"x":125,"y":99,"w":3,"h":10}},
   {"name":"Garden sprite","role":"Farming tools","level":null,"shop":"Brightwater Allotments","x":206,"y":186,"wander":{"x":193,"y":185,"w":14,"h":2}},
-  {"name":"Agility trainer Lio","role":"Agility trainer","level":null,"shop":"Brightwater Agility Course","x":151,"y":222,"wander":{"x":141,"y":218,"w":20,"h":6}}
+  {"name":"Agility trainer Lio","role":"Agility trainer","level":null,"shop":"Brightwater Agility Course","x":151,"y":222,"wander":{"x":141,"y":218,"w":20,"h":6}},
+  {"name":"Elder Maren","role":"Village elder","level":null,"shop":"Kelmoor Square","x":193,"y":117,"wander":{"x":193,"y":117,"w":1,"h":1}},
+  {"name":"Cinder Drake","role":null,"level":60,"shop":null,"x":299,"y":36,"wander":{"x":297,"y":35,"w":8,"h":3}}
  ],
  "shops": [
   {"shop":"General Store","keeper":"Mara","role":"Shopkeeper","stock":["Pot","Jug","Bucket","Tinderbox","Chisel","Hammer","Shears","Knife"]},

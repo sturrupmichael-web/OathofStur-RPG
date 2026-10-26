@@ -26,7 +26,7 @@ export class Renderer {
   readonly heightmap: Heightmap;
   private readonly webgl: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
-  private readonly entities: EntityLayer;
+  readonly entities: EntityLayer;
   private readonly scenery: SceneryChunks;
   private readonly sun: THREE.DirectionalLight;
   private readonly raycaster = new THREE.Raycaster();

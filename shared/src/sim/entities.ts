@@ -2,6 +2,7 @@ import type { Point } from '../map/types';
 import type { AttackStyle } from './combat';
 import type { StationKind } from './crafting';
 import type { Equipment, Inventory, ItemStack } from './items';
+import type { DialoguePage } from './quests';
 import type { SkillXp } from './skills';
 
 export type EntityId = number;
@@ -18,6 +19,8 @@ export type PlayerAction =
     }
   /** Walking to a station, banker or shopkeeper; its window opens on arrival. */
   | { kind: 'use'; targetId: EntityId }
+  /** Walking up to someone to talk; the conversation opens on arrival. */
+  | { kind: 'talk'; targetId: EntityId }
   /** Making things at a station, one every recipe.ticks. */
   | { kind: 'craft'; stationId: EntityId; recipeId: string; remaining: number; nextAttempt: number; started?: boolean }
   /** Fighting a monster: chase it into reach, then swing whenever the weapon is ready. */
@@ -27,7 +30,9 @@ export type PlayerAction =
 export type OpenUi =
   | { kind: 'bank'; at: EntityId }
   | { kind: 'shop'; shopId: string; at: EntityId }
-  | { kind: 'craft'; station: StationKind; at: EntityId };
+  | { kind: 'craft'; station: StationKind; at: EntityId }
+  /** A conversation: the pages to show and which one is showing. */
+  | { kind: 'dialogue'; at: EntityId; pages: DialoguePage[]; index: number };
 
 export interface PlayerEntity {
   id: EntityId;
@@ -42,6 +47,8 @@ export interface PlayerEntity {
   equipment: Equipment;
   attackStyle: AttackStyle;
   bank: ItemStack[];
+  /** Stage reached in each quest; missing means not started. */
+  quests: Record<string, number>;
   ui: OpenUi | null;
   createdAt: string;
   /** Remaining steps, one taken per tick. */

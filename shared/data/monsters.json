@@ -1,5 +1,5 @@
 {
-  "comment": "Combat stats for every monster on the map, keyed like the map's monster defs. Levels follow the same combat-level formula as players. maxHit is in hitpoints. attackSpeed is ticks between attacks (0.6 s each). Aggressive monsters attack players within aggroRange tiles whose combat level is at most twice theirs. Each drop is rolled on its own: chance 1 means always; qty is a fixed number or [min, max]. attack is the animation they use.",
+  "comment": "Combat stats for every monster on the map, keyed like the map's monster defs. Levels follow the same combat-level formula as players. maxHit is in hitpoints. attackSpeed is ticks between attacks (0.6 s each). Aggressive monsters attack players within aggroRange tiles whose combat level is at most twice theirs. Each drop is rolled on its own: chance 1 means always; qty is a fixed number or [min, max]. attack is the animation they use. A boss attacks anyone, whatever their level. breath is a fire attack it may use instead of a bite, from up to range tiles away: it always lands, for 0 to maxHit, and a fireward shield cuts it to a third.",
   "monsters": {
     "crimson_swift": {
       "hitpoints": 3, "attack": 1, "strength": 1, "defence": 1, "maxHit": 1, "attackSpeed": 4,
@@ -101,6 +101,19 @@
         { "item": "coins", "qty": [30, 120], "chance": 0.9 },
         { "item": "steel_dagger", "qty": 1, "chance": 0.05 },
         { "item": "steel_helm", "qty": 1, "chance": 0.03 }
+      ]
+    },
+    "cinder_drake": {
+      "hitpoints": 99, "attack": 48, "strength": 45, "defence": 48, "maxHit": 12, "attackSpeed": 5,
+      "aggressive": true, "aggroRange": 6, "respawnTicks": 150, "attackAnim": "bite", "boss": true,
+      "breath": { "chance": 0.3, "maxHit": 18, "range": 4 },
+      "examine": "A drake the colour of banked coals. The air around it ripples with heat.",
+      "drops": [
+        { "item": "coins", "qty": [400, 1200], "chance": 1 },
+        { "item": "drake_scale", "qty": [1, 2], "chance": 1 },
+        { "item": "pike", "qty": [2, 4], "chance": 0.5 },
+        { "item": "cinder_blade", "qty": 1, "chance": 0.125 },
+        { "item": "drakescale_shield", "qty": 1, "chance": 0.1 }
       ]
     }
   }

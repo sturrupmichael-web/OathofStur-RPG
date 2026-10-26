@@ -1,5 +1,6 @@
 import type { Point } from '../map/types';
 import { ATTACK_STYLES, type AttackStyle } from './combat';
+import { QUESTS, QUEST_IDS, doneStage } from './quests';
 import { EQUIP_SLOTS, INVENTORY_SIZE, ITEMS, type Equipment, type Inventory, type ItemStack } from './items';
 import { MAX_XP, SKILLS, startingXp, type SkillXp } from './skills';
 
@@ -14,7 +15,7 @@ const KELMOOR_OFFSET = { x: 130, y: 70 };
 /**
  * Everything needed to bring a character back. XP is stored, levels are
  * derived. The same record maps one-to-one onto a per-account row once the
- * server keeps saves (phase 6). Quests are empty until phase 5.
+ * server keeps saves (phase 6). `quests` holds the stage reached in each quest.
  * Version 3 added hp and attackStyle; older saves start at full health.
  */
 export interface SaveData {
@@ -82,6 +83,12 @@ export function parseSave(raw: unknown): SaveData | null {
   }
   const hp = Number(s.hp);
   const style = typeof s.attackStyle === 'string' && s.attackStyle in ATTACK_STYLES ? s.attackStyle : undefined;
+  const quests: Record<string, number> = {};
+  const saved = (s.quests ?? {}) as Record<string, unknown>;
+  for (const id of QUEST_IDS) {
+    const stage = Number(saved[id]);
+    if (Number.isInteger(stage) && stage > 0) quests[id] = Math.min(stage, doneStage(QUESTS[id]));
+  }
 
   const now = new Date().toISOString();
   return {
@@ -94,7 +101,7 @@ export function parseSave(raw: unknown): SaveData | null {
     ...(Number.isInteger(hp) && hp >= 1 && { hp }),
     ...(style && { attackStyle: style }),
     bank,
-    quests: {},
+    quests,
     createdAt: typeof s.createdAt === 'string' ? s.createdAt : now,
     updatedAt: typeof s.updatedAt === 'string' ? s.updatedAt : now,
   };

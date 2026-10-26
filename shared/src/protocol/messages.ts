@@ -2,11 +2,12 @@ import type { Point } from '../map/types';
 import type { EntityId } from '../sim/entities';
 import type { AttackStyle, Bonuses } from '../sim/combat';
 import type { EquipSlot, Equipment, Inventory, ItemStack } from '../sim/items';
+import type { QuestView } from '../sim/quests';
 import type { SaveData } from '../sim/save';
 import type { SkillId, SkillXp } from '../sim/skills';
 
 /** Bumped whenever a message shape changes, so client and server can refuse a mismatch. */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 // ---------------------------------------------------------------------------
 // Client -> server. Intents only: the simulation validates and decides outcomes.
@@ -17,9 +18,12 @@ export type ClientMessage =
   | { type: 'walk'; x: number; y: number }
   /**
    * Use a world object: gather from a tree, rock or fishing spot, take a
-   * ground item, or use a station, bank or shopkeeper (opens its window).
+   * ground item, use a station, bank or shopkeeper (opens its window), or
+   * talk to someone.
    */
-  | { type: 'interact'; targetId: EntityId; action: 'gather' | 'take' | 'use' }
+  | { type: 'interact'; targetId: EntityId; action: 'gather' | 'take' | 'use' | 'talk' }
+  /** In a conversation: pick an option, or (option 0 on a page without options) carry on. */
+  | { type: 'dialogueChoice'; option: number }
   | { type: 'examine'; targetId: EntityId }
   | { type: 'examineItem'; slot: number }
   | { type: 'invDrop'; slot: number }
@@ -89,7 +93,9 @@ export type UiView =
       kind: 'craft';
       title: string;
       recipes: { id: string; output: string; level: number; skill: SkillId; xp: number; inputs: { itemId: string; qty: number }[] }[];
-    };
+    }
+  /** One page of a conversation. `npcId` is who you are talking to; `speaker` says whose words these are. */
+  | { kind: 'dialogue'; npcId: EntityId; speaker: 'npc' | 'player'; name: string; text: string; options?: string[] };
 
 /** State only the owning player sees. */
 export interface SelfState {
@@ -106,6 +112,9 @@ export interface SelfState {
   bonuses: Bonuses;
   maxHit: number;
   ui: UiView | null;
+  /** Every quest, with your progress in it. */
+  quests: QuestView[];
+  questPoints: number;
 }
 
 export type GameMessageKind = 'info' | 'warn' | 'examine' | 'quest' | 'levelup';
@@ -121,4 +130,6 @@ export type ServerMessage =
   | { type: 'hit'; attackerId: EntityId; targetId: EntityId; damage: number; hp: number; maxHp: number }
   | { type: 'animation'; entityId: EntityId; kind: AnimationKind }
   | { type: 'saveData'; save: SaveData }
+  /** A quest finished: the scroll with what you got. */
+  | { type: 'questComplete'; name: string; rewards: string[]; questPoints: number }
   | { type: 'reject'; reason: string };

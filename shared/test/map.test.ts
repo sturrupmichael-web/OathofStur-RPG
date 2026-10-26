@@ -91,11 +91,13 @@ describe('JsonMapSource', () => {
   it('spawns monsters with their level and wander area, and people with their role', () => {
     const monsters = map.placements.filter((p) => p.kind === 'monster');
     const goblins = monsters.filter((p) => p.defKey === 'goblin');
-    expect(monsters).toHaveLength(51);
+    expect(monsters).toHaveLength(52);
     expect(goblins).toHaveLength(8);
+    expect(monsters.filter((p) => p.defKey === 'cinder_drake').map((p) => p.level)).toEqual([60]);
     expect(goblins.every((g) => g.level === 2 && (g.wander?.radius ?? 0) > 0)).toBe(true);
 
-    expect(map.placements.filter((p) => p.kind === 'npc')).toHaveLength(57);
+    expect(map.placements.filter((p) => p.kind === 'npc')).toHaveLength(58);
+    expect(map.defs.npcs.elder_maren.role).toBe('Village elder');
     expect(map.defs.npcs.mara.role).toBe('Shopkeeper');
     expect(map.defs.npcs.mara.shop).toBe('General Store');
     expect(map.defs.npcs.banker.role).toBe('Banker');

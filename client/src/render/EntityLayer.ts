@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import type { EntityId, MapData, WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView } from '../state/ClientState';
-import { CHARACTER_STYLES, animateCharacter, buildCharacter, characterBusy, playCharacter, styleForNpc, withGear, type CharacterRig } from './character';
-import { animateCreature, buildCreature, creatureBusy, isCreature, playCreature, type CreatureRig } from './creatures';
+import { CHARACTER_STYLES, activityPhase, animateCharacter, buildCharacter, characterBusy, playCharacter, styleForNpc, withGear, type CharacterRig } from './character';
+import { animateCreature, buildCreature, creatureBusy, isCreature, playCreature, shotMs, type CreatureRig } from './creatures';
+import { Effects } from './effects';
 import { FLICKER, RESOURCE_STYLES, buildGroundItem, buildStation, type PartStyle } from './models';
 import type { Heightmap } from './heightmap';
 import { hash2, shade, type TileInfo } from './palette';
@@ -30,6 +31,10 @@ export class EntityLayer {
   private readonly creatures = new Map<EntityId, CreatureRig>();
   private lastFrame = 0;
   private readonly tmp = new THREE.Matrix4();
+  private readonly effects = new Effects();
+  /** Called as a working player's tool lands (axe bites, hammer rings), for sound. */
+  onImpact: ((id: EntityId, activity: string) => void) | null = null;
+  private readonly workPhase = new Map<EntityId, number>();
 
   constructor(
     private readonly state: ClientState,
@@ -38,6 +43,7 @@ export class EntityLayer {
     private readonly hm: Heightmap,
     private readonly info: TileInfo,
   ) {
+    this.group.add(this.effects.group);
     const counts = new Map<string, number>();
     for (const p of map.placements) counts.set(p.defKey, (counts.get(p.defKey) ?? 0) + 1);
     for (const [key, styles] of Object.entries(RESOURCE_STYLES)) {
@@ -115,6 +121,7 @@ export class EntityLayer {
       if (view.data.kind === 'player' || view.data.kind === 'npc' || view.data.kind === 'monster') this.placeCharacter(id, obj, view, now, dt);
     }
     for (const pool of this.pools.values()) if (pool.ripple && pool.slotOf.size) this.animateRipples(pool, now);
+    this.effects.update(now, dt);
     this.flickers.forEach((f, i) => {
       const k = 0.8 + Math.sin(now * 0.02 + i) * 0.12 + Math.sin(now * 0.053 + i * 3) * 0.08;
       ((f as THREE.Mesh).material as THREE.MeshLambertMaterial).emissiveIntensity = k;
@@ -260,15 +267,37 @@ export class EntityLayer {
     const dead = !!view.data.dead;
     const rig = this.rigs.get(id);
     if (rig) animateCharacter(rig, dt, now, moving, speed, work ? (view.data.activity ?? 'chop') : fighting ? 'fight' : null, dead);
+    if (rig && work && !moving && view.data.activity) {
+      const u = activityPhase(rig, view.data.activity, now);
+      const was = this.workPhase.get(id);
+      const at = IMPACT[view.data.activity] ?? [];
+      if (u !== null && was !== undefined && at.some((p) => (was < p && u >= p) || (u < was && (p > was || u >= p)))) this.onImpact?.(id, view.data.activity);
+      if (u !== null) this.workPhase.set(id, u);
+    } else this.workPhase.delete(id);
     const creature = this.creatures.get(id);
     if (creature) animateCreature(creature, dt, now, moving, speed, fighting, dead);
   }
 
-  private play(id: EntityId, kind: string, now: number): void {
+  /** Plays a one-off animation on anyone: attacks from the server, talking from the conversation box. */
+  play(id: EntityId, kind: string, now: number): void {
     const rig = this.rigs.get(id);
     if (rig) playCharacter(rig, kind, now);
     const creature = this.creatures.get(id);
     if (creature) playCreature(creature, kind, now);
+    if (creature && kind === 'breath') this.effects.breathe(creature, now, shotMs(creature, kind), () => this.chestOf(this.state.entities.get(id)?.data.interacting));
+  }
+
+  /** Roughly where someone's chest is, in world space, for aiming effects at them. */
+  private chestOf(id: EntityId | undefined): THREE.Vector3 | null {
+    const obj = id !== undefined ? this.meshes.get(id) : undefined;
+    return obj ? obj.position.clone().add(new THREE.Vector3(0, 0.75, 0)) : null;
+  }
+
+  /** Turns someone to face someone else (a person you're talking to turns to you). */
+  face(id: EntityId, toward: EntityId): void {
+    const a = this.state.entities.get(id);
+    const b = this.state.entities.get(toward);
+    if (a && b && (a.toX !== b.toX || a.toY !== b.toY)) this.facing.set(id, Math.atan2(b.toX - a.toX, b.toY - a.toY));
   }
 
   private objectAt(x: number, y: number): string | null {
@@ -289,6 +318,17 @@ export class EntityLayer {
     return 0;
   }
 }
+
+/** Points in each work cycle where the tool meets its target. */
+const IMPACT: Record<string, number[]> = {
+  chop: [0.8],
+  mine: [0.78],
+  smith: [0.7],
+  net: [0.25, 0.75],
+  rod: [0.9],
+  cook: [0.1],
+  smelt: [0.25],
+};
 
 function shortestAngle(from: number, to: number): number {
   let d = (to - from) % (Math.PI * 2);

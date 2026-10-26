@@ -1,6 +1,7 @@
 import {
   ITEMS,
   JsonMapSource,
+  QUESTS,
   RESOURCE_DATA,
   SELL_RATE,
   WorldGrid,
@@ -12,8 +13,11 @@ import {
   type MapSource,
   type Point,
   type PublicEntity,
+  type SelfState,
+  countItem,
 } from '@rpg/shared';
 import vellReaches from '@rpg/shared/data/maps/vell-reaches.json';
+import { Sound, type SoundName } from './audio/Sound';
 import { LocalServer } from './net/LocalServer';
 import type { ServerConnection } from './net/ServerConnection';
 import { Renderer, type PickResult } from './render/Renderer';
@@ -62,7 +66,88 @@ async function start(): Promise<void> {
     hud.renderEquipment(self);
     hud.renderInventory(self.inventory);
     hud.renderWindow(self);
+    hud.renderQuests(self.quests, self.questPoints);
+    talkAnimations(self.ui);
   });
+  state.on('questComplete', ({ name, rewards, questPoints }) => hud.showQuestComplete(name, rewards, questPoints));
+
+  // --- Sound ------------------------------------------------------------------
+  const sound = new Sound();
+  // Browsers keep audio locked until the player clicks or presses a key.
+  for (const type of ['pointerdown', 'keydown'] as const) window.addEventListener(type, () => sound.unlock(), true);
+  const soundToggle = document.getElementById('sound-toggle') as HTMLButtonElement;
+  const soundVolume = document.getElementById('sound-volume') as HTMLInputElement;
+  const showSound = () => {
+    soundToggle.textContent = sound.enabled ? 'Sound on' : 'Sound off';
+    soundToggle.setAttribute('aria-pressed', String(sound.enabled));
+    soundVolume.value = String(Math.round(sound.volume * 100));
+  };
+  showSound();
+  soundToggle.addEventListener('click', () => {
+    sound.set(!sound.enabled, sound.volume);
+    showSound();
+    sound.play('click');
+  });
+  soundVolume.addEventListener('input', () => sound.set(sound.enabled, Number(soundVolume.value) / 100));
+  soundVolume.addEventListener('change', () => sound.play('click'));
+
+  /** Quieter the further away it happens; silent past 15 tiles. */
+  const near = (id: EntityId) => {
+    const me = state.player;
+    const it = state.entities.get(id);
+    if (!me || !it) return 0;
+    if (id === me.data.id) return 1;
+    const d = Math.hypot(it.toX - me.toX, it.toY - me.toY);
+    return Math.max(0, 1 - d / 15) * 0.8;
+  };
+  const ANIM_SOUNDS: Record<string, SoundName> = {
+    punch: 'punch',
+    stab: 'swing',
+    slash: 'swing',
+    swing: 'swing',
+    eat: 'eat',
+    bite: 'bite',
+    sting: 'sting',
+    peck: 'peck',
+    butt: 'moo',
+    wail: 'wail',
+    breath: 'breath',
+  };
+  state.on('animation', ({ entityId, kind }) => {
+    const e = state.entities.get(entityId)?.data;
+    if (!e) return;
+    if (kind === 'death') sound.play(e.kind === 'player' ? 'death' : 'monster_death', near(entityId));
+    else if (kind === 'bite' && e.defKey === 'cinder_drake') sound.play('roar', near(entityId));
+    else if (ANIM_SOUNDS[kind]) sound.play(ANIM_SOUNDS[kind], near(entityId));
+  });
+  // Bigger hits land with a deeper thud.
+  state.on('hit', ({ targetId, damage, maxHp }) =>
+    damage > 0 ? sound.play('hit', near(targetId), 1.15 - Math.min(0.45, damage / Math.max(1, maxHp))) : sound.play('miss', near(targetId)),
+  );
+  renderer.entities.onImpact = (id, activity) => sound.play(activity as SoundName, near(id) * (id === state.playerId ? 0.8 : 0.5));
+  state.on('levelUp', () => sound.play('levelup'));
+  state.on('questComplete', () => sound.play('quest_complete'));
+  state.on('gameMessage', ({ text, kind }) => {
+    if (kind === 'quest' && !text.startsWith('Congratulations')) sound.play('quest');
+  });
+  let coins: number | null = null;
+  state.on('self', (self) => {
+    const now = countItem(self.inventory, 'coins');
+    if (coins !== null && now > coins) sound.play('coins');
+    coins = now;
+  });
+
+  // Whoever is speaking gestures as each page of a conversation appears, and the person turns to you.
+  let lastPage = '';
+  const talkAnimations = (ui: SelfState['ui']) => {
+    const key = ui?.kind === 'dialogue' ? `${ui.npcId}:${ui.text}` : '';
+    if (key === lastPage) return;
+    lastPage = key;
+    if (ui?.kind !== 'dialogue' || state.playerId === null) return;
+    renderer.entities.face(ui.npcId, state.playerId);
+    renderer.entities.face(state.playerId, ui.npcId);
+    renderer.entities.play(ui.speaker === 'npc' ? ui.npcId : state.playerId, 'talk', performance.now());
+  };
   state.on('gameMessage', ({ text, kind }) => hud.addMessage(text, kind));
   state.on('xpDrop', ({ skill, amount }) => hud.showXpDrop(skill, amount));
   state.on('levelUp', ({ skill, level }) => hud.showLevelUp(skill, level));
@@ -90,13 +175,14 @@ async function start(): Promise<void> {
   const primaryAction = (e: PublicEntity | undefined): { label: string; run: () => void } | null => {
     if (!e) return null;
     if (e.kind === 'monster') return e.dead ? null : { label: 'Attack', run: () => server.send({ type: 'attack', targetId: e.id }) };
-    const use = (action: 'gather' | 'take' | 'use') => () => server.send({ type: 'interact', targetId: e.id, action });
+    const use = (action: 'gather' | 'take' | 'use' | 'talk') => () => server.send({ type: 'interact', targetId: e.id, action });
     if (e.kind === 'item') return { label: 'Take', run: use('take') };
     const data = e.kind === 'resource' && e.defKey ? RESOURCE_DATA[e.defKey] : undefined;
     if (data && !e.depleted) return { label: GATHER_LABELS[data.verb], run: use('gather') };
     if (e.kind === 'station' && e.defKey && STATION_LABELS[e.defKey]) return { label: STATION_LABELS[e.defKey], run: use('use') };
     const npcAction = e.kind === 'npc' && e.defKey ? NPC_ACTIONS[e.defKey] : undefined;
     if (npcAction) return { label: npcAction, run: use('use') };
+    if (e.kind === 'npc') return { label: 'Talk-to', run: use('talk') };
     return null;
   };
 
@@ -158,6 +244,9 @@ async function start(): Promise<void> {
       const primary = primaryAction(e);
       const options = [];
       if (primary) options.push({ label: primary.label, target, action: primary.run });
+      if (e?.kind === 'npc' && primary?.label !== 'Talk-to') {
+        options.push({ label: 'Talk-to', target, action: () => server.send({ type: 'interact', targetId: e.id, action: 'talk' }) });
+      }
       options.push({ label: 'Walk here', target: e?.kind === 'player' || pick.buildingName ? target : undefined, action: () => walk(pick.tile) });
       if (e && e.id !== state.playerId) options.push({ label: 'Examine', target, action: () => server.send({ type: 'examine', targetId: e.id }) });
       hud.showMenu(x, y, options);
@@ -228,6 +317,13 @@ async function start(): Promise<void> {
     buy: (itemId, qty) => server.send({ type: 'shopBuy', itemId, qty }),
     craft: (recipeId, qty) => server.send({ type: 'craft', recipeId, qty }),
     examine: (itemId) => hud.addMessage(ITEMS[itemId]?.examine ?? '', 'examine'),
+  };
+
+  hud.dialogueHandlers = {
+    choose: (option) => {
+      sound.play('click');
+      server.send({ type: 'dialogueChoice', option });
+    },
   };
 
   // --- Saving ---------------------------------------------------------------------
@@ -316,6 +412,17 @@ async function start(): Promise<void> {
       else if (!hud.menuOpen && state.self?.ui) server.send({ type: 'closeInterface' });
       hud.hideMenu();
     }
+    // Conversations: space carries on, number keys pick an option.
+    const talk = hud.dialogueOpen;
+    if (talk && !talk.options && (e.key === ' ' || e.key === 'Enter')) {
+      e.preventDefault();
+      hud.dialogueHandlers.choose(0);
+      return;
+    }
+    if (talk?.options && /^[1-9]$/.test(e.key) && Number(e.key) <= talk.options.length) {
+      hud.dialogueHandlers.choose(Number(e.key) - 1);
+      return;
+    }
     if (e.key.toLowerCase() === 'r') renderer.buildings.roofsEnabled = !renderer.buildings.roofsEnabled;
     if (e.key.toLowerCase() === 'm') worldMap.toggle();
   });
@@ -370,6 +477,27 @@ async function start(): Promise<void> {
       label.textContent = `${view.data.name} (level-${view.data.combatLevel})`;
       const pos = renderer.screenPosition(view.data.id, 1.5, now);
       if (pos) label.style.transform = `translate(${pos.x}px, ${pos.y}px) translate(-50%, -100%)`;
+    }
+    // A marker over whoever has a quest for you, until it's done.
+    for (const view of state.entities.values()) {
+      const d = view.data;
+      if (d.kind !== 'npc') continue;
+      const quest = state.self?.quests.find((q) => QUESTS[q.id].giver === d.defKey);
+      let marker = labels.querySelector<HTMLElement>(`[data-id="${d.id}"]`);
+      if (!quest || quest.status === 'done') {
+        marker?.remove();
+        continue;
+      }
+      if (!marker) {
+        marker = document.createElement('div');
+        marker.className = 'quest-marker';
+        marker.dataset.id = String(d.id);
+        marker.title = quest.name;
+        labels.appendChild(marker);
+      }
+      marker.textContent = quest.status === 'not_started' ? '!' : '?';
+      const pos = renderer.screenPosition(d.id, 2.05, now);
+      if (pos) marker.style.transform = `translate(${pos.x}px, ${pos.y}px) translate(-50%, -100%)`;
     }
     for (const label of [...labels.children] as HTMLElement[]) {
       if (!state.entities.has(Number(label.dataset.id))) label.remove();

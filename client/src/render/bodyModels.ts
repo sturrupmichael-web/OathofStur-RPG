@@ -270,8 +270,9 @@ function headShape(geometry: THREE.BufferGeometry, F: BodyFrame): (u: THREE.Vect
   for (let i = 0; i < pos.count; i++) {
     d.fromBufferAttribute(pos, i).sub(centre);
     const r = d.length();
-    // The head and the neck under it, not the shoulders.
-    if (r > 0.17 || (d.y < -0.08 && Math.hypot(d.x, d.z) > 0.075)) continue;
+    // The head and the front of the neck under it (for the jaw line), not the shoulders; behind, the
+    // neck is left out so shells close under the skull instead of running down it in a strip.
+    if (r > 0.17 || (d.y < -0.08 && Math.hypot(d.x, d.z) > 0.075) || (d.y < -0.06 && d.z < 0)) continue;
     d.divideScalar(r);
     const [a, o] = cell(d);
     const k = Math.min(LAT - 1, Math.max(0, Math.round(a))) * LON + ((Math.round(o) + LON) % LON);

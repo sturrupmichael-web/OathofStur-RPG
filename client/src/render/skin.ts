@@ -249,7 +249,8 @@ export class SkinBuilder {
         if (material instanceof THREE.MeshLambertMaterial) material.emissive = new THREE.Color(0x1a3040);
       }
       const mesh = new THREE.SkinnedMesh(geo, material);
-      mesh.bind(skeleton);
+      // Bound in the parent's space so a scaled body (goblins, women) scales its skin as well as its bones.
+      mesh.bind(skeleton, parent.matrixWorld);
       mesh.castShadow = opts.shadows !== false && opts.transparent === undefined && key !== 'glow';
       // A single sheet shadows itself in stripes, so open cloth only casts.
       mesh.receiveShadow = !key.endsWith('2');

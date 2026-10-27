@@ -774,7 +774,7 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
       if (T) {
         // Where the cloth's top edge crosses the collarbone, just proud of it.
         const u = (F.shoulderX * 0.7) / (F.shoulderX + 0.045);
-        clasp.position.set(side * F.shoulderX * 0.7, 0.035 - u * u * 0.055 - 0.004, -depth(top) * (1 - 0.15 * u * u) + u * u * 0.09 * bulk + 0.01);
+        clasp.position.set(side * F.shoulderX * 0.85, 0.035 - u * u * 0.055 - 0.004, -depth(top) * (1 - 0.15 * u * u) + u * u * 0.09 * bulk + 0.01);
       } else clasp.position.set(side * 0.16 * Math.sqrt(bulk), -0.02, -depth(top) * 0.55 + 0.09 * bulk + 0.004);
       cape.add(clasp);
     }

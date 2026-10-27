@@ -109,7 +109,8 @@ function headShell(
   return warp(new THREE.SphereGeometry(1, fine ? 40 : 26, fine ? 28 : 18), (v) => {
     const u = v.clone();
     const shown = keep(u);
-    const p = point(u, shown ? grow : 0.86);
+    // Hidden parts tuck inside the head, deeper below the jaw where a slim neck would let them show.
+    const p = point(u, shown ? grow : 0.86 * Math.max(0.45, Math.min(1, 1 + (u.y + 0.1) * 1.5)));
     if (shown && shape) shape(u, p);
     v.copy(p);
   });
@@ -588,13 +589,18 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   if (s.helm !== undefined) {
     // An open-faced helm with a nose guard and a rim.
     b.add(
-      atHead(shell(1.12, (u) => u.y > -0.35 && !(u.z > 0.55 && u.y < 0.25 && Math.abs(u.x) < 0.62))),
+      atHead(shell(1.12, (u) => u.y > (R ? -0.22 : -0.35) && !(u.z > 0.55 && u.y < 0.25 && Math.abs(u.x) < 0.62))),
       (p) => (p.y > headC.y + 0.095 ? shade(s.helm!, 1.15) : s.helm!),
       () => [[head, 1]],
       'metal',
     );
     onHead(new THREE.BoxGeometry(0.018, 0.075, 0.012), fp(0, 0.1, 0.009), s.helm, head, 'metal');
-    onHead(new THREE.BoxGeometry(0.012, 0.02, 0.15), new THREE.Vector3(0, hp(new THREE.Vector3(0, 1, 0), 1.12).y - 0.007 * hs.y, -0.01 * hs.z), shade(s.helm, 0.85), head, 'metal');
+    // The crest: a ridge along the top, following the helm's curve.
+    if (R) {
+      const ridge = [0.95, 0.6, 0.2, -0.2, -0.6, -1.0].map((a) => hp(new THREE.Vector3(0, Math.cos(a), Math.sin(a)), 1.13));
+      b.add(atHead(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ridge), 16, 0.009, 6)), () => shade(s.helm!, 0.85), () => [[head, 1]], 'metal');
+    }
+    else onHead(new THREE.BoxGeometry(0.012, 0.02, 0.15), new THREE.Vector3(0, hp(new THREE.Vector3(0, 1, 0), 1.12).y - 0.007 * hs.y, -0.01 * hs.z), shade(s.helm, 0.85), head, 'metal');
   }
   if (s.hat === 'hood') {
     // A hood over the head and down onto the shoulders, open at the face.

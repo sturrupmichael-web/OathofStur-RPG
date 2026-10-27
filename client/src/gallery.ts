@@ -172,7 +172,8 @@ function frame(now: number) {
   for (const e of entries) {
     e.root.rotation.y = yaw0 + spin;
     const activity = ['idle', 'walk', 'dead'].includes(anim) ? null : anim;
-    if (e.human) animateCharacter(e.human, dt, now, moving, 1, activity, anim === 'dead');
+    // ?still holds people in their bind pose, for checking fit.
+    if (e.human && !params.has('still')) animateCharacter(e.human, dt, now, moving, 1, activity, anim === 'dead');
     if (e.creature) {
       setShroud(e.creature, params.has('shroud'));
       animateCreature(e.creature, dt, now, moving, 1, anim === 'fight', anim === 'dead');

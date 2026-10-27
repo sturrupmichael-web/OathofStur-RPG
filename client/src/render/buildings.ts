@@ -18,6 +18,49 @@ const STOREY_H = 1.15;
 const JETTY = 0.1;
 /** Width of a doorway. */
 const DOOR_W = 0.8;
+
+/** A round tower where a town wall thickens into a solid block (its corners and gates). */
+export interface WallTower {
+  x: number;
+  z: number;
+  r: number;
+  /** Wall tiles the tower stands on, as y * width + x; they draw no block of their own. */
+  tiles: Set<number>;
+}
+
+/** Finds the towers: every wall tile with wall all round it, grouped where they touch. */
+export function findWallTowers(map: MapData, info: TileInfo): WallTower[] {
+  const { width, height } = map;
+  const wall = (x: number, y: number) => x >= 0 && y >= 0 && x < width && y < height && info.terrainKey[y * width + x] === 'city_wall';
+  const cores: Point[] = [];
+  for (let y = 1; y < height - 1; y++)
+    for (let x = 1; x < width - 1; x++) {
+      let solid = true;
+      for (let j = -1; j <= 1 && solid; j++) for (let i = -1; i <= 1; i++) if (!wall(x + i, y + j)) solid = false;
+      if (solid) cores.push({ x, y });
+    }
+  const towers: WallTower[] = [];
+  const used = new Set<number>();
+  cores.forEach((c, n) => {
+    if (used.has(n)) return;
+    const group = [c];
+    used.add(n);
+    for (let k = 0; k < group.length; k++)
+      cores.forEach((o, m) => {
+        if (!used.has(m) && Math.abs(o.x - group[k].x) <= 1 && Math.abs(o.y - group[k].y) <= 1) {
+          used.add(m);
+          group.push(o);
+        }
+      });
+    const tiles = new Set<number>();
+    for (const g of group) for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) tiles.add((g.y + j) * width + g.x + i);
+    const xs = group.map((g) => g.x);
+    const ys = group.map((g) => g.y);
+    const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    towers.push({ x: (Math.min(...xs) + Math.max(...xs)) / 2 + 0.5, z: (Math.min(...ys) + Math.max(...ys)) / 2 + 0.5, r: 1.6 + span * 0.5, tiles });
+  });
+  return towers;
+}
 /** Real point lights, moved to the nearest light spots each frame. */
 const LIGHT_POOL = 6;
 
@@ -339,6 +382,13 @@ export function detectBuildings(map: MapData, info: TileInfo): Building[] {
       }
     }
   }
+  // A low house hard against the town wall would have its eaves run into the
+  // wall top; give it an upper floor so the roof clears the wall.
+  for (const b of buildings) {
+    if (b.storeys > 1 || b.shape !== 'rect') continue;
+    const touches = outerWalls(b).some(({ x, y, out }) => key(x + out[0], y + out[1]) === 'city_wall' || key(x + out[0] * 2, y + out[1] * 2) === 'city_wall');
+    if (touches) b.storeys = 2;
+  }
   return buildings;
 }
 
@@ -566,7 +616,7 @@ export class BuildingLayer {
     const floors = { wooden_floor: new BoxBuilder(), stone_floor: new BoxBuilder(), sandstone_paving: new BoxBuilder() };
     for (const b of buildings) {
       if (b.shape === 'round') {
-        this.addRoundRoof(b);
+        this.addRoundRoof(b, this.addRoundWalls(batch, b));
         continue;
       }
       this.addWalls(batch, b, masonry[b.style], floors);
@@ -1341,23 +1391,152 @@ export class BuildingLayer {
       }
   }
 
-  /** Conical roof over a round hall, with a finial. */
-  private addRoundRoof(b: Building): void {
+  /**
+   * A round hall's wall: a smooth ring through the middle of its wall tiles,
+   * with a plinth and a cornice, doorways where the map has doors, tall
+   * windows between them, and a round stone floor reaching out to the wall.
+   */
+  private addRoundWalls(batch: Batcher, b: Building): number {
+    const cx = (b.x0 + b.x1 + 1) / 2;
+    const cz = (b.y0 + b.y1 + 1) / 2;
+    // Mean distance of the wall tiles from the centre.
+    const ring: number[] = [];
+    for (let y = b.y0; y <= b.y1; y++)
+      for (let x = b.x0; x <= b.x1; x++) if (this.info.terrainKey[y * this.map.width + x] === 'building_wall') ring.push(Math.hypot(x + 0.5 - cx, y + 0.5 - cz));
+    const R = ring.reduce((a, r) => a + r, 0) / Math.max(1, ring.length);
+    const T = WALL_T;
+    const G = WALL_HEIGHT;
+    const base = this.plotLevel(b);
+    const tone = 0xd8ccb0;
+    const doorAngles = b.doors.map((d) => Math.atan2(d.x + 0.5 - cx, d.y + 0.5 - cz)).sort((p, q) => p - q);
+    const gap = (DOOR_W / 2 + 0.04) / R;
+    const masonry = new THREE.MeshLambertMaterial({ color: tone, map: textures.bricks(), side: THREE.DoubleSide });
+    const dark = new THREE.MeshLambertMaterial({ color: shade(tone, 0.72), map: textures.bricks(), side: THREE.DoubleSide });
+    const trim = new THREE.MeshLambertMaterial({ color: 0xd4a73a });
+    const group = new THREE.Group();
+    group.position.set(cx, base, cz);
+    // A curved band from angle a0 to a1 between radii r0 and r1 and heights y0 to y1: two faces and its top.
+    const band = (a0: number, a1: number, r0: number, r1: number, y0: number, y1: number, mat: THREE.Material) => {
+      const len = a1 - a0;
+      const seg = Math.max(2, Math.ceil(len / (Math.PI / 24)));
+      for (const r of [r0, r1]) {
+        const face = new THREE.Mesh(new THREE.CylinderGeometry(r, r, y1 - y0, seg, 1, true, a0, len), mat);
+        face.position.y = (y0 + y1) / 2;
+        group.add(face);
+      }
+      const top = new THREE.Mesh(new THREE.RingGeometry(r0, r1, seg, 1, 0, len).rotateX(Math.PI / 2), mat);
+      // Laid flat, the ring runs from +x toward +z; turn it to end at a1 (cylinder angles start at +z).
+      top.rotation.y = a1 - Math.PI / 2;
+      top.position.y = y1;
+      group.add(top);
+      // Ends of the run, at the doorways.
+      for (const a of [a0, a1]) {
+        const end = new THREE.Mesh(new THREE.PlaneGeometry(r1 - r0, y1 - y0), mat);
+        end.position.set(Math.sin(a) * (r0 + r1) / 2, (y0 + y1) / 2, Math.cos(a) * (r0 + r1) / 2);
+        end.rotation.y = a - Math.PI / 2;
+        group.add(end);
+      }
+    };
+    const runs: [number, number][] = [];
+    if (!doorAngles.length) runs.push([0, Math.PI * 2]);
+    doorAngles.forEach((a, i) => {
+      const next = i + 1 < doorAngles.length ? doorAngles[i + 1] : doorAngles[0] + Math.PI * 2;
+      runs.push([a + gap, next - gap]);
+    });
+    for (const [a0, a1] of runs) {
+      band(a0, a1, R - T / 2, R + T / 2, -0.3, G, masonry);
+      band(a0, a1, R + T / 2 - 0.01, R + T / 2 + 0.06, -0.3, 0.2, dark);
+      band(a0, a1, R + T / 2 - 0.01, R + T / 2 + 0.05, G - 0.14, G - 0.04, dark);
+      // Tall windows, evenly spaced along the run.
+      const n = Math.max(0, Math.floor(((a1 - a0) * R) / 2.2));
+      for (let k = 1; k <= n; k++) {
+        const a = a0 + ((a1 - a0) * k) / (n + 1);
+        for (const r of [R + T / 2 + 0.02, R - T / 2 - 0.02]) {
+          const p: [number, number, number] = [cx + Math.sin(a) * r, 0, cz + Math.cos(a) * r];
+          batch.add('round-win-frame', new THREE.BoxGeometry(0.42, 0.62, 0.04), lambert(), { position: [p[0], 0.72, p[2]], rotationY: a }, shade(tone, 0.72));
+          batch.add('round-win-pane', new THREE.BoxGeometry(0.3, 0.5, 0.05), lambert(0x2a3550, { emissive: 0x3a2a10 }), { position: [p[0], 0.72, p[2]], rotationY: a }, 0xffffff);
+          batch.add('round-win-bar', new THREE.BoxGeometry(0.03, 0.5, 0.06), lambert(), { position: [p[0], 0.72, p[2]], rotationY: a }, 0x3a3a3a);
+        }
+      }
+    }
+    // Wall over each doorway, posts and a lintel, a step, and the door swung open.
+    const wood = lambert(0xffffff);
+    for (const a of doorAngles) {
+      band(a - gap, a + gap, R - T / 2, R + T / 2, 1.02, G, masonry);
+      const at = (r: number, along: number): [number, number] => [cx + Math.sin(a) * r + Math.cos(a) * along, cz + Math.cos(a) * r - Math.sin(a) * along];
+      for (const s of [-1, 1]) {
+        const [px, pz] = at(R, s * (DOOR_W / 2));
+        batch.add('round-door-post', new THREE.BoxGeometry(0.1, 1.06, T + 0.06), wood, { position: [px, 0.53, pz], rotationY: a }, TIMBER);
+      }
+      const [lx, lz] = at(R, 0);
+      batch.add('round-door-lintel', new THREE.BoxGeometry(DOOR_W + 0.16, 0.12, T + 0.08), wood, { position: [lx, 1.04, lz], rotationY: a }, TIMBER);
+      const [sx, sz] = at(R + T / 2 + 0.17, 0);
+      batch.add('round-step', new THREE.BoxGeometry(0.96, 0.13, 0.34), lambert(0xffffff, { map: textures.rock() }), { position: [sx, 0.0, sz], rotationY: a }, 0x8a857c);
+      const [dx, dz] = at(R - T / 2 - 0.37, DOOR_W / 2 - 0.05);
+      batch.add('round-door-leaf', new THREE.BoxGeometry(0.06, 0.96, 0.7), wood, { position: [dx, 0.5, dz], rotationY: a }, 0x6e4526);
+    }
+    // Gilded ring along the eaves.
+    const cornice = new THREE.Mesh(new THREE.TorusGeometry(R + T / 2 + 0.02, 0.05, 6, 64).rotateX(Math.PI / 2), trim);
+    cornice.position.y = G - 0.02;
+    group.add(cornice);
+    // Round floor out to the wall, over the square floor tiles.
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(R, 48).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: GROUND_COLORS.stone_floor, map: textures.cobble() }));
+    floor.position.y = 0.014;
+    floor.receiveShadow = true;
+    group.add(floor);
+    group.traverse((o) => {
+      o.castShadow = o !== floor;
+      o.receiveShadow = true;
+      o.userData.building = b;
+    });
+    this.group.add(group);
+    this.pickables.push(group);
+    return R;
+  }
+
+  /**
+   * A round hall's upper storey, a drum ringed with windows, and its conical
+   * roof with a finial; all of it hides when the player goes in.
+   */
+  private addRoundRoof(b: Building, R: number): void {
     const w = b.x1 - b.x0 + 1;
     const d = b.y1 - b.y0 + 1;
-    const radius = Math.max(w, d) / 2 + 0.25;
-    const height = radius * 0.75;
+    const T = WALL_T;
+    const drumH = STOREY_H;
+    const radius = R + T / 2 + 0.35;
+    const height = radius * 0.55;
     const shingleTex = textures.shingles().clone();
     shingleTex.repeat.set(14, 5);
     shingleTex.needsUpdate = true;
     const roofMat = new THREE.MeshLambertMaterial({ color: 0x3f6a5a, map: shingleTex, side: THREE.DoubleSide });
     const trimMat = new THREE.MeshLambertMaterial({ color: 0xd4a73a });
     const group = new THREE.Group();
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 16, 1, true), roofMat);
-    cone.position.y = height / 2;
+    const drumMat = new THREE.MeshLambertMaterial({ color: 0xd8ccb0, map: textures.bricks() });
+    const glassMat = new THREE.MeshLambertMaterial({ color: 0x2a3550, emissive: 0x3a2a10 });
+    const frameMat = new THREE.MeshLambertMaterial({ color: shade(0xd8ccb0, 0.72) });
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(R + T / 2, R + T / 2, drumH, 64, 1, false), drumMat);
+    drum.position.y = drumH / 2;
+    group.add(drum);
+    const windows = Math.round((Math.PI * 2 * R) / 1.6);
+    for (let k = 0; k < windows; k++) {
+      const a = ((k + 0.5) / windows) * Math.PI * 2;
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.62, 0.05), frameMat);
+      frame.position.set(Math.sin(a) * (R + T / 2 + 0.01), drumH / 2, Math.cos(a) * (R + T / 2 + 0.01));
+      frame.rotation.y = a;
+      const pane = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.5, 0.06), glassMat);
+      pane.position.copy(frame.position);
+      pane.rotation.y = a;
+      group.add(frame, pane);
+    }
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 48, 1, true), roofMat);
+    cone.position.y = drumH + height / 2;
+    const eave = new THREE.Mesh(new THREE.TorusGeometry(radius - 0.02, 0.06, 6, 64).rotateX(Math.PI / 2), trimMat);
+    eave.position.y = drumH;
     const finial = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), trimMat);
-    finial.position.y = height + 0.1;
-    group.add(cone, finial);
+    finial.position.y = drumH + height + 0.1;
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.6, 6), trimMat);
+    spike.position.y = drumH + height + 0.5;
+    group.add(cone, eave, finial, spike);
     const cx = b.x0 + w / 2;
     const cz = b.y0 + d / 2;
     group.position.set(cx, WALL_HEIGHT + this.hm.groundAt(cx, cz), cz);
@@ -1367,18 +1546,71 @@ export class BuildingLayer {
     });
     this.group.add(group);
     this.pickables.push(group);
-    this.roofs.push({ building: b, group, materials: [roofMat, trimMat], opacity: 1 });
+    this.roofs.push({ building: b, group, materials: [roofMat, trimMat, drumMat, glassMat, frameMat], opacity: 1 });
     this.lightSpots.push({ pos: new THREE.Vector3(cx, this.hm.groundAt(cx, cz) + 1.2, cz), color: 0xffb060, intensity: 8 });
+  }
+
+  /** A round stone tower with arrow slits, a ring of merlons and a slate cap with a pennant. */
+  private addWallTower(t: WallTower): void {
+    const base = Math.min(...[[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 0]].map(([dx, dz]) => this.hm.groundAt(t.x + dx * t.r * 0.7, t.z + dz * t.r * 0.7)));
+    const H = CITY_WALL_HEIGHT + 0.8;
+    const stoneTex = textures.bricks().clone();
+    stoneTex.repeat.set(Math.round(t.r * 4), 3);
+    stoneTex.needsUpdate = true;
+    const stone = new THREE.MeshLambertMaterial({ color: 0x6e6862, map: stoneTex });
+    const dark = new THREE.MeshLambertMaterial({ color: 0x1c1a18 });
+    const slate = new THREE.MeshLambertMaterial({ color: 0x3e4450, map: textures.shingles() });
+    const group = new THREE.Group();
+    group.position.set(t.x, base, t.z);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(t.r, t.r + 0.08, H + 0.4, 32), stone);
+    body.position.y = (H + 0.4) / 2 - 0.4;
+    // A corbelled ring the battlements stand on.
+    const corbel = new THREE.Mesh(new THREE.CylinderGeometry(t.r + 0.12, t.r, 0.18, 32), stone);
+    corbel.position.y = H + 0.09;
+    group.add(body, corbel);
+    const merlons = Math.round((Math.PI * 2 * t.r) / 0.6);
+    for (let k = 0; k < merlons; k++) {
+      const a = (k / merlons) * Math.PI * 2;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.32, 0.22), stone);
+      m.position.set(Math.sin(a) * (t.r + 0.02), H + 0.34, Math.cos(a) * (t.r + 0.02));
+      m.rotation.y = a;
+      group.add(m);
+    }
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2 + 0.3;
+      const slit = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.42, 0.04), dark);
+      slit.position.set(Math.sin(a) * (t.r + 0.02), H * (k % 2 ? 0.45 : 0.7), Math.cos(a) * (t.r + 0.02));
+      slit.rotation.y = a;
+      group.add(slit);
+    }
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(t.r * 0.82, t.r * 1.3, 24), slate);
+    cap.position.y = H + 0.18 + (t.r * 1.3) / 2;
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.7, 5), new THREE.MeshLambertMaterial({ color: 0x3e2a1a }));
+    mast.position.y = H + 0.18 + t.r * 1.3 + 0.3;
+    const pennant = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.18), new THREE.MeshLambertMaterial({ color: 0x8a2a2a, side: THREE.DoubleSide }));
+    pennant.position.set(0.26, H + 0.18 + t.r * 1.3 + 0.55, 0);
+    group.add(cap, mast, pennant);
+    group.traverse((o) => {
+      o.castShadow = true;
+      o.receiveShadow = true;
+    });
+    this.group.add(group);
   }
 
   private addBoundaryDetail(batch: Batcher): void {
     const { map, info, grid } = this;
+    const towers = findWallTowers(map, info);
+    const onTower = new Set<number>();
+    for (const t of towers) {
+      for (const i of t.tiles) onTower.add(i);
+      this.addWallTower(t);
+    }
     const key = (x: number, y: number) => (x < 0 || y < 0 || x >= map.width || y >= map.height ? '' : info.terrainKey[y * map.width + x]);
     const stone = lambert(0xffffff, { map: textures.bricks() });
     const merlon = new THREE.BoxGeometry(0.46, 0.3, 0.46);
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
-        if (key(x, y) !== 'city_wall') continue;
+        if (key(x, y) !== 'city_wall' || onTower.has(y * map.width + x)) continue;
         batch.add('walltop', new THREE.BoxGeometry(1.04, 0.1, 1.04), stone, { position: [x + 0.5, CITY_WALL_HEIGHT + 0.05, y + 0.5] }, 0x5e5853);
         if ((x + y) % 2 === 0) batch.add('merlon', merlon, stone, { position: [x + 0.5, CITY_WALL_HEIGHT + 0.25, y + 0.5] }, 0x6a645e);
 

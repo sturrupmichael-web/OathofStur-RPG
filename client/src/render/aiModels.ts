@@ -7,7 +7,11 @@ import cowGlb from './models/cow.glb?inline';
 import crimsonSwiftGlb from './models/crimson_swift.glb?inline';
 import desertLizardGlb from './models/desert_lizard.glb?inline';
 import drakeGlb from './models/cinder_drake.glb?inline';
+import duskStalkerGlb from './models/dusk_stalker.glb?inline';
+import fenLurkerGlb from './models/fen_lurker.glb?inline';
+import frostWolfGlb from './models/frost_wolf.glb?inline';
 import glareLizardGlb from './models/glare_lizard.glb?inline';
+import gloamHartGlb from './models/gloam_hart.glb?inline';
 import gloomBatGlb from './models/gloom_bat.glb?inline';
 import rockmawGlb from './models/rockmaw.glb?inline';
 import scorpionGlb from './models/scorpion.glb?inline';
@@ -49,6 +53,10 @@ const SOURCES: Partial<Record<CreatureKind, Source>> = {
   gloom_bat: { url: gloomBatGlb, pitch: Math.PI / 2, yaw: 0, scale: 1.1, offset: [0, 1.1, -0.4], wingAbove: 0, wingOut: 0.12 },
   rockmaw: { url: rockmawGlb, yaw: 0, scale: 0.8, offset: [0, 0, 0] },
   glare_lizard: { url: glareLizardGlb, yaw: 0, scale: 1.5, offset: [0, 0, -0.2] },
+  frost_wolf: { url: frostWolfGlb, yaw: 0, scale: 1.35, offset: [0, 0, 0] },
+  dusk_stalker: { url: duskStalkerGlb, yaw: 0, scale: 1.95, offset: [0, 0, 0] },
+  fen_lurker: { url: fenLurkerGlb, yaw: 0, scale: 1, offset: [0, 0, 0] },
+  gloam_hart: { url: gloamHartGlb, yaw: -Math.PI / 2, scale: 2.4, offset: [0, 0, 0] },
 };
 
 /** A model ready to skin onto any rig of its kind. */

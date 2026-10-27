@@ -1073,7 +1073,7 @@ export function animateCreature(rig: CreatureRig, dt: number, now: number, movin
         rig.body.rotation.x = -0.5 * up;
         rig.body.position.z = -0.3 * up;
         rig.body.position.y = 0.12 * up;
-        rig.neck[0].rotation.x = rest(rig.neck[0], 'x') - 0.3 * up;
+        if (rig.neck.length) rig.neck[0].rotation.x = rest(rig.neck[0], 'x') - 0.3 * up;
         // Forelegs paw the air; hind legs stay planted under it.
         rig.legs.forEach((leg, i) => (leg.hip.rotation.x = i < 2 ? -0.35 * up + Math.sin(u * 30 + i * 2) * 0.3 * up : 0.5 * up));
       } else if (kind === 'cast' && rig.kind === 'gloam_hart') {

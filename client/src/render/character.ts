@@ -109,6 +109,30 @@ function shadeHex(hex: number, k: number): number {
 }
 
 export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
+  ferryman_hob: {
+    tunic: 0x2a3f5f,
+    trim: 0xe8e4d8,
+    trousers: 0x3a3a34,
+    boots: 0x22180e,
+    belt: 0x2a1c10,
+    hair: 0x6a6a64,
+    hairStyle: 'short',
+    beard: 0x7a7a72,
+    hat: 'cap',
+    hatColor: 0x1f2e46,
+    bulk: 1.1,
+  },
+  ferrywoman_nell: {
+    tunic: 0x6a2f2a,
+    trim: 0xe8e4d8,
+    trousers: 0x2a3f5f,
+    boots: 0x22180e,
+    belt: 0x2a1c10,
+    hair: 0x8a4a22,
+    hairStyle: 'long',
+    hat: 'cap',
+    hatColor: 0x2a3f5f,
+  },
   hrolf: {
     tunic: 0x5a3e26,
     trim: 0x2a1c10,
@@ -394,6 +418,7 @@ const STYLE_BY_ROLE: Record<string, string> = {
   'Sawmill operator': 'aldric',
   Shipwright: 'aldric',
   Barkeep: 'cook_tobin',
+  Innkeeper: 'cook_tobin',
   'Head chef': 'cook_tobin',
   'Castle cook': 'cook_tobin',
   Apothecary: 'elder_maren',

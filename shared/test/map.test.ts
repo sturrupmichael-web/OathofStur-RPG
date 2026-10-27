@@ -8,26 +8,26 @@ describe('JsonMapSource', () => {
   const terrainAt = (x: number, y: number) => map.terrainDefs[map.terrain[y * map.width + x]].key;
   const count = (key: string) => map.placements.filter((p) => p.defKey === key).length;
 
-  it('loads the whole 384x288 Vell Reaches region', () => {
-    expect(map.width).toBe(384);
-    expect(map.height).toBe(288);
-    expect(map.terrain).toHaveLength(384 * 288);
+  it('loads the whole 512x384 Vell Reaches region', () => {
+    expect(map.width).toBe(512);
+    expect(map.height).toBe(384);
+    expect(map.terrain).toHaveLength(512 * 384);
     expect(map.terrain.every((t) => t >= 0)).toBe(true);
     expect(map.spawn).toEqual({ x: kx(60), y: ky(49) });
-    expect(map.areas).toHaveLength(107);
+    expect(map.areas).toHaveLength(128);
   });
 
   it('turns trees, rocks, stations and props into placements', () => {
     // Fewer than the map's tree tiles: some squares of four became one big tree.
-    expect(count('tree')).toBe(2341);
-    expect(count('dead_tree')).toBe(784);
-    expect(count('oak_tree')).toBe(305);
+    expect(count('tree')).toBe(6349);
+    expect(count('dead_tree')).toBe(1523);
+    expect(count('oak_tree')).toBe(605);
     expect(count('copper_rock')).toBe(22);
     expect(count('glacite_rock')).toBe(3);
-    expect(count('bank_booth')).toBe(31);
-    expect(count('anvil')).toBe(4);
+    expect(count('bank_booth')).toBe(41);
+    expect(count('anvil')).toBe(6);
     expect(count('hide_tent')).toBe(16);
-    expect(count('well')).toBe(4);
+    expect(count('well')).toBe(6);
     expect(count('boulder')).toBeGreaterThan(150);
     expect(map.defs.scenery.cart.name).toBe('Cart');
     expect(map.defs.resources.coal_rock.skill).toBe('mining');
@@ -94,12 +94,12 @@ describe('JsonMapSource', () => {
   it('spawns monsters with their level and wander area, and people with their role', () => {
     const monsters = map.placements.filter((p) => p.kind === 'monster');
     const goblins = monsters.filter((p) => p.defKey === 'goblin');
-    expect(monsters).toHaveLength(70);
+    expect(monsters).toHaveLength(86);
     expect(goblins).toHaveLength(8);
     expect(monsters.filter((p) => p.defKey === 'cinder_drake').map((p) => p.level)).toEqual([60]);
     expect(goblins.every((g) => g.level === 2 && (g.wander?.radius ?? 0) > 0)).toBe(true);
 
-    expect(map.placements.filter((p) => p.kind === 'npc')).toHaveLength(58);
+    expect(map.placements.filter((p) => p.kind === 'npc')).toHaveLength(70);
     expect(map.defs.npcs.elder_maren.role).toBe('Village elder');
     expect(map.defs.npcs.mara.role).toBe('Shopkeeper');
     expect(map.defs.npcs.mara.shop).toBe('General Store');

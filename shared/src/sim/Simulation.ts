@@ -39,6 +39,7 @@ import type { Entity, EntityId, FarmTask, GroundItemEntity, HomeTask, MonsterEnt
 import { CROPS, FARMING, PATCH_KINDS, cropForSeed, growPatch, isGrown, offlineTicks, overgrown, patchView, type PatchKind, type PatchState } from './farming';
 import { ATTEMPT_TICKS, EXAMINE, RESOURCE_DATA, gatherChance, requiredLevel } from './gathering';
 import { FURNITURE, HOMESTEAD, PORTALS, ROOMS, SPOTS, newHomestead, spotName, spotState } from './homestead';
+import { FERRY } from './ferry';
 import { INSCRIBE_TICKS, SHARD, glyphForArea, glyphsPerShard } from './glyphcraft';
 import { WorldGrid } from './grid';
 import {
@@ -1471,7 +1472,7 @@ export class Simulation {
     if (action?.kind !== 'teleport') return;
     if (!action.departed && this.tick >= action.departAt) {
       action.departed = true;
-      this.animate(player, 'teleport');
+      if (!action.ferry) this.animate(player, 'teleport');
     }
     if (this.tick < action.arriveAt) return;
     player.x = action.to.x;
@@ -1479,6 +1480,10 @@ export class Simulation {
     player.action = null;
     player.attackedBy = null;
     for (const e of this.entities.values()) if (e.kind === 'monster' && e.target === player.id) e.target = null;
+    if (action.ferry) {
+      this.message(player.id, `The ferry ties up at ${action.place}.`);
+      return;
+    }
     this.animate(player, 'arrive');
     this.message(player.id, `You arrive in ${action.place ?? SPELL_BY_ID[action.spell].place}.`);
   }
@@ -2399,6 +2404,18 @@ export class Simulation {
         },
       },
       sawmill: { make: (logs) => this.makePlanks(player, logs) },
+      ferry: {
+        cross: (to) => {
+          if (!hasItem(player.inventory, 'coins', FERRY.fare)) return 'coins';
+          removeItem(player.inventory, 'coins', FERRY.fare);
+          const stop = FERRY.stops[to];
+          player.path = [];
+          player.destination = null;
+          player.action = { kind: 'teleport', spell: 'ferry', to: this.openTileNear(stop), departAt: this.tick, arriveAt: this.tick + FERRY.ticks, place: stop.name, ferry: true };
+          this.message(player.id, `You pay ${FERRY.fare} coins and step aboard the ferry.`);
+          return 'ok';
+        },
+      },
     };
   }
 

@@ -55,14 +55,17 @@ tools/    vell-reaches.html: the 2D viewer and generator that produced vell-reac
   socket would. Phase 6 swaps in a `NetworkServer` without touching game logic.
 - Maps load through the `MapSource` interface. `JsonMapSource` reads `vell-reaches.json`
   (rows + legend + areas + npcs + skills); a Tiled or LDtk loader can replace it later.
-- The world is 384 x 288 tiles, so only what is near a player is sent to them
+- The world is 512 x 384 tiles, so only what is near a player is sent to them
   (`VIEW_RADIUS`), and ground cover is built in 32 x 32 chunks that follow the player.
 
 ## Map decisions
 
-The world is The Vell Reaches: 384 x 288 tiles, with Kelmoor inside it at offset
-(130, 70), six towns, the Ashen Waste to the north, desert, swamp, mountains and a south
-coast. `tools/vell-reaches.html` is both the viewer and the generator: edit it and
+The world is The Vell Reaches: 512 x 384 tiles, with Kelmoor inside it at offset
+(130, 70), eight towns, the Ashen Waste to the north, desert, swamp, mountains and a south
+coast. The generator first builds the original 384 x 288 Reaches with its seeded sequence, then
+grows it east and south (Corvane, Frostpeak Mine, Saltmere Fen, the Duskwood, Port Avel)
+using only position hashes, so the older land never shifts. A ferry links Saltcombe Docks
+and Port Avel across the Saltwind Sea. `tools/vell-reaches.html` is both the viewer and the generator: edit it and
 regenerate `shared/data/maps/vell-reaches.json` from its Copy button (or
 `window.__REGION.json()`), never by hand. `python3 tools/format-map.py <copied json> shared/data/maps/vell-reaches.json`
 lays it out one entry per line so diffs stay readable.

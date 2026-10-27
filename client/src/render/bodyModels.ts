@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { BodyType } from '@rpg/shared';
 import { shared } from './dispose';
+import { loadGlb } from './loadGlb';
 import type { BodyBones, BodyFrame, HeadFit } from './humanoid';
 import femaleGlb from './models/body_female.glb?inline';
 import femaleMask from './models/body_female_mask.png?inline';
@@ -137,7 +137,7 @@ export function loadBodyModels(): Promise<void> {
     (Object.keys(SOURCES) as BodyType[]).map(async (kind) => {
       const src = SOURCES[kind];
       try {
-        const [gltf, regions] = await Promise.all([new GLTFLoader().loadAsync(src.glb), new THREE.TextureLoader().loadAsync(src.mask)]);
+        const [gltf, regions] = await Promise.all([loadGlb(src.glb), new THREE.TextureLoader().loadAsync(src.mask)]);
         ready.set(kind, prepare(kind, src, gltf.scene, regions));
       } catch (err) {
         console.warn(`Body model ${kind} failed to load; keeping the built-in body`, err);

@@ -521,7 +521,7 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
     // A bow rides in the left hand, with a quiver of arrows on the back.
     weapon = buildBow(s.weapon.kind === 'longbow' ? 0.56 : 0.4, s.weapon.color);
     bones.handL.add(weapon);
-    bones.torso.add(buildQuiver(s.bulk ?? 1));
+    bones.torso.add(buildQuiver(s.bulk ?? 1, !!s.cape));
   } else if (s.weapon?.kind === 'staff') {
     weapon = buildStaff(s.weapon.color);
     staffTip = weapon.getObjectByName('staff-tip') ?? null;
@@ -549,26 +549,59 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
     }
   }
 
-  // Cape hangs from the shoulders and trails when walking.
+  // Cape: its top edge wraps round the shoulders to the collarbones, and it
+  // hangs close down the back, out over the tunic's hem or robe; it trails
+  // from the shoulders when walking.
   let cape: THREE.Group | null = null;
   if (s.cape) {
+    const bulk = s.bulk ?? 1;
     cape = new THREE.Group();
-    cape.position.set(0, BODY.shoulderY - 0.01, -0.088 * (s.bulk ?? 1));
+    const top = BODY.hipsY + BODY.waist + BODY.shoulderY;
+    cape.position.set(0, BODY.shoulderY, 0);
     bones.torso.add(cape);
-    const cloth = new THREE.PlaneGeometry(0.3, 0.66, 6, 10).translate(0, -0.33, 0);
+    // How far the back of the body reaches at each height (world y), with a little clearance.
+    const back: [number, number][] = s.robe !== undefined
+      ? [[0.96, 0.068], [0.9, 0.088], [0.8, 0.092], [0.72, 0.096], [0.62, 0.118], [0.45, 0.15], [0.25, 0.172], [0, 0.186]]
+      : [[0.96, 0.068], [0.9, 0.088], [0.8, 0.092], [0.72, 0.096], [0.64, 0.105], [0.5, 0.122], [0, 0.124]];
+    const depth = (y: number) => {
+      for (let i = 1; i < back.length; i++)
+        if (y >= back[i][0]) {
+          const [y0, d0] = back[i - 1];
+          const [y1, d1] = back[i];
+          return (d1 + ((y - y1) / (y0 - y1)) * (d0 - d1)) * bulk + 0.012;
+        }
+      return back[back.length - 1][1] * bulk + 0.012;
+    };
+    const LEN = 0.66;
+    const cols = 12;
+    const rows = 14;
+    const cloth = new THREE.PlaneGeometry(1, 1, cols, rows);
     const pos = cloth.attributes.position;
     for (let i = 0; i < pos.count; i++) {
-      const t = -pos.getY(i) / 0.66;
-      const x = pos.getX(i) * (0.95 + t * 0.45);
-      pos.setX(i, x);
-      // Wrapped round the shoulders at the top, with soft folds lower down.
-      pos.setZ(i, -x * x * (2.4 - t * 1.6) - t * 0.02 + Math.sin(x * 40) * 0.008 * t);
+      const u = pos.getX(i) * 2; // -1 .. 1 across
+      const t = 0.5 - pos.getY(i); // 0 at the shoulders .. 1 at the hem
+      // Narrow over the shoulders, widening down the back.
+      const half = (0.17 + 0.045 * Math.sqrt(t)) * Math.sqrt(bulk);
+      const x = u * half;
+      // The top edge rides up the back of the neck and drapes down over the shoulders.
+      const y = -t * LEN + (1 - t) ** 3 * (0.035 - u * u * 0.055);
+      const d = depth(top + y);
+      // Hugs the round of the back; near the top the sides wrap forward over the shoulders.
+      const wrap = Math.max(0, 1 - t * 5);
+      const z = -d * (1 - 0.45 * u * u) + u * u * wrap * 0.09 * bulk + Math.sin(u * 7 + 0.5) * 0.006 * t;
+      pos.setXYZ(i, x, y, z);
     }
     cloth.computeVertexNormals();
     const trim = s.trim ?? shadeHex(s.cape, 0.7);
-    const capeMesh = new THREE.Mesh(paint(cloth, (p) => (p.y < -0.63 ? trim : shadeHex(s.cape!, 0.9 + 0.1 * (1 + p.y / 0.66)))), vertexMaterial('cloth', true));
+    const capeMesh = new THREE.Mesh(paint(cloth, (p) => (p.y < -LEN + 0.03 ? trim : shadeHex(s.cape!, 0.9 + 0.1 * (1 + p.y / LEN)))), vertexMaterial('cloth', true));
     capeMesh.castShadow = true;
     cape.add(capeMesh);
+    // A clasp at each collarbone.
+    for (const side of [-1, 1]) {
+      const clasp = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 6), new THREE.MeshLambertMaterial({ color: 0xd4a73a }));
+      clasp.position.set(side * 0.16 * Math.sqrt(bulk), -0.02, -depth(top) * 0.55 + 0.09 * bulk + 0.004);
+      cape.add(clasp);
+    }
   }
 
   root.traverse((o) => {
@@ -648,7 +681,7 @@ function buildBow(half: number, wood: number): THREE.Group {
 }
 
 /** A leather quiver slung over the right shoulder, a few fletchings showing. */
-function buildQuiver(bulk: number): THREE.Group {
+function buildQuiver(bulk: number, caped = false): THREE.Group {
   const g = new THREE.Group();
   g.add(part(new THREE.CylinderGeometry(0.045, 0.036, 0.38, 10, 1, true), 0x6b4428));
   g.add(part(new THREE.CylinderGeometry(0.036, 0.036, 0.01, 10).translate(0, -0.19, 0), 0x4e301c));
@@ -660,7 +693,8 @@ function buildQuiver(bulk: number): THREE.Group {
     g.add(part(new THREE.CylinderGeometry(0.004, 0.004, 0.1, 4).translate(0, 0.22, 0), 0xb08a5a, x, 0, z));
     g.add(part(new THREE.BoxGeometry(0.003, 0.06, 0.024).translate(0, 0.25, 0), i % 2 ? 0xd8d2c4 : 0xa83a2a, x, 0, z));
   }
-  g.position.set(0.07, BODY.shoulderY - 0.2, -0.1 * bulk);
+  // Over a cape, it rides on the cloth rather than through it.
+  g.position.set(0.07, BODY.shoulderY - 0.2, -0.1 * bulk - (caped ? 0.035 : 0));
   g.rotation.set(-0.12, 0, -0.42);
   return g;
 }
@@ -1752,7 +1786,7 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
   rig.ankleL.rotation.x = -(rig.hipL.rotation.x + rig.kneeL.rotation.x + rig.hips.rotation.x) * 0.9 + toeL;
   rig.ankleR.rotation.x = -(rig.hipR.rotation.x + rig.kneeR.rotation.x + rig.hips.rotation.x) * 0.9 + toeR;
 
-  if (rig.cape) rig.cape.rotation.x = 0.06 + 0.24 * rig.walk + Math.sin(rig.phase * 2) * 0.06 * w + Math.sin(t * 1.3) * 0.02;
+  if (rig.cape) rig.cape.rotation.x = 0.2 * rig.walk + Math.sin(rig.phase * 2) * 0.06 * w + Math.sin(t * 1.3) * 0.02;
   // Hems trail behind and sway with the hips.
   rig.skirt.rotation.set((rig.robe ? 0.1 : 0.06) * rig.walk, 0, s * 0.05 * w);
 }

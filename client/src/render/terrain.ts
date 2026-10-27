@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { MapData } from '@rpg/shared';
 import type { Building } from './buildings';
-import { CITY_WALL_HEIGHT, WALL_HEIGHT, WALL_T, inBuilding, inRoom, outerWalls } from './buildings';
+import { CITY_WALL_HEIGHT, WALL_HEIGHT, WALL_T, findWallTowers, inBuilding, inRoom, outerWalls } from './buildings';
 import type { Heightmap } from './heightmap';
 import { WALL_TONES, WATER_COLORS, hash2, isBridge, isWaterKey, shade, type TileInfo } from './palette';
 
@@ -151,9 +151,27 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
   // tiles; the ground under those tiles is whatever lies just outside.
   const groundOf = new Int32Array(size).map((_, i) => i);
   const ownWalls = new Uint8Array(size);
+  // Town wall towers are drawn round, by the buildings layer.
+  for (const t of findWallTowers(map, info)) for (const i of t.tiles) ownWalls[i] = 1;
   // Inner walls of those buildings are drawn thin too: a post with arms to the walls beside it.
   const innerWalls = new Uint8Array(size);
   for (const b of buildings) {
+    if (b.shape === 'round') {
+      // A round hall draws its own curved wall; the ground under the ring is what lies outside.
+      for (let y = b.y0; y <= b.y1; y++)
+        for (let x = b.x0; x <= b.x1; x++) {
+          const i = y * map.width + x;
+          if (!WALL_TONES[info.terrainKey[i]]) continue;
+          ownWalls[i] = 1;
+          const cx = (b.x0 + b.x1 + 1) / 2;
+          const cz = (b.y0 + b.y1 + 1) / 2;
+          const ox = x + Math.sign(Math.round(x + 0.5 - cx));
+          const oy = y + Math.sign(Math.round(y + 0.5 - cz));
+          const j = oy * map.width + ox;
+          if (!WALL_TONES[info.terrainKey[j]] && !inBuilding(b, ox, oy)) groundOf[i] = j;
+        }
+      continue;
+    }
     if (b.shape !== 'rect') continue;
     for (let y = b.y0; y <= b.y1; y++)
       for (let x = b.x0; x <= b.x1; x++) {

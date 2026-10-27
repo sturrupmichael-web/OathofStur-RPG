@@ -688,6 +688,21 @@ const AREAS=[
       break;
     }
   }
+  // A fence running right alongside a town wall is drawn into it: let the wall do the job.
+  const solid=c=>c==='W'||c==='X';
+  const dropped=[];
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    if(gget(x,y)!=='F')continue;
+    const along=(dx,dy)=>[-1,0,1].every(k=>solid(gget(x+dx+(dy?k:0),y+dy+(dx?k:0))))&&[-1,1].every(k=>{const c=gget(x+(dy?k:0),y+(dx?k:0));return c==='F'||solid(c)});
+    if(along(1,0)||along(-1,0)||along(0,1)||along(0,-1))dropped.push([x,y]);
+  }
+  for(const[x,y]of dropped)gset(x,y,'.');
+  // and a post left on its own against a wall goes too.
+  for(const[x,y]of dropped)for(const[i,j]of[[x,y-1],[x,y+1],[x-1,y],[x+1,y]]){
+    if(gget(i,j)!=='F')continue;
+    const n=[[i,j-1],[i,j+1],[i-1,j],[i+1,j]].map(([a,b])=>gget(a,b));
+    if(!n.includes('F')&&n.some(solid))gset(i,j,'.');
+  }
   // Boulders out in the wilds, never touching anything that blocks.
   const town=AREAS.filter(a=>a.kind==='town'||a.t===2||a.t===1).map(a=>[a.x-2,a.y-2,a.w+4,a.h+4]).concat([KRECT]);
   for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){

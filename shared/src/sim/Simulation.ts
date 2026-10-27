@@ -63,7 +63,7 @@ import {
 import { CAST_TICKS, MAGIC_RANGE, MAGIC_XP_PER_DAMAGE, RECALL_TICKS, SPELL_BY_ID, TELEPORT_TICKS, glyphCost, missingGlyphs, type SpellDef } from './magic';
 import { findPath } from './pathfinding';
 import { PRAYERS, drainPerTick, withPrayer, type PrayerId } from './prayer';
-import { QUESTS, QUEST_IDS, conversation, doneStage, questView, type QuestId, type TalkActions } from './quests';
+import { QUESTS, QUEST_DROPS, QUEST_IDS, conversation, doneStage, questView, type QuestId, type TalkActions } from './quests';
 import { SAVE_VERSION, type SaveData } from './save';
 import { MAX_XP, SKILLS, combatLevel, levelForXp, requirementLevel, startingXp, type SkillId } from './skills';
 
@@ -100,8 +100,6 @@ const STARTING_ITEMS: ItemStack[] = [
 const STATIONS: readonly string[] = ['furnace', 'anvil', 'range', 'campfire', 'fire', 'altar'];
 /** Fires cook like a range. */
 const COOKING_FIRES: readonly string[] = ['campfire', 'fire'];
-/** Chance a defeated desert bandit drops the Emir's seal, during that quest. */
-export const SEAL_CHANCE = 0.34;
 /** Ticks between buried bones, and between bones offered at an altar. */
 const BURY_TICKS = 2;
 const OFFER_TICKS = 3;
@@ -2445,11 +2443,12 @@ export class Simulation {
   /** Kills that move a quest on. */
   private questKill(player: PlayerEntity, monster: MonsterEntity): void {
     const defKey = monster.defKey;
-    // About one bandit in three has the Emir's seal on them.
-    if (defKey === 'desert_bandit' && player.quests.emirs_seal === 1 && this.rng.chance(SEAL_CHANCE)) {
-      this.spawnItem('sunspire_seal', 1, monster, player.id, GROUND_ITEM_TICKS, GROUND_ITEM_TICKS);
-      this.setQuestStage(player, 'emirs_seal', 2);
-      this.message(player.id, "Something gold glints among the bandit's things: the Sunspire seal!", 'quest');
+    // The Emir's seal, the barrow-king's circlet and Pike's lure turn up on about one kill in three.
+    for (const d of QUEST_DROPS) {
+      if (defKey !== d.monster || player.quests[d.quest] !== d.stage || !this.rng.chance(d.chance)) continue;
+      this.spawnItem(d.item, 1, monster, player.id, GROUND_ITEM_TICKS, GROUND_ITEM_TICKS);
+      this.setQuestStage(player, d.quest, d.stage + 1);
+      this.message(player.id, d.message, 'quest');
     }
     if (defKey === 'goblin' && player.quests.first_oath === 4) {
       this.setQuestStage(player, 'first_oath', 5);

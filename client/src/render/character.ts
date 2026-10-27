@@ -583,6 +583,10 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
       m.castShadow = false;
     }
   });
+  // The body is modelled with its weapon arm on +x, which is the left side of
+  // someone facing +z, so mirror it (after the skin is bound) to put the
+  // weapon in the right hand and the bow and shield in the left.
+  body.scale.x *= -1;
   return {
     root,
     body,

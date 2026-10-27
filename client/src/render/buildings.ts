@@ -3,7 +3,7 @@ import type { MapData, Point, WorldGrid } from '@rpg/shared';
 import { BoxBuilder, Batcher, lambert } from './batch';
 import type { Heightmap } from './heightmap';
 import { GROUND_COLORS, hash2, shade, type TileInfo } from './palette';
-import { textures } from './textures';
+import { textures, type RugPattern } from './textures';
 
 export const WALL_HEIGHT = 1.3;
 export const CITY_WALL_HEIGHT = 1.8;
@@ -23,8 +23,16 @@ const LIGHT_POOL = 6;
 
 export type BuildingKind = 'bank' | 'store' | 'smithy' | 'chapel' | 'inn' | 'keep' | 'library' | 'house';
 
+/** A rectangle of tiles, walls included, inclusive. */
+export interface Rect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
 export interface Building {
-  /** Wall rectangle, inclusive tile coordinates. */
+  /** Bounding rectangle of the walls, inclusive tile coordinates. */
   x0: number;
   y0: number;
   x1: number;
@@ -43,6 +51,48 @@ export interface Building {
   floor: 'wooden_floor' | 'stone_floor' | 'sandstone_paving';
   /** Timber and tile like Kelmoor, or the flat-roofed sandstone of the desert. */
   style: 'timber' | 'sandstone';
+  /**
+   * The wall rectangles it is made of: one for a plain building, or the main
+   * house first and then its wings for an L or T shape. Neighbouring parts
+   * overlap by two rows, so the wall between them is open.
+   */
+  parts: Rect[];
+}
+
+/** Whether a tile is part of a building, walls included. */
+export function inBuilding(b: Building, x: number, y: number): boolean {
+  return b.parts.some((p) => x >= p.x0 && x <= p.x1 && y >= p.y0 && y <= p.y1);
+}
+
+/** Whether a tile is inside a building's rooms, not its outer walls. */
+export function inRoom(b: Building, x: number, y: number): boolean {
+  return b.parts.some((p) => x > p.x0 && x < p.x1 && y > p.y0 && y < p.y1);
+}
+
+/** Whether a tile is one of a building's outer walls (or doors). */
+export function isOuterWall(b: Building, x: number, y: number): boolean {
+  return inBuilding(b, x, y) && !inRoom(b, x, y);
+}
+
+/** A building's outer wall tiles, each with the way out (diagonal at outer corners). */
+export function outerWalls(b: Building): { x: number; y: number; out: [number, number] }[] {
+  const tiles: { x: number; y: number; out: [number, number] }[] = [];
+  for (let y = b.y0; y <= b.y1; y++)
+    for (let x = b.x0; x <= b.x1; x++) {
+      if (!isOuterWall(b, x, y)) continue;
+      let dx = !inBuilding(b, x - 1, y) ? -1 : !inBuilding(b, x + 1, y) ? 1 : 0;
+      let dy = !inBuilding(b, x, y - 1) ? -1 : !inBuilding(b, x, y + 1) ? 1 : 0;
+      // An inside corner of an L: the way out is the one open diagonal.
+      if (!dx && !dy)
+        for (const [ex, ey] of [[1, 1], [1, -1], [-1, 1], [-1, -1]])
+          if (!inBuilding(b, x + ex, y + ey)) {
+            dx = ex;
+            dy = ey;
+            break;
+          }
+      tiles.push({ x, y, out: [dx, dy] });
+    }
+  return tiles;
 }
 
 const FLOORS = new Set(['stone_floor', 'wooden_floor']);
@@ -114,7 +164,7 @@ export function detectBuildings(map: MapData, info: TileInfo): Building[] {
     const tally = new Map<string, number>();
     for (let y = b.y0 + 1; y < b.y1; y++) for (let x = b.x0 + 1; x < b.x1; x++) tally.set(key(x, y), (tally.get(key(x, y)) ?? 0) + 1);
     const floor = (['wooden_floor', 'stone_floor', 'sandstone_paving'] as const).reduce((best, k) => ((tally.get(k) ?? 0) > (tally.get(best) ?? 0) ? k : best));
-    return { ...b, doors, kind, name, entry, shape: 'rect' as const, storeys: storeysFor(kind, b), floor, style };
+    return { ...b, doors, kind, name, entry, shape: 'rect' as const, storeys: storeysFor(kind, b), floor, style, parts: [{ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }] };
   };
 
   /** A named area holding an enclosed floor that isn't a rectangle, like the round Bourse. */
@@ -162,7 +212,65 @@ export function detectBuildings(map: MapData, info: TileInfo): Building[] {
     // It must be the area itself, not a hut somewhere inside a larger district.
     if ((b.x1 - b.x0 + 1) * (b.y1 - b.y0 + 1) < a.w * a.h * 0.5) return null;
     const kind = KIND_BY_NAME.find(([re]) => re.test(a.name))?.[1] ?? 'house';
-    return { ...b, doors, kind, name: a.name, entry: { x: Math.round((x0 + x1) / 2), y: y1 }, shape: 'round', storeys: 1, floor: 'stone_floor', style: 'timber' };
+    return { ...b, doors, kind, name: a.name, entry: { x: Math.round((x0 + x1) / 2), y: y1 }, shape: 'round', storeys: 1, floor: 'stone_floor', style: 'timber', parts: [b] };
+  };
+
+  /**
+   * An L or T-shaped house: rooms that are not one rectangle but split into
+   * two or three rectangular bands (by rows or by columns), all walled round.
+   */
+  const makeCompound = (room: Set<number>): Building | null => {
+    const tiles = [...room].map((i) => ({ x: i % width, y: Math.floor(i / width) }));
+    const bands = (rows: boolean) => {
+      const lines = new Map<number, number[]>();
+      for (const t of tiles) {
+        const [line, at] = rows ? [t.y, t.x] : [t.x, t.y];
+        lines.set(line, [...(lines.get(line) ?? []), at]);
+      }
+      const out: { a0: number; a1: number; l0: number; l1: number }[] = [];
+      for (const line of [...lines.keys()].sort((p, q) => p - q)) {
+        const ats = lines.get(line)!;
+        const a0 = Math.min(...ats);
+        const a1 = Math.max(...ats);
+        if (ats.length !== a1 - a0 + 1) return null;
+        const last = out[out.length - 1];
+        if (last && last.l1 === line - 1 && last.a0 === a0 && last.a1 === a1) last.l1 = line;
+        else out.push({ a0, a1, l0: line, l1: line });
+      }
+      return out.map((b) => (rows ? { x0: b.a0 - 1, y0: b.l0 - 1, x1: b.a1 + 1, y1: b.l1 + 1 } : { x0: b.l0 - 1, y0: b.a0 - 1, x1: b.l1 + 1, y1: b.a1 + 1 }));
+    };
+    const options = [bands(true), bands(false)].filter((o): o is Rect[] => !!o && o.length >= 2 && o.length <= 3);
+    if (!options.length) return null;
+    const area = (r: Rect) => (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1);
+    const parts = options.sort((p, q) => p.length - q.length)[0].sort((p, q) => area(q) - area(p));
+    const bound = { x0: Math.min(...parts.map((p) => p.x0)), y0: Math.min(...parts.map((p) => p.y0)), x1: Math.max(...parts.map((p) => p.x1)), y1: Math.max(...parts.map((p) => p.y1)) };
+    const b: Building = { ...bound, doors: [], kind: 'house', name: '', entry: { x: 0, y: 0 }, shape: 'rect', storeys: 1, floor: 'wooden_floor', style: 'timber', parts };
+    // Everything round the rooms must be timber wall or door.
+    const objects = new Set<string>();
+    for (let y = bound.y0; y <= bound.y1; y++)
+      for (let x = bound.x0; x <= bound.x1; x++) {
+        if (!inBuilding(b, x, y)) continue;
+        const i = y * width + x;
+        if (inRoom(b, x, y)) {
+          if (!room.has(i)) return null;
+          if (info.placementKey[i]) objects.add(info.placementKey[i]!);
+          continue;
+        }
+        if (key(x, y) === 'door') b.doors.push({ x, y });
+        else if (key(x, y) !== 'building_wall') return null;
+      }
+    if (!b.doors.length) return null;
+    for (const o of objects) b.kind = KIND_BY_OBJECT[o] ?? b.kind;
+    const main = parts[0];
+    const mx = (main.x0 + main.x1) / 2;
+    const my = (main.y0 + main.y1) / 2;
+    const free = tiles.filter((t) => !info.placementKey[t.y * width + t.x] && t.x > main.x0 && t.x < main.x1 && t.y > main.y0 && t.y < main.y1);
+    b.entry = free.sort((p, q) => Math.hypot(p.x - mx, p.y - my) - Math.hypot(q.x - mx, q.y - my))[0] ?? tiles[0];
+    const tally = new Map<string, number>();
+    for (const t of tiles) tally.set(key(t.x, t.y), (tally.get(key(t.x, t.y)) ?? 0) + 1);
+    b.floor = (['wooden_floor', 'stone_floor'] as const).reduce((best, k) => ((tally.get(k) ?? 0) > (tally.get(best) ?? 0) ? k : best));
+    b.storeys = storeysFor(b.kind, main);
+    return b;
   };
 
   for (const a of map.areas) {
@@ -171,13 +279,14 @@ export function detectBuildings(map: MapData, info: TileInfo): Building[] {
     if (b) buildings.push(b);
   }
 
-  const inside = (x: number, y: number) => buildings.some((b) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1);
+  const inside = (x: number, y: number) => buildings.some((b) => inBuilding(b, x, y));
   const seen = new Uint8Array(width * height);
   for (let start = 0; start < width * height; start++) {
     const sx = start % width;
     const sy = Math.floor(start / width);
     if (seen[start] || !FLOORS.has(info.terrainKey[start]) || inside(sx, sy)) continue;
     const stack = [start];
+    const room = new Set([start]);
     seen[start] = 1;
     let minX = Infinity;
     let minY = Infinity;
@@ -198,12 +307,13 @@ export function detectBuildings(map: MapData, info: TileInfo): Building[] {
         const j = ny * width + nx;
         if (!seen[j] && (FLOORS.has(info.terrainKey[j]) || info.placementKey[j])) {
           seen[j] = 1;
+          room.add(j);
           stack.push(j);
         }
       }
     }
     if (minX < 1 || minY < 1 || maxX > width - 2 || maxY > height - 2) continue;
-    const b = make({ x0: minX - 1, y0: minY - 1, x1: maxX + 1, y1: maxY + 1 }, '');
+    const b = make({ x0: minX - 1, y0: minY - 1, x1: maxX + 1, y1: maxY + 1 }, '') ?? makeCompound(room);
     if (b) buildings.push(b);
   }
 
@@ -235,7 +345,7 @@ export function detectBuildings(map: MapData, info: TileInfo): Building[] {
  * have an upper floor; houses are a mix; small huts and the smithy (open to
  * its forge) stay low.
  */
-function storeysFor(kind: BuildingKind, b: { x0: number; y0: number; x1: number; y1: number }): number {
+function storeysFor(kind: BuildingKind, b: Rect): number {
   const area = (b.x1 - b.x0 + 1) * (b.y1 - b.y0 + 1);
   if (kind === 'keep') return 3;
   if (area < 20 || kind === 'smithy') return 1;
@@ -259,19 +369,35 @@ interface Side {
   tiles: number[];
 }
 
+/**
+ * The straight runs of a building's outer wall. Runs along x reach over the
+ * corners and close them; runs along z fit between them.
+ */
 function sidesOf(b: Building): Side[] {
   const T = WALL_T;
-  const range = (a: number, z: number) => Array.from({ length: Math.max(0, z - a + 1) }, (_, i) => a + i);
-  const xs = range(b.x0 + 1, b.x1 - 1);
-  const ys = range(b.y0 + 1, b.y1 - 1);
-  const doorsWhere = (pred: (d: Point) => boolean, along: (d: Point) => number) => b.doors.filter(pred).map((d) => along(d) + 0.5);
-  // North and south walls run the full width and close the corners; west and east fit between them.
-  return [
-    { axis: 'x', at: b.y0 + 0.5, from: b.x0 + 0.5 - T / 2, to: b.x1 + 0.5 + T / 2, out: -1, doors: doorsWhere((d) => d.y === b.y0, (d) => d.x), tiles: xs },
-    { axis: 'x', at: b.y1 + 0.5, from: b.x0 + 0.5 - T / 2, to: b.x1 + 0.5 + T / 2, out: 1, doors: doorsWhere((d) => d.y === b.y1, (d) => d.x), tiles: xs },
-    { axis: 'z', at: b.x0 + 0.5, from: b.y0 + 0.5 + T / 2, to: b.y1 + 0.5 - T / 2, out: -1, doors: doorsWhere((d) => d.x === b.x0 && d.y > b.y0 && d.y < b.y1, (d) => d.y), tiles: ys },
-    { axis: 'z', at: b.x1 + 0.5, from: b.y0 + 0.5 + T / 2, to: b.y1 + 0.5 - T / 2, out: 1, doors: doorsWhere((d) => d.x === b.x1 && d.y > b.y0 && d.y < b.y1, (d) => d.y), tiles: ys },
-  ];
+  const wall = (x: number, y: number) => isOuterWall(b, x, y);
+  const sides: Side[] = [];
+  for (const axis of ['x', 'z'] as const) {
+    // Walk each line of tiles along the axis: (a, c) is (x, y) for x runs and (y, x) for z runs.
+    const at = (a: number, c: number) => (axis === 'x' ? wall(a, c) : wall(c, a));
+    const room = (a: number, c: number) => (axis === 'x' ? inRoom(b, a, c) : inRoom(b, c, a));
+    const [c0, c1, a0, a1] = axis === 'x' ? [b.y0, b.y1, b.x0, b.x1] : [b.x0, b.x1, b.y0, b.y1];
+    for (let c = c0; c <= c1; c++) {
+      for (let a = a0; a <= a1; a++) {
+        if (!at(a, c) || !at(a + 1, c)) continue;
+        const start = a;
+        while (at(a + 1, c)) a++;
+        const run = Array.from({ length: a - start + 1 }, (_, i) => start + i);
+        // Corner tiles have wall across the run as well; the rest are plain wall.
+        const tiles = run.filter((t) => !at(t, c - 1) && !at(t, c + 1));
+        const out = run.some((t) => room(t, c + 1)) ? -1 : 1;
+        const doors = tiles.filter((t) => b.doors.some((d) => (axis === 'x' ? d.x === t && d.y === c : d.x === c && d.y === t))).map((t) => t + 0.5);
+        const reach = axis === 'x' ? T / 2 : -T / 2;
+        sides.push({ axis, at: c + 0.5, from: start + 0.5 - reach, to: a + 0.5 + reach, out, doors, tiles });
+      }
+    }
+  }
+  return sides;
 }
 
 /** The stretches of a side left between its doorways. */
@@ -339,9 +465,9 @@ function forEachBorder(b: { x0: number; y0: number; x1: number; y1: number }, fn
 
 /** Outward normal of a border tile (corners return their row normal). */
 function outward(b: Building, x: number, y: number): [number, number] {
-  if (y === b.y0) return [0, -1];
-  if (y === b.y1) return [0, 1];
-  if (x === b.x0) return [-1, 0];
+  if (inRoom(b, x, y + 1)) return [0, -1];
+  if (inRoom(b, x, y - 1)) return [0, 1];
+  if (inRoom(b, x + 1, y)) return [-1, 0];
   return [1, 0];
 }
 
@@ -355,6 +481,20 @@ const ROOF_COLORS: Record<BuildingKind, number> = {
   library: 0x6a4a7a,
   house: 0x7a5a3a,
 };
+
+/** Homes' roofs, picked per house: thatch is steeper than tile or slate. */
+const HOUSE_ROOFS: { color: number; pitch: number; thatch?: boolean }[] = [
+  { color: 0x7a5a3a, pitch: 0.45 },
+  { color: 0x9c4a32, pitch: 0.45 },
+  { color: 0x4f5866, pitch: 0.5 },
+  { color: 0x6a4a34, pitch: 0.42 },
+  { color: 0xc8a860, pitch: 0.62, thatch: true },
+  { color: 0xb09050, pitch: 0.62, thatch: true },
+  { color: 0x5d6a4a, pitch: 0.45 },
+];
+
+/** Homes' stonework, picked per house. */
+const HOUSE_MASONRY = [0xb8a686, 0xa89f90, 0xc4b494, 0x9c8e7c, 0xbcae9a, 0xa8957a];
 
 /** Kinds with a working hearth: they get a chimney and smoke. */
 const HEARTH: Partial<Record<BuildingKind, true>> = { smithy: true, inn: true, house: true };
@@ -451,7 +591,7 @@ export class BuildingLayer {
     this.lastUpdate = now;
     for (const roof of this.roofs) {
       const b = roof.building;
-      const inside = !!player && player.x >= b.x0 && player.x <= b.x1 && player.y >= b.y0 && player.y <= b.y1;
+      const inside = !!player && inBuilding(b, player.x, player.y);
       const target = this.roofsEnabled && !inside ? 1 : 0;
       // Fade over about a third of a second, independent of frame rate.
       const step = dt * 3;
@@ -510,7 +650,7 @@ export class BuildingLayer {
     const G = WALL_HEIGHT;
     const base = this.plotLevel(b);
     const desert = b.style === 'sandstone';
-    const tone = desert ? SANDSTONE[Math.floor(hash2(b.x0, b.y0, 47) * SANDSTONE.length)] : MASONRY[b.kind];
+    const tone = desert ? SANDSTONE[Math.floor(hash2(b.x0, b.y0, 47) * SANDSTONE.length)] : b.kind === 'house' ? HOUSE_MASONRY[Math.floor(hash2(b.x0, b.y0, 63) * HOUSE_MASONRY.length)] : MASONRY[b.kind];
     const shutter = SHUTTERS[Math.floor(hash2(b.x0, b.y0, 41) * SHUTTERS.length)];
     const walls = new BoxBuilder();
     const unit = new THREE.BoxGeometry(1, 1, 1);
@@ -566,52 +706,77 @@ export class BuildingLayer {
       }
     }
 
-    // Dressed stone at the corners.
-    for (const cx of [b.x0 + 0.5, b.x1 + 0.5])
-      for (const cz of [b.y0 + 0.5, b.y1 + 0.5]) walls.box([cx - T / 2 - 0.05, base - 0.3, cz - T / 2 - 0.05], [cx + T / 2 + 0.05, base + G + 0.02, cz + T / 2 + 0.05], shade(tone, 0.82));
+    // Dressed stone at the corners, inside corners of an L too.
+    const wall = (x: number, y: number) => isOuterWall(b, x, y);
+    for (let y = b.y0; y <= b.y1; y++)
+      for (let x = b.x0; x <= b.x1; x++) {
+        if (!wall(x, y) || !(wall(x - 1, y) || wall(x + 1, y)) || !(wall(x, y - 1) || wall(x, y + 1))) continue;
+        const cx = x + 0.5;
+        const cz = y + 0.5;
+        walls.box([cx - T / 2 - 0.05, base - 0.3, cz - T / 2 - 0.05], [cx + T / 2 + 0.05, base + G + 0.02, cz + T / 2 + 0.05], shade(tone, 0.82));
+      }
 
     const mesh = walls.build(masonry);
     mesh.userData.building = b;
     this.group.add(mesh);
     this.pickables.push(mesh);
 
-    // Floor under the inner half of the wall tiles, so the room reaches its walls.
+    // Floor under the inner half of the wall tiles, so the room reaches its
+    // walls: each quarter of a wall tile that touches a room tile.
     const f = floors[b.floor];
     const y0 = base - 0.02;
     const y1 = base + 0.012;
     const color = shade(GROUND_COLORS[b.floor], 0.97);
-    f.box([b.x0 + 0.5, y0, b.y0 + 0.5], [b.x1 + 0.5, y1, b.y0 + 1], color);
-    f.box([b.x0 + 0.5, y0, b.y1], [b.x1 + 0.5, y1, b.y1 + 0.5], color);
-    f.box([b.x0 + 0.5, y0, b.y0 + 1], [b.x0 + 1, y1, b.y1], color);
-    f.box([b.x1, y0, b.y0 + 1], [b.x1 + 0.5, y1, b.y1], color);
+    for (const { x, y } of outerWalls(b))
+      for (const qx of [0, 1])
+        for (const qz of [0, 1])
+          if (inRoom(b, x + (qx ? 1 : -1), y) || inRoom(b, x, y + (qz ? 1 : -1)) || inRoom(b, x + (qx ? 1 : -1), y + (qz ? 1 : -1))) f.box([x + qx * 0.5, y0, y + qz * 0.5], [x + qx * 0.5 + 0.5, y1, y + qz * 0.5 + 0.5], color);
   }
 
+  /** Furnishings, in the main room (the main part of an L or T). */
   private addInterior(batch: Batcher, b: Building): void {
-    const fx0 = b.x0 + 1;
-    const fy0 = b.y0 + 1;
-    const fx1 = b.x1 - 1;
-    const fy1 = b.y1 - 1;
+    const main = b.parts[0];
+    const fx0 = main.x0 + 1;
+    const fy0 = main.y0 + 1;
+    const fx1 = main.x1 - 1;
+    const fy1 = main.y1 - 1;
     const door = b.doors[0];
     // The back wall is the one opposite the door.
-    const back = door && door.y === b.y1 ? b.y0 : b.y1;
-    const backInnerZ = back === b.y0 ? b.y0 + 0.5 + WALL_T / 2 + 0.01 : b.y1 + 0.5 - WALL_T / 2 - 0.01;
-    const inward = back === b.y0 ? 1 : -1;
+    const back = door && door.y === main.y1 ? main.y0 : main.y1;
+    const backInnerZ = back === main.y0 ? main.y0 + 0.5 + WALL_T / 2 + 0.01 : main.y1 + 0.5 - WALL_T / 2 - 0.01;
+    const inward = back === main.y0 ? 1 : -1;
+    // Where a wing opens off the room there is no wall to hang anything on.
+    const solid = (x: number, y: number) => isOuterWall(b, x, y);
     const wood = lambert(0xffffff);
 
-    // Rug
+    // Rug: each building's own colours and weave, and for homes its own size.
     const rug = RUGS[b.kind];
     if (rug) {
-      const w = fx1 - fx0 - 1;
-      const d = fy1 - fy0 - 1;
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: textures.rug(rug[0], rug[1]) }));
-      mesh.position.set((fx0 + fx1 + 1) / 2, this.hm.groundAt((fx0 + fx1 + 1) / 2, (fy0 + fy1 + 1) / 2) + 0.012, (fy0 + fy1 + 1) / 2);
+      const r = (salt: number) => hash2(main.x0, main.y0, salt);
+      const [base, trim, accent] = b.kind === 'house' ? RUG_COLOURS[Math.floor(r(1) * RUG_COLOURS.length)] : rug;
+      const pattern = RUG_PATTERNS[Math.floor(r(2) * RUG_PATTERNS.length)];
+      const fw = fx1 - fx0 - 1;
+      const fd = fy1 - fy0 - 1;
+      // Homes get a smaller rug, sometimes a long runner; halls a big one.
+      const share = b.kind === 'house' ? 0.55 + r(3) * 0.35 : 1;
+      let w = Math.max(1, fw * share);
+      let d = Math.max(1, fd * share);
+      if (b.kind === 'house' && r(4) < 0.35) {
+        if (w > d) d = Math.max(0.9, d * 0.5);
+        else w = Math.max(0.9, w * 0.5);
+      }
+      const cx = (fx0 + fx1 + 1) / 2 + (fw - w) * (r(5) - 0.5) * 0.6;
+      const cz = (fy0 + fy1 + 1) / 2 + (fd - d) * (r(6) - 0.5) * 0.6;
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: textures.rug(base, trim, accent, pattern, d / w) }));
+      mesh.position.set(cx, this.hm.groundAt(cx, cz) + 0.012, cz);
       mesh.receiveShadow = true;
       this.group.add(mesh);
     }
 
     // Wall torches on the side walls, plus one warm light per room.
-    for (const [wx, dir] of [[b.x0 + 0.5 + WALL_T / 2 + 0.02, 1], [b.x1 + 0.5 - WALL_T / 2 - 0.02, -1]] as const) {
+    for (const [wx, dir] of [[main.x0 + 0.5 + WALL_T / 2 + 0.02, 1], [main.x1 + 0.5 - WALL_T / 2 - 0.02, -1]] as const) {
       const tz = (fy0 + fy1 + 1) / 2;
+      if (!solid(Math.floor(wx), Math.floor(tz))) continue;
       this.addTorch(batch, wx, tz, dir, 0);
     }
     const lx = (fx0 + fx1 + 1) / 2;
@@ -625,7 +790,7 @@ export class BuildingLayer {
     const shelfZ = backInnerZ + inward * 0.12;
     const bookGeo = new THREE.BoxGeometry(0.04, 0.15, 0.16);
     const tiles: number[] = [];
-    for (let x = fx0; x <= fx1; x++) tiles.push(x);
+    for (let x = fx0; x <= fx1; x++) if (solid(x, back)) tiles.push(x);
 
     if (b.kind === 'store' || b.kind === 'inn' || b.kind === 'library') {
       for (const x of tiles.slice(0, tiles.length - 2)) {
@@ -748,16 +913,22 @@ export class BuildingLayer {
         ? MASONRY[b.kind]
         : PLASTER[Math.floor(hash2(b.x0, b.y0, 43) * PLASTER.length)];
     const shutter = SHUTTERS[Math.floor(hash2(b.x0, b.y0, 41) * SHUTTERS.length)];
+    const main = b.parts[0];
+    const mainAlongX = main.x1 - main.x0 >= main.y1 - main.y0;
+    const roofs: (() => void)[] = [];
 
+    // Each part in turn: the main house, then any wings, which are sometimes a floor lower.
+    b.parts.forEach((part, index) => {
+    const storeys = index > 0 && b.storeys > 1 && hash2(part.x0, part.y0, 61) < 0.5 ? b.storeys - 1 : b.storeys;
     // Outer face of the ground floor walls, then of the upper floors.
     const jetty = stone ? 0 : JETTY;
-    const ox0 = b.x0 + 0.5 - T / 2 - jetty;
-    const ox1 = b.x1 + 0.5 + T / 2 + jetty;
-    const oz0 = b.y0 + 0.5 - T / 2 - jetty;
-    const oz1 = b.y1 + 0.5 + T / 2 + jetty;
-    const eaves = base + WALL_HEIGHT + (b.storeys - 1) * STOREY_H;
+    const ox0 = part.x0 + 0.5 - T / 2 - jetty;
+    const ox1 = part.x1 + 0.5 + T / 2 + jetty;
+    const oz0 = part.y0 + 0.5 - T / 2 - jetty;
+    const oz1 = part.y1 + 0.5 + T / 2 + jetty;
+    const eaves = base + WALL_HEIGHT + (storeys - 1) * STOREY_H;
 
-    for (let k = 1; k < b.storeys; k++) {
+    for (let k = 1; k < storeys; k++) {
       const y0 = base + WALL_HEIGHT + (k - 1) * STOREY_H;
       const y1 = y0 + STOREY_H;
       walls.box([ox0, y0, oz0], [ox1, y1, oz1], shade(tone, 0.96 + hash2(b.x0, k, 44) * 0.08));
@@ -821,15 +992,31 @@ export class BuildingLayer {
       }
     }
 
+    const here = { ...b, ...part, storeys };
+    if (desert) roofs.push(() => this.addFlatRoof(here, top, material, tone, ox0, ox1, oz0, oz1, eaves));
+    else if (b.kind === 'keep') roofs.push(() => this.addKeepTop(here, top, material, ox0, ox1, oz0, oz1, eaves));
+    else if (index === 0) roofs.push(() => this.addGableRoof(here, top, material, state, ox0, ox1, oz0, oz1, eaves, mainAlongX, true));
+    else {
+      // A wing's ridge runs across the main one. Where it points at the main
+      // house it carries on in to the main ridge, so the two roofs meet.
+      const alongX = !mainAlongX;
+      const besideX = part.x0 >= main.x0 && part.x1 <= main.x1;
+      let [rx0, rx1, rz0, rz1] = [ox0, ox1, oz0, oz1];
+      const mcx = (main.x0 + main.x1 + 1) / 2;
+      const mcz = (main.y0 + main.y1 + 1) / 2;
+      if (besideX && !alongX) [rz0, rz1] = part.y0 > main.y0 ? [Math.min(rz0, mcz), rz1] : [rz0, Math.max(rz1, mcz)];
+      if (!besideX && alongX) [rx0, rx1] = part.x0 > main.x0 ? [Math.min(rx0, mcx), rx1] : [rx0, Math.max(rx1, mcx)];
+      roofs.push(() => this.addGableRoof(here, top, material, state, rx0, rx1, rz0, rz1, eaves, alongX, false));
+    }
+    });
+
     const wallMat = material({ color: 0xffffff, map: stone && !desert ? textures.bricks() : textures.plaster(), vertexColors: true });
     const timberMat = material({ color: 0xffffff, vertexColors: true });
     const glassMat = material({ color: 0x2a3550, emissive: 0x3a2a10, vertexColors: true });
     for (const [builder, mat] of [[walls, wallMat], [timber, timberMat], [glass, glassMat]] as const) if (!builder.empty) top.add(builder.build(mat));
     top.add(braces.build());
 
-    if (desert) this.addFlatRoof(b, top, material, tone, ox0, ox1, oz0, oz1, eaves);
-    else if (b.kind === 'keep') this.addKeepTop(b, top, material, ox0, ox1, oz0, oz1, eaves);
-    else this.addGableRoof(b, top, material, state, ox0, ox1, oz0, oz1, eaves);
+    for (const roof of roofs) roof();
 
     top.traverse((o) => {
       o.castShadow = true;
@@ -850,19 +1037,21 @@ export class BuildingLayer {
     oz0: number,
     oz1: number,
     eaves: number,
+    alongX = ox1 - ox0 >= oz1 - oz0,
+    hearth = true,
   ): void {
     const w = ox1 - ox0;
     const d = oz1 - oz0;
-    const alongX = w >= d;
     const len = alongX ? w : d;
     const span = alongX ? d : w;
-    const height = span * (b.kind === 'chapel' ? 0.62 : 0.45);
+    const look = b.kind === 'house' ? HOUSE_ROOFS[Math.floor(hash2(b.parts[0].x0, b.parts[0].y0, 62) * HOUSE_ROOFS.length)] : null;
+    const height = span * (b.kind === 'chapel' ? 0.62 : (look?.pitch ?? 0.45));
     const overhang = 0.3;
 
     const group = new THREE.Group();
     const shingleTex = textures.shingles().clone();
     shingleTex.needsUpdate = true;
-    const roofMat = material({ color: ROOF_COLORS[b.kind], map: shingleTex, side: THREE.DoubleSide });
+    const roofMat = material({ color: look?.color ?? ROOF_COLORS[b.kind], map: look?.thatch ? textures.thatch() : shingleTex, side: THREE.DoubleSide });
     const gableMat = material({ color: ALL_STONE[b.kind] ? MASONRY[b.kind] : 0xe8dcc0, side: THREE.DoubleSide });
     const trimMat = material({ color: TIMBER });
 
@@ -886,7 +1075,7 @@ export class BuildingLayer {
     const cx = (ox0 + ox1) / 2;
     const cz = (oz0 + oz1) / 2;
     const door = b.doors[0];
-    const hearths = HEARTH[b.kind] && door ? [{ x: Math.round(b.x0 + (b.x1 - b.x0 + 1) * 0.3), y: door.y === b.y1 ? b.y0 + 1 : b.y1 - 1 }] : [];
+    const hearths = hearth && HEARTH[b.kind] && door ? [{ x: Math.round(b.x0 + (b.x1 - b.x0 + 1) * 0.3), y: door.y === b.y1 ? b.y0 + 1 : b.y1 - 1 }] : [];
     for (const p of hearths) {
       const lx = p.x + 0.5 - cx;
       const lz = p.y + 0.5 - cz;
@@ -1092,15 +1281,29 @@ function gableEndsGeometry(len: number, span: number, height: number): THREE.Buf
   return geo;
 }
 
-const RUGS: Partial<Record<BuildingKind, [string, string]>> = {
-  bank: ['#2f4f7a', '#d4a73a'],
-  store: ['#7a2f3a', '#e3c27a'],
-  inn: ['#4f5f34', '#e0d0a0'],
-  chapel: ['#6a2a3a', '#e8d8a0'],
-  keep: ['#6a1f1f', '#d4a73a'],
-  library: ['#3a2f5a', '#c8b88a'],
-  house: ['#6a4a2a', '#d0b080'],
+const RUGS: Partial<Record<BuildingKind, [string, string, string]>> = {
+  bank: ['#2f4f7a', '#d4a73a', '#8fb0d8'],
+  store: ['#7a2f3a', '#e3c27a', '#2f4a5a'],
+  inn: ['#4f5f34', '#e0d0a0', '#9a3a2a'],
+  chapel: ['#6a2a3a', '#e8d8a0', '#3a2a5a'],
+  keep: ['#6a1f1f', '#d4a73a', '#1f2f4a'],
+  library: ['#3a2f5a', '#c8b88a', '#7a4a2a'],
+  house: ['#6a4a2a', '#d0b080', '#8a3a2a'],
 };
+/** Colours for homes' rugs, picked per house. */
+const RUG_COLOURS: [string, string, string][] = [
+  ['#6a4a2a', '#d0b080', '#8a3a2a'],
+  ['#8a3a2a', '#e8c890', '#2f3a5a'],
+  ['#2f5a4a', '#d8c898', '#a04a2a'],
+  ['#4a3a6a', '#d8b870', '#6a8aa0'],
+  ['#a0703a', '#4a2a1a', '#e8d8b0'],
+  ['#2f3f5f', '#c8a050', '#a03a3a'],
+  ['#7a6a4a', '#3a2f24', '#c8b890'],
+  ['#9a4a5a', '#f0d8b0', '#3a4a3a'],
+  ['#3a5a7a', '#e0e0d0', '#c08a3a'],
+  ['#5a6a3a', '#e8d0a0', '#6a2a2a'],
+];
+const RUG_PATTERNS: RugPattern[] = ['medallion', 'stripes', 'checks', 'lattice', 'plain'];
 
 const BOOK_COLORS = [0x7a2a2a, 0x2a4a7a, 0x2f5a35, 0x6a4a2a, 0x4a2f5a, 0x8a7a3a];
 

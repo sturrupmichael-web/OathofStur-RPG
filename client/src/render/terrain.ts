@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { MapData } from '@rpg/shared';
 import type { Building } from './buildings';
-import { CITY_WALL_HEIGHT, WALL_HEIGHT, WALL_T } from './buildings';
+import { CITY_WALL_HEIGHT, WALL_HEIGHT, WALL_T, inBuilding, inRoom, outerWalls } from './buildings';
 import type { Heightmap } from './heightmap';
 import { WALL_TONES, WATER_COLORS, hash2, isBridge, isWaterKey, shade, type TileInfo } from './palette';
 
@@ -157,25 +157,26 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
     for (let y = b.y0; y <= b.y1; y++)
       for (let x = b.x0; x <= b.x1; x++) {
         const i = y * map.width + x;
-        if (x !== b.x0 && x !== b.x1 && y !== b.y0 && y !== b.y1) {
-          if (WALL_TONES[info.terrainKey[i]]) {
-            innerWalls[i] = 1;
-            // The floor runs under it from whichever room is beside it.
-            for (const [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
-              const j = (y + dy) * map.width + x + dx;
-              if (SURFACE_BY_KEY[info.terrainKey[j]] === 'planks' || info.terrainKey[j] === 'stone_floor' || info.terrainKey[j] === 'sandstone_paving') {
-                groundOf[i] = j;
-                break;
-              }
+        if (!inRoom(b, x, y)) continue;
+        if (WALL_TONES[info.terrainKey[i]]) {
+          innerWalls[i] = 1;
+          // The floor runs under it from whichever room is beside it.
+          for (const [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
+            const j = (y + dy) * map.width + x + dx;
+            if (SURFACE_BY_KEY[info.terrainKey[j]] === 'planks' || info.terrainKey[j] === 'stone_floor' || info.terrainKey[j] === 'sandstone_paving') {
+              groundOf[i] = j;
+              break;
             }
           }
-          continue;
         }
-        ownWalls[i] = 1;
-        const ox = x === b.x0 ? x - 1 : x === b.x1 ? x + 1 : x;
-        const oy = y === b.y0 ? y - 1 : y === b.y1 ? y + 1 : y;
-        if (ox >= 0 && oy >= 0 && ox < map.width && oy < map.height && !WALL_TONES[info.terrainKey[oy * map.width + ox]]) groundOf[i] = oy * map.width + ox;
       }
+    for (const { x, y, out } of outerWalls(b)) {
+      const i = y * map.width + x;
+      ownWalls[i] = 1;
+      const ox = x + out[0];
+      const oy = y + out[1];
+      if (ox >= 0 && oy >= 0 && ox < map.width && oy < map.height && !WALL_TONES[info.terrainKey[oy * map.width + ox]]) groundOf[i] = oy * map.width + ox;
+    }
   }
 
   /** Water level of the nearest water tile, if a dry tile has one beside it. */
@@ -322,7 +323,7 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
   const stakes = tiledMesh(stakeGeo, textured(textures.planks(), true), count('palisade') * 3);
   const tips = tiledMesh(tipGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), count('palisade') * 3);
   const grate = tiledMesh(new THREE.BoxGeometry(0.8, 0.06, 0.8), new THREE.MeshLambertMaterial({ color: 0xffffff, map: grateTexture() }), count('sewer_hatch'));
-  const inBuilding = (x: number, y: number) => buildings.some((b) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1);
+  const insideBuilding = (x: number, y: number) => buildings.some((b) => inBuilding(b, x, y));
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= map.width || y >= map.height ? '' : info.terrainKey[y * map.width + x]);
 
   for (let y = 0; y < map.height; y++) {
@@ -365,9 +366,9 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
       } else if (wall) {
         // Buildings are warm sandstone; town walls and ruins are cut stone.
         const city = wall.city;
-        const tone = shade(city ? wall.tone : inBuilding(x, y) ? wall.tone : 0x8a8070, 0.9 + hash2(x, y, 5) * 0.18);
+        const tone = shade(city ? wall.tone : insideBuilding(x, y) ? wall.tone : 0x8a8070, 0.9 + hash2(x, y, 5) * 0.18);
         // Freestanding building walls (ash ruins) are broken off at uneven heights.
-        const height = city ? CITY_WALL_HEIGHT : inBuilding(x, y) ? WALL_HEIGHT : 0.5 + hash2(x, y, 6) * 0.9;
+        const height = city ? CITY_WALL_HEIGHT : insideBuilding(x, y) ? WALL_HEIGHT : 0.5 + hash2(x, y, 6) * 0.9;
         const top = base + height;
         const bottom = low - 0.2;
         m.compose(new THREE.Vector3(cx, (top + bottom) / 2, cz), q.identity(), new THREE.Vector3(1, top - bottom, 1));

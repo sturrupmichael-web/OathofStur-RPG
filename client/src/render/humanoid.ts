@@ -29,7 +29,17 @@ export const BODY = {
  * layout. `headCentre` is the middle of the head from the head bone, and
  * `headScale` sizes hair and hats to fit a head of another shape.
  */
-export type BodyFrame = typeof BODY & { headCentre?: [number, number, number]; headScale?: [number, number, number] };
+export type BodyFrame = typeof BODY & {
+  headCentre?: [number, number, number];
+  headScale?: [number, number, number];
+  /**
+   * How far the head's surface is from its middle in direction `u`, for heads
+   * not shaped like the built-in egg: smoothed outward, or (`tucked`) inward.
+   */
+  headRadius?: (u: THREE.Vector3, tucked?: boolean) => number;
+  /** For capes over a sculpted body: how far its back and front reach at each height, and how high its shoulders are. */
+  torso?: { back: (y: number) => number; front: (y: number) => number; shoulderTop: number };
+};
 
 export interface BodyBones {
   hips: THREE.Bone;
@@ -88,11 +98,18 @@ function facePoint(ux: number, uy: number, lift = 0): THREE.Vector3 {
  * the unit sphere show; the rest is tucked inside the head, which gives
  * hairlines and face openings without cutting geometry.
  */
-function headShell(grow: number, keep: (u: THREE.Vector3) => boolean, shape?: (u: THREE.Vector3, p: THREE.Vector3) => void): THREE.BufferGeometry {
-  return warp(new THREE.SphereGeometry(1, 26, 18), (v) => {
+function headShell(
+  grow: number,
+  keep: (u: THREE.Vector3) => boolean,
+  shape?: (u: THREE.Vector3, p: THREE.Vector3) => void,
+  point: (u: THREE.Vector3, grow: number) => THREE.Vector3 = headPoint,
+): THREE.BufferGeometry {
+  // Finer over a sculpted head, whose shape has more to follow.
+  const fine = point !== headPoint;
+  return warp(new THREE.SphereGeometry(1, fine ? 40 : 26, fine ? 28 : 18), (v) => {
     const u = v.clone();
     const shown = keep(u);
-    const p = headPoint(u, shown ? grow : 0.86);
+    const p = point(u, shown ? grow : 0.86);
     if (shown && shape) shape(u, p);
     v.copy(p);
   });
@@ -103,7 +120,19 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   const F: BodyFrame = opts.frame ?? BODY;
   // A sculpted body (see bodyModels.ts) brings its own skin, clothes and face; only hair, hats and gear are built here.
   const own = !opts.sculpted;
-  const hs = new THREE.Vector3(...(F.headScale ?? [1, 1, 1]));
+  const R = F.headRadius;
+  // How much bigger than the built-in head this one is, along each axis.
+  const hs = R
+    ? new THREE.Vector3(R(new THREE.Vector3(1, 0, 0)) / HEAD.rx, R(new THREE.Vector3(0, 1, 0)) / HEAD.ry, R(new THREE.Vector3(0, 0, -1)) / HEAD.rz)
+    : new THREE.Vector3(...(F.headScale ?? [1, 1, 1]));
+  // A point on (or `grow` times out from) the head, from its middle: the built-in egg, or the sculpt's own shape.
+  const hp = (u: THREE.Vector3, grow = 1): THREE.Vector3 => {
+    if (!R) return headPoint(u, grow).multiply(hs);
+    const n = u.clone().normalize();
+    return n.multiplyScalar(grow < 1 ? R(n, true) * grow : R(n) * (1 + (grow - 1) * 0.8));
+  };
+  const fp = (ux: number, uy: number, lift = 0) => hp(new THREE.Vector3(ux, uy, Math.sqrt(Math.max(0, 1 - ux * ux - uy * uy)))).add(new THREE.Vector3(0, 0, lift));
+  const shell = (grow: number, keep: (u: THREE.Vector3) => boolean, shape?: (u: THREE.Vector3, p: THREE.Vector3) => void) => headShell(grow, keep, shape, hp);
   const skin = s.skin ?? SKIN;
   const bulk = s.bulk ?? 1;
   const belly = s.belly ?? 0;
@@ -318,7 +347,10 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     b.tube(
       apron.map(([py, rx, rz, z]) => {
         const gut = belly * Math.max(0, 1 - Math.abs(py - 0.73) / 0.11);
-        return ring(0, py, z + gut * 0.035 + bust(py) * 0.02, rx * bulk * figure(py) + gut * 0.02, rz * bulk + gut * 0.035 + bust(py) * 0.03, s.apron!, trunkW(py));
+        const cz = z + gut * 0.035 + bust(py) * 0.02;
+        // Over a sculpted body, out in front of its own chest.
+        const depth = Math.max(rz * bulk + gut * 0.035 + bust(py) * 0.03, F.torso ? F.torso.front(py) + 0.012 - cz : 0);
+        return ring(0, py, cz, rx * bulk * figure(py) + gut * 0.02, depth, s.apron!, trunkW(py));
       }),
       { capStart: false, capEnd: false, arc: [0, 0.3], radial: 10, weigh: (p, w) => (p.y < torsoJ - 0.02 ? skirtW(0.5)(p) : w) },
     );
@@ -392,10 +424,10 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   b.add(headGeo.translate(headC.x, headC.y, headC.z), () => skin, (p) => (p.y < headC.y - 0.06 ? blend(neck, head, (p.y - (headC.y - 0.1)) / 0.04) : [[head, 1]]));
   }
 
-  // Shells and pieces on the head, sized to its shape and moved to its middle.
-  const atHead = (geo: THREE.BufferGeometry) => geo.scale(hs.x, hs.y, hs.z).translate(headC.x, headC.y, headC.z);
+  // Shells and pieces on the head (already fitted to its shape), moved to its middle.
+  const atHead = (geo: THREE.BufferGeometry) => geo.translate(headC.x, headC.y, headC.z);
   const onHead = (geo: THREE.BufferGeometry, at: THREE.Vector3, color: number, bone = head, layer: Layer = 'cloth') => {
-    b.add(atHead(geo.translate(at.x, at.y, at.z)), () => color, () => [[bone, 1]], layer);
+    b.add(atHead(geo.scale(hs.x, hs.y, hs.z).translate(at.x, at.y, at.z)), () => color, () => [[bone, 1]], layer);
   };
   const hairColor = s.hair ?? 0x3a2a1a;
   // Hair hanging down the back follows the head, then the neck, then the shoulders.
@@ -407,7 +439,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
 
   // Face: eyes (on their own bone, to blink), brows, nose, mouth, ears.
   for (const side of own ? [-1, 1] : []) {
-    const eye = facePoint(side * 0.38, 0.06);
+    const eye = fp(side * 0.38, 0.06);
     if (s.glowEyes !== undefined) {
       if (s.bones) onHead(blob(0.02, 0.019, 0.01, 10), eye.clone().add(new THREE.Vector3(0, 0, -0.002)), 0x1a1410);
       onHead(blob(0.011, 0.009, 0.006, 8), eye.clone().add(new THREE.Vector3(0, 0, 0.004)), s.glowEyes, eyes, 'glow');
@@ -416,9 +448,9 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     onHead(blob(0.0155, 0.0105, 0.007, 10).rotateZ(side * -0.08), eye.clone().add(new THREE.Vector3(0, 0, -0.002)), 0xf4efe6, eyes);
     onHead(blob(0.0075, 0.0085, 0.004, 8), eye.clone().add(new THREE.Vector3(side * -0.001, 0, 0.004)), 0x2a2018, eyes);
     if (fem) onHead(blob(0.017, 0.003, 0.006, 8).rotateZ(side * -0.2), eye.clone().add(new THREE.Vector3(side * 0.002, 0.009, 0.003)), 0x1a1410, eyes);
-    const brow = facePoint(side * 0.4, 0.26, 0.004);
+    const brow = fp(side * 0.4, 0.26, 0.004);
     onHead(blob(0.019, fem ? 0.0032 : 0.0045, 0.006, 8).rotateZ(side * (fem ? 0.2 : 0.12)), brow, s.beard ?? hairColor);
-    const ear = headPoint(new THREE.Vector3(side * 0.98, 0.02, -0.1).normalize());
+    const ear = hp(new THREE.Vector3(side * 0.98, 0.02, -0.1).normalize());
     if (s.pointyEars) {
       const point = new THREE.ConeGeometry(0.022, 0.11, 6).translate(0, 0.055, 0).rotateZ(-side * 1.15);
       onHead(point, ear.clone().add(new THREE.Vector3(side * 0.005, 0.005, 0)), skin);
@@ -428,16 +460,16 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     // The sculpted face is already there.
   } else if (s.bones) {
     // A grin of teeth, a dark nose hole, cheekbones.
-    onHead(blob(0.032, 0.009, 0.008, 10), facePoint(0, -0.52, -0.002), 0xf4efe0);
-    onHead(blob(0.007, 0.01, 0.006, 6), facePoint(0, -0.16, -0.003), 0x1a1410);
+    onHead(blob(0.032, 0.009, 0.008, 10), fp(0, -0.52, -0.002), 0xf4efe0);
+    onHead(blob(0.007, 0.01, 0.006, 6), fp(0, -0.16, -0.003), 0x1a1410);
   } else {
     const nose = s.pointyEars
       ? capsule(0.016, 0.07, 8).rotateX(-Math.PI / 2 + 0.35)
       : warp(blob(0.012, 0.024, 0.015, 10), (p) => {
           if (p.y < 0) p.z += -p.y * 0.25;
         });
-    onHead(nose, facePoint(0, -0.17, s.pointyEars ? 0.002 : 0.006), s.pointyEars ? shade(skin, 0.92) : skin);
-    onHead(blob(0.019, fem ? 0.0055 : 0.0045, 0.006, 8), facePoint(0, -0.5, -0.001), fem ? blendHex(shade(skin, 0.72), 0xa0403a, 0.35) : shade(skin, 0.7));
+    onHead(nose, fp(0, -0.17, s.pointyEars ? 0.002 : 0.006), s.pointyEars ? shade(skin, 0.92) : skin);
+    onHead(blob(0.019, fem ? 0.0055 : 0.0045, 0.006, 8), fp(0, -0.5, -0.001), fem ? blendHex(shade(skin, 0.72), 0xa0403a, 0.35) : shade(skin, 0.7));
   }
 
   // Hair, beard and hats are shells over the head.
@@ -445,8 +477,27 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   if (!bald) {
     // Hairline: high over the forehead, over the ears, low at the nape.
     const line = (u: THREE.Vector3) => (u.z > 0 ? 0.08 + 0.42 * Math.pow(u.z, 1.3) : 0.08 + 0.62 * u.z);
-    b.add(atHead(headShell(1.08, (u) => u.y > line(u))), (p) => shade(hairColor, 0.9 + 0.1 * clamp01((p.y - headC.y) / 0.08 + 0.5)), () => [[head, 1]]);
-    if (s.hairStyle === 'long') {
+    // Long hair over a sculpted head: the back half of the shell unrolls down to the shoulders, following the head's outline.
+    const sheet = s.hairStyle === 'long' && !!R;
+    const hangsAt = (u: THREE.Vector3) => sheet && u.z < 0.08 && u.y < 0.05 && u.y > -0.92;
+    const fall = 0.27 * hs.y;
+    if (sheet) b.doubleSided();
+    b.add(
+      atHead(
+        // Under a wizard's hat on a sculpted head, hair shows only below the brim.
+        shell(1.08, (u) => (u.y > line(u) || hangsAt(u)) && !(R && s.hat === 'wizard' && hp(u).y > 0.04 * hs.y), (u, p) => {
+          if (!hangsAt(u)) return;
+          const t = (0.05 - u.y) / 0.97;
+          const round = hp(new THREE.Vector3(u.x, 0, u.z), 1.08 + 0.3 * t);
+          // Shorter toward the sides, so the ends curve round.
+          p.set(round.x, 0.05 * hs.y - t * fall * (1 - 0.35 * Math.abs(u.x) / Math.max(0.3, Math.hypot(u.x, u.z))), round.z - 0.01 * t);
+        }),
+      ),
+      (p) => shade(hairColor, 0.9 + 0.1 * clamp01((p.y - headC.y) / 0.08 + 0.5)),
+      (p) => (p.y < headC.y - 0.06 ? chain(p.y, hangs, 0.06) : [[head, 1]]),
+    );
+    b.doubleSided(false);
+    if (s.hairStyle === 'long' && !sheet) {
       // Hair down the back to the shoulders.
       b.doubleSided();
       b.tube(
@@ -458,10 +509,14 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
       );
       b.doubleSided(false);
     }
-    if (s.hairStyle === 'bun') onHead(blob(0.038, 0.034, 0.034, 12), new THREE.Vector3(0, 0.07, -0.085), hairColor);
+    if (s.hairStyle === 'bun') {
+      const dir = new THREE.Vector3(0, 0.62, -0.78).normalize();
+      onHead(blob(0.038, 0.034, 0.034, 12), hp(dir).addScaledVector(dir, 0.022 * hs.y), hairColor);
+    }
     if (s.hairStyle === 'ponytail') {
       // Tied at the back of the crown, hanging to between the shoulders.
-      onHead(blob(0.022, 0.02, 0.02, 10), new THREE.Vector3(0, 0.035, -0.09), shade(hairColor, 0.8));
+      const knot = new THREE.Vector3(0, 0.36, -0.93).normalize();
+      onHead(blob(0.022, 0.02, 0.02, 10), hp(knot).addScaledVector(knot, 0.01), shade(hairColor, 0.8));
       const tail: [number, number, number][] = [
         [headC.y + 0.04 * hs.y, 0.024, -0.095 * hs.z],
         [headC.y - 0.01 * hs.y, 0.028, -0.104 * hs.z],
@@ -481,28 +536,28 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
         const dir = new THREE.Vector3(ux, uy, uz).normalize();
         const cone = new THREE.ConeGeometry(0.019, 0.05, 6).translate(0, 0.02, 0);
         cone.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up, dir));
-        const at = headPoint(dir, 1.02);
+        const at = hp(dir, 1.02);
         b.add(atHead(cone.translate(at.x, at.y, at.z)), () => hairColor, () => [[head, 1]]);
       }
     }
   }
   if (s.beard !== undefined) {
     b.add(
-      atHead(headShell(1.07, (u) => u.y < -0.12 && u.z > -0.15 && !(u.y > -0.62 && u.y < -0.38 && Math.abs(u.x) < 0.3 && u.z > 0.5), (u, p) => {
+      atHead(shell(1.07, (u) => u.y < -0.12 && u.z > -0.15 && !(u.y > -0.62 && u.y < -0.38 && Math.abs(u.x) < 0.3 && u.z > 0.5), (u, p) => {
         if (u.y < -0.5) p.y -= 0.012 * (-u.y - 0.5) * 4;
       })),
       () => s.beard!,
       () => [[head, 1]],
     );
-    onHead(blob(0.03, 0.008, 0.01, 10), facePoint(0, -0.36, 0.004), s.beard);
+    onHead(blob(0.03, 0.008, 0.01, 10), fp(0, -0.36, 0.004), s.beard);
   }
   const hat = s.hatColor ?? 0x555555;
   if (s.hat === 'cap') {
-    b.add(atHead(headShell(1.11, (u) => u.y > 0.32 - u.z * 0.1)), () => hat, () => [[head, 1]]);
-    onHead(blob(0.066, 0.006, 0.05, 14), new THREE.Vector3(0, 0.054, 0.085), shade(hat, 0.85));
+    b.add(atHead(shell(1.11, (u) => u.y > 0.32 - u.z * 0.1)), () => hat, () => [[head, 1]]);
+    onHead(blob(0.066, 0.006, 0.05, 14), hp(new THREE.Vector3(0, 0.54, 0.84)).add(new THREE.Vector3(0, 0, 0.018 * hs.z)), shade(hat, 0.85));
   }
   if (s.hat === 'chef') {
-    b.add(atHead(headShell(1.1, (u) => u.y > 0.3)), () => hat, () => [[head, 1]]);
+    b.add(atHead(shell(1.1, (u) => u.y > 0.3)), () => hat, () => [[head, 1]]);
     b.tube(
       [0.075, 0.1, 0.13, 0.16, 0.17].map((dy, i) => ring(headC.x, headC.y + dy * hs.y, headC.z - 0.004, [0.07, 0.083, 0.095, 0.085, 0.03][i] * hs.x, [0.078, 0.09, 0.1, 0.09, 0.03][i] * hs.z, hat, [[head, 1]])),
       { radial: 16 },
@@ -510,7 +565,8 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   }
   if (s.hat === 'wizard') {
     // A tall pointed hat with a wide brim, the tip bent back a little.
-    b.add(atHead(headShell(1.1, (u) => u.y > 0.22 - u.z * 0.12)), () => hat, () => [[head, 1]]);
+    // Over a sculpted head, only under the brim: the cone covers the crown.
+    b.add(atHead(shell(1.1, (u) => u.y > 0.22 - u.z * 0.12 && (!R || hp(u).y < 0.04 * hs.y))), () => hat, () => [[head, 1]]);
     const cone: [number, number, number][] = [
       [0.045, 0.15, 0],
       [0.055, 0.092, 0],
@@ -521,26 +577,30 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
       [0.3, 0.004, -0.068],
     ];
     b.tube(
-      cone.map(([dy, r, dz], i) => ring(headC.x, headC.y + dy * hs.y, headC.z + (-0.006 + dz) * hs.z, r * hs.x, r * hs.z, i === 1 && s.trim !== undefined ? s.trim : hat, [[head, 1]])),
+      // (A sculpted head is less round, so the band sits a little wider to clear it.)
+      cone.map(([dy, r, dz], i) => {
+        const k = R && (i === 1 || i === 2) ? 1.1 : 1;
+        return ring(headC.x, headC.y + dy * hs.y, headC.z + (-0.006 + dz) * hs.z, r * hs.x * k, r * hs.z * k, i === 1 && s.trim !== undefined ? s.trim : hat, [[head, 1]]);
+      }),
       { radial: 18 },
     );
   }
   if (s.helm !== undefined) {
     // An open-faced helm with a nose guard and a rim.
     b.add(
-      atHead(headShell(1.12, (u) => u.y > -0.35 && !(u.z > 0.55 && u.y < 0.25 && Math.abs(u.x) < 0.62))),
+      atHead(shell(1.12, (u) => u.y > -0.35 && !(u.z > 0.55 && u.y < 0.25 && Math.abs(u.x) < 0.62))),
       (p) => (p.y > headC.y + 0.095 ? shade(s.helm!, 1.15) : s.helm!),
       () => [[head, 1]],
       'metal',
     );
-    onHead(new THREE.BoxGeometry(0.018, 0.075, 0.012), facePoint(0, 0.1, 0.009), s.helm, head, 'metal');
-    onHead(new THREE.BoxGeometry(0.012, 0.02, 0.15).translate(0, 0.105, -0.01), new THREE.Vector3(0, 0, 0), shade(s.helm, 0.85), head, 'metal');
+    onHead(new THREE.BoxGeometry(0.018, 0.075, 0.012), fp(0, 0.1, 0.009), s.helm, head, 'metal');
+    onHead(new THREE.BoxGeometry(0.012, 0.02, 0.15), new THREE.Vector3(0, hp(new THREE.Vector3(0, 1, 0), 1.12).y - 0.007 * hs.y, -0.01 * hs.z), shade(s.helm, 0.85), head, 'metal');
   }
   if (s.hat === 'hood') {
     // A hood over the head and down onto the shoulders, open at the face.
     b.doubleSided();
     b.add(
-      atHead(headShell(1.16, (u) => !(u.z > 0.42 && u.y < 0.55 && Math.abs(u.x) < 0.75), (u, p) => {
+      atHead(shell(1.16, (u) => !(u.z > 0.42 && u.y < 0.55 && Math.abs(u.x) < 0.75) && !(R && u.y < -0.55 && u.z > 0.1), (u, p) => {
         if (u.y < -0.3) {
           const k = (-u.y - 0.3) / 0.7;
           p.y -= k * 0.05;

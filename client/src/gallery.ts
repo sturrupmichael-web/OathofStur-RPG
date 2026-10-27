@@ -127,8 +127,10 @@ function resize() {
   camera.aspect = innerWidth / innerHeight;
   const tan = Math.tan((camera.fov * Math.PI) / 360);
   const dist = Math.max(span / 2 / tan / camera.aspect, 0.85 / tan) / zoom;
-  camera.position.set(0, 0.65 + dist * 0.25, dist);
-  camera.lookAt(0, 0.62, 0);
+  // ?aim=1.05 centres the view higher, on the heads.
+  const aim = Number(params.get('aim') ?? 0.62);
+  camera.position.set(0, aim + 0.03 + dist * 0.25, dist);
+  camera.lookAt(0, aim, 0);
   camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize);

@@ -714,14 +714,27 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
   if (s.cape) {
     const bulk = s.bulk ?? 1;
     cape = new THREE.Group();
-    const top = F.hipsY + F.waist + F.shoulderY;
-    cape.position.set(0, F.shoulderY, 0);
+    const T = F.torso;
+    // Over a sculpted body, the top edge sits on its own shoulders.
+    const lift = T ? T.shoulderTop + 0.02 - (F.hipsY + F.waist + F.shoulderY) : 0;
+    const top = F.hipsY + F.waist + F.shoulderY + lift;
+    cape.position.set(0, F.shoulderY + lift, 0);
     bones.torso.add(cape);
     // How far the back of the body reaches at each height (world y), with a little clearance.
     const back: [number, number][] = s.robe !== undefined
       ? [[0.96, 0.068], [0.9, 0.088], [0.8, 0.092], [0.72, 0.096], [0.62, 0.118], [0.45, 0.15], [0.25, 0.172], [0, 0.186]]
       : [[0.96, 0.068], [0.9, 0.088], [0.8, 0.092], [0.72, 0.096], [0.64, 0.105], [0.5, 0.122], [0, 0.124]];
-    const depth = (y: number) => {
+    const depth = (y: number): number => {
+      // A little more room at the shoulders, and more lower down, where the tunic swings.
+      // A little more room at the shoulders, and more lower down, where the tunic swings.
+      if (T) {
+        const below = top - y;
+        const room = 0.014 + 0.016 * THREE.MathUtils.clamp(1 - below / 0.15, 0, 1) + 0.03 * THREE.MathUtils.clamp(below / 0.5, 0, 1);
+        return Math.max(T.back(y) + room, s.robe !== undefined ? robeDepth(y) : 0);
+      }
+      return robeDepth(y);
+    };
+    const robeDepth = (y: number) => {
       for (let i = 1; i < back.length; i++)
         if (y >= back[i][0]) {
           const [y0, d0] = back[i - 1];
@@ -739,14 +752,15 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
       const u = pos.getX(i) * 2; // -1 .. 1 across
       const t = 0.5 - pos.getY(i); // 0 at the shoulders .. 1 at the hem
       // Narrow over the shoulders, widening down the back.
-      const half = (0.17 + 0.045 * Math.sqrt(t)) * Math.sqrt(bulk);
+      const half = T ? F.shoulderX + 0.03 + 0.045 * Math.sqrt(t) : (0.17 + 0.045 * Math.sqrt(t)) * Math.sqrt(bulk);
       const x = u * half;
       // The top edge rides up the back of the neck and drapes down over the shoulders.
       const y = -t * LEN + (1 - t) ** 3 * (0.035 - u * u * 0.055);
       const d = depth(top + y);
       // Hugs the round of the back; near the top the sides wrap forward over the shoulders.
-      const wrap = Math.max(0, 1 - t * 5);
-      const z = -d * (1 - 0.45 * u * u) + u * u * wrap * 0.09 * bulk + Math.sin(u * 7 + 0.5) * 0.006 * t;
+      // (Over a sculpted body only the very top edge, so the cloth below clears the rounded shoulders.)
+      const wrap = Math.max(0, 1 - t * (T ? 10 : 5));
+      const z = -d * (1 - (T ? 0.3 : 0.45) * u * u) + u * u * wrap * 0.09 * bulk + Math.sin(u * 7 + 0.5) * 0.006 * t;
       pos.setXYZ(i, x, y, z);
     }
     cloth.computeVertexNormals();
@@ -757,7 +771,11 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
     // A clasp at each collarbone.
     for (const side of [-1, 1]) {
       const clasp = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 6), new THREE.MeshLambertMaterial({ color: 0xd4a73a }));
-      clasp.position.set(side * 0.16 * Math.sqrt(bulk), -0.02, -depth(top) * 0.55 + 0.09 * bulk + 0.004);
+      if (T) {
+        // Where the cloth's top edge crosses the collarbone, just proud of it.
+        const u = (F.shoulderX * 0.7) / (F.shoulderX + 0.03);
+        clasp.position.set(side * F.shoulderX * 0.7, 0.035 - u * u * 0.055 - 0.004, -depth(top) * (1 - 0.3 * u * u) + u * u * 0.09 * bulk + 0.01);
+      } else clasp.position.set(side * 0.16 * Math.sqrt(bulk), -0.02, -depth(top) * 0.55 + 0.09 * bulk + 0.004);
       cape.add(clasp);
     }
   }

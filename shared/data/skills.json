@@ -30,6 +30,8 @@
     { "id": "herblore", "name": "Herblore" },
     { "id": "agility", "name": "Agility" },
     { "id": "glyphcraft", "name": "Glyphcraft" },
-    { "id": "farming", "name": "Farming" }
+    { "id": "farming", "name": "Farming" },
+    { "id": "bounty", "name": "Bounty" },
+    { "id": "homesteading", "name": "Homesteading" }
   ]
 }

@@ -1,0 +1,129 @@
+{
+  "comment": "Homesteading. The plot outside Falcrest's south gate costs plotPrice from Corwin; its gate lets only the owner through. Rooms are built once, for coins, at the level shown (the garden comes with the plot). Each build spot (x,y) holds one kind of furniture; each kind has tiers, and building a higher tier replaces the lower. Building needs a hammer and a saw carried, and the materials. use is what built furniture does: range (cook on it), altar (offer bones for altar x prayer XP; each lamp built in the room adds lampBonus x its tier), tools (take any tool from the rack you aren't carrying), rest (run energy back, and hitpoints up to the tier's share), portal (teleport to the tier's towns), pool (run energy, then prayer, then hitpoints by tier).",
+  "plotPrice": 5000,
+  "buildTicks": 3,
+  "lampBonus": 0.1,
+  "planks": [
+    { "logs": "logs", "plank": "plank", "fee": 40 },
+    { "logs": "oak_logs", "plank": "oak_plank", "fee": 120 },
+    { "logs": "yew_logs", "plank": "yew_plank", "fee": 350 }
+  ],
+  "rooms": {
+    "garden": { "name": "Garden", "level": 1, "coins": 0 },
+    "parlour": { "name": "Parlour", "level": 1, "coins": 1000 },
+    "kitchen": { "name": "Kitchen", "level": 5, "coins": 5000 },
+    "workshop": { "name": "Workshop", "level": 15, "coins": 10000 },
+    "bedroom": { "name": "Bedroom", "level": 20, "coins": 10000 },
+    "chapel": { "name": "Chapel", "level": 30, "coins": 25000 },
+    "study": { "name": "Study", "level": 40, "coins": 25000 }
+  },
+  "furniture": {
+    "chair": { "space": "Chair space", "tiers": [
+      { "name": "Crude chair", "level": 1, "xp": 60, "materials": [["plank", 2], ["steel_nails", 2]] },
+      { "name": "Wooden chair", "level": 8, "xp": 90, "materials": [["plank", 3], ["steel_nails", 2]] },
+      { "name": "Oak armchair", "level": 22, "xp": 160, "materials": [["oak_plank", 2], ["bolt_of_cloth", 1]] }
+    ] },
+    "fireplace": { "space": "Fireplace space", "tiers": [
+      { "name": "Clay hearth", "level": 3, "xp": 40, "materials": [["limestone_brick", 3]] },
+      { "name": "Stone fireplace", "level": 33, "xp": 120, "materials": [["limestone_brick", 6]] },
+      { "name": "Gilded fireplace", "level": 63, "xp": 400, "materials": [["limestone_brick", 6], ["gold_bar", 1]] }
+    ] },
+    "bookcase": { "space": "Bookcase space", "tiers": [
+      { "name": "Wooden bookcase", "level": 4, "xp": 115, "materials": [["plank", 4], ["steel_nails", 4]] },
+      { "name": "Oak bookcase", "level": 29, "xp": 240, "materials": [["oak_plank", 3]] },
+      { "name": "Yew bookcase", "level": 60, "xp": 750, "materials": [["yew_plank", 3]] }
+    ] },
+    "stove": { "space": "Stove space", "use": "range", "tiers": [
+      { "name": "Firepit", "level": 5, "xp": 60, "materials": [["limestone_brick", 2], ["steel_nails", 2]] },
+      { "name": "Iron stove", "level": 34, "xp": 150, "materials": [["steel_bar", 3]] },
+      { "name": "Grand range", "level": 50, "xp": 300, "materials": [["steel_bar", 4], ["limestone_brick", 2]] }
+    ] },
+    "larder": { "space": "Larder space", "tiers": [
+      { "name": "Wooden larder", "level": 9, "xp": 230, "materials": [["plank", 8], ["steel_nails", 8]] },
+      { "name": "Oak larder", "level": 33, "xp": 480, "materials": [["oak_plank", 6]] },
+      { "name": "Yew larder", "level": 66, "xp": 1500, "materials": [["yew_plank", 6], ["bolt_of_cloth", 2]] }
+    ] },
+    "table": { "space": "Table space", "tiers": [
+      { "name": "Wooden table", "level": 12, "xp": 115, "materials": [["plank", 4], ["steel_nails", 4]] },
+      { "name": "Oak table", "level": 32, "xp": 320, "materials": [["oak_plank", 4]] },
+      { "name": "Yew table", "level": 52, "xp": 1000, "materials": [["yew_plank", 4]] }
+    ] },
+    "tool_rack": { "space": "Tool rack space", "use": "tools", "tiers": [
+      { "name": "Tool rack", "level": 15, "xp": 60, "materials": [["plank", 2], ["steel_nails", 2]], "tools": ["hammer", "saw", "knife"] },
+      { "name": "Oak tool rack", "level": 25, "xp": 160, "materials": [["oak_plank", 2]], "tools": ["hammer", "saw", "knife", "tinderbox", "spade", "rake"] },
+      { "name": "Yew tool rack", "level": 45, "xp": 500, "materials": [["yew_plank", 2]], "tools": ["hammer", "saw", "knife", "tinderbox", "spade", "rake", "seed_dibber", "bucket", "small_net", "fishing_rod"] }
+    ] },
+    "workbench": { "space": "Workbench space", "tiers": [
+      { "name": "Wooden workbench", "level": 17, "xp": 145, "materials": [["plank", 5], ["steel_nails", 5]] },
+      { "name": "Oak workbench", "level": 32, "xp": 400, "materials": [["oak_plank", 5]] },
+      { "name": "Steel-framed bench", "level": 62, "xp": 600, "materials": [["oak_plank", 6], ["steel_bar", 4]] }
+    ] },
+    "bed": { "space": "Bed space", "use": "rest", "tiers": [
+      { "name": "Wooden bed", "level": 20, "xp": 120, "materials": [["plank", 3], ["steel_nails", 3], ["bolt_of_cloth", 2]], "heal": 0.35 },
+      { "name": "Oak bed", "level": 30, "xp": 300, "materials": [["oak_plank", 3], ["bolt_of_cloth", 2]], "heal": 0.7 },
+      { "name": "Four-poster bed", "level": 53, "xp": 900, "materials": [["yew_plank", 3], ["bolt_of_cloth", 3]], "heal": 1 }
+    ] },
+    "wardrobe": { "space": "Wardrobe space", "tiers": [
+      { "name": "Wooden wardrobe", "level": 20, "xp": 90, "materials": [["plank", 3], ["steel_nails", 3]] },
+      { "name": "Oak wardrobe", "level": 39, "xp": 240, "materials": [["oak_plank", 3]] },
+      { "name": "Yew wardrobe", "level": 63, "xp": 750, "materials": [["yew_plank", 3]] }
+    ] },
+    "altar": { "space": "Altar space", "use": "altar", "tiers": [
+      { "name": "Oak altar", "level": 30, "xp": 320, "materials": [["oak_plank", 4]], "multiplier": 2.5 },
+      { "name": "Yew altar", "level": 50, "xp": 1000, "materials": [["yew_plank", 4]], "multiplier": 3 },
+      { "name": "Gilded altar", "level": 70, "xp": 1600, "materials": [["yew_plank", 4], ["gold_bar", 2]], "multiplier": 3.5 }
+    ] },
+    "lamp": { "space": "Lamp space", "tiers": [
+      { "name": "Iron candle stand", "level": 30, "xp": 50, "materials": [["steel_bar", 1]] },
+      { "name": "Oak lamp", "level": 45, "xp": 200, "materials": [["oak_plank", 2], ["steel_bar", 1]] },
+      { "name": "Gilded lamp", "level": 65, "xp": 450, "materials": [["oak_plank", 2], ["gold_bar", 1]] }
+    ] },
+    "desk": { "space": "Desk space", "tiers": [
+      { "name": "Wooden desk", "level": 40, "xp": 120, "materials": [["plank", 4], ["steel_nails", 4]] },
+      { "name": "Oak desk", "level": 50, "xp": 320, "materials": [["oak_plank", 4]] },
+      { "name": "Yew desk", "level": 70, "xp": 1000, "materials": [["yew_plank", 4]] }
+    ] },
+    "portal": { "space": "Portal space", "use": "portal", "tiers": [
+      { "name": "Oak portal", "level": 40, "xp": 400, "materials": [["oak_plank", 3], ["steel_bar", 2]], "to": ["kelmoor"] },
+      { "name": "Yew portal", "level": 55, "xp": 1200, "materials": [["yew_plank", 3], ["steel_bar", 2]], "to": ["kelmoor", "falcrest", "brakk"] },
+      { "name": "Gilded portal", "level": 72, "xp": 2000, "materials": [["yew_plank", 3], ["gold_bar", 2]], "to": ["kelmoor", "falcrest", "brakk", "brightwater", "qadir"] }
+    ] },
+    "pool": { "space": "Pool space", "use": "pool", "tiers": [
+      { "name": "Spring pool", "level": 10, "xp": 90, "materials": [["limestone_brick", 5]] },
+      { "name": "Restoring pool", "level": 35, "xp": 300, "materials": [["limestone_brick", 8], ["steel_bar", 1]] },
+      { "name": "Ornate pool", "level": 65, "xp": 900, "materials": [["limestone_brick", 8], ["gold_bar", 2]] }
+    ] },
+    "bench": { "space": "Bench space", "tiers": [
+      { "name": "Wooden bench", "level": 1, "xp": 50, "materials": [["plank", 2], ["steel_nails", 2]] },
+      { "name": "Oak bench", "level": 18, "xp": 160, "materials": [["oak_plank", 2]] },
+      { "name": "Yew bench", "level": 48, "xp": 500, "materials": [["yew_plank", 2]] }
+    ] }
+  },
+  "portals": {
+    "kelmoor": { "name": "Kelmoor", "x": 190, "y": 116 },
+    "falcrest": { "name": "Falcrest", "x": 63, "y": 141 },
+    "brakk": { "name": "Brakk Village", "x": 145, "y": 114 },
+    "brightwater": { "name": "Brightwater", "x": 196, "y": 228 },
+    "qadir": { "name": "Qadir", "x": 313, "y": 180 }
+  },
+  "spots": {
+    "82,175": { "room": "kitchen", "kind": "stove" },
+    "80,175": { "room": "kitchen", "kind": "larder" },
+    "84,177": { "room": "kitchen", "kind": "table" },
+    "88,175": { "room": "study", "kind": "portal" },
+    "86,177": { "room": "study", "kind": "desk" },
+    "91,175": { "room": "chapel", "kind": "lamp" },
+    "92,175": { "room": "chapel", "kind": "altar" },
+    "93,175": { "room": "chapel", "kind": "lamp" },
+    "80,181": { "room": "workshop", "kind": "tool_rack" },
+    "83,183": { "room": "workshop", "kind": "workbench" },
+    "86,180": { "room": "parlour", "kind": "bookcase" },
+    "89,180": { "room": "parlour", "kind": "fireplace" },
+    "86,183": { "room": "parlour", "kind": "chair" },
+    "89,183": { "room": "parlour", "kind": "chair" },
+    "94,182": { "room": "bedroom", "kind": "bed" },
+    "91,183": { "room": "bedroom", "kind": "wardrobe" },
+    "97,179": { "room": "garden", "kind": "pool" },
+    "97,183": { "room": "garden", "kind": "bench" }
+  }
+}

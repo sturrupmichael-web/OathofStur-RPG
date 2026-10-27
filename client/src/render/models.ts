@@ -257,6 +257,8 @@ const C = (rt: number, rb: number, h: number, seg = 10) => new THREE.CylinderGeo
 
 /** Glowing parts that flicker (furnace mouth, range fire). Renderer animates them. */
 export const FLICKER = 'flicker';
+/** The homestead gate's leaf, which swings open as someone goes through. */
+export const GATE_LEAF = 'gate-leaf';
 
 /** The object on the tile at an offset, or its terrain if it has none, for props that span tiles. */
 export type NeighbourLookup = (dx: number, dy: number) => string | null;
@@ -564,14 +566,21 @@ export function buildStation(defKey: string, near: NeighbourLookup = () => null,
       break;
     }
     case 'homestead_gate': {
-      g.add(
-        mesh(C(0.08, 0.1, 1.7, 8), 0x8a8478, -0.38, 0.85, 0, { map: bricks }),
-        mesh(C(0.08, 0.1, 1.7, 8), 0x8a8478, 0.38, 0.85, 0, { map: bricks }),
-        mesh(B(0.94, 0.14, 0.18), 0x8a8478, 0, 1.75, 0, { map: bricks }),
-      );
-      const veil = mesh(B(0.66, 1.4, 0.04), 0x7fc8e8, 0, 0.78, 0, { emissive: 0x2a6a9a });
-      Object.assign(veil.material as THREE.MeshLambertMaterial, { transparent: true, opacity: 0.6 });
-      g.add(veil);
+      // A field gate in the fence: two stout posts, short rails out to the fence posts on either
+      // side, and a braced plank leaf hung from the left post (named so it can swing open).
+      const wood = 0x7a5432;
+      for (const x of [-0.46, 0.46]) g.add(mesh(B(0.14, 1.05, 0.14), wood, x, 0.42, 0, { map: planks }), mesh(new THREE.ConeGeometry(0.1, 0.12, 4).rotateY(Math.PI / 4), 0x6a4428, x, 1.0, 0));
+      for (const x of [-0.72, 0.72]) for (const y of [0.3, 0.6]) g.add(mesh(B(0.5, 0.06, 0.05), 0x8a6240, x, y, 0));
+      const leaf = new THREE.Group();
+      leaf.name = GATE_LEAF;
+      // Paler, fresher wood than the weathered fence, so the gate stands out in it.
+      for (const y of [0.2, 0.41, 0.62, 0.83]) leaf.add(mesh(B(0.8, 0.075, 0.04), 0xc29a64, 0.42, y, 0, { map: planks }));
+      for (const x of [0.06, 0.78]) leaf.add(mesh(B(0.07, 0.72, 0.045), 0xb08a56, x, 0.52, 0));
+      const brace = mesh(B(0.07, 0.9, 0.035), 0xb08a56, 0.42, 0.52, 0.01);
+      brace.rotation.z = -0.95;
+      leaf.add(brace, mesh(B(0.12, 0.05, 0.06), 0x2a2a2a, 0.04, 0.3, 0), mesh(B(0.12, 0.05, 0.06), 0x2a2a2a, 0.04, 0.7, 0), mesh(C(0.02, 0.02, 0.1, 6), 0x2a2a2a, 0.8, 0.5, 0.05));
+      leaf.position.x = -0.42;
+      g.add(leaf);
       break;
     }
     case 'cave_entrance': {

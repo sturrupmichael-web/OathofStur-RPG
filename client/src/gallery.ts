@@ -46,7 +46,7 @@ const GEAR = [
   { weapon: 'yew_longbow', helmet: 'iron_helm' },
 ];
 if (set === 'monsters') {
-  for (const kind of ['goblin', 'skeleton', 'cow', 'desert_lizard', 'scorpion', 'cave_creeper', 'crimson_swift', 'wailing_spirit', 'cinder_drake']) {
+  for (const kind of ['goblin', 'skeleton', 'cow', 'desert_lizard', 'scorpion', 'cave_creeper', 'crimson_swift', 'wailing_spirit', 'cinder_drake', 'brine_slug', 'gloom_bat', 'rockmaw', 'glare_lizard']) {
     if (CHARACTER_STYLES[kind]) {
       const rig = buildCharacter(kind, entries.length);
       entries.push({ name: kind, root: rig.root, human: rig });
@@ -94,7 +94,7 @@ addEventListener('resize', resize);
 resize();
 
 const bar = document.getElementById('bar')!;
-for (const name of ['idle', 'walk', 'fight', 'aim', 'chop', 'mine', 'smith', 'net', 'rod', 'cook', 'smelt', 'fletch', 'light', 'clean', 'mix', 'offer', 'dead']) {
+for (const name of ['idle', 'walk', 'fight', 'aim', 'chop', 'mine', 'smith', 'build', 'net', 'rod', 'cook', 'smelt', 'fletch', 'light', 'clean', 'mix', 'offer', 'dead']) {
   const b = document.createElement('button');
   b.textContent = name;
   b.className = name === anim ? 'on' : '';

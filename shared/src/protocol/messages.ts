@@ -11,7 +11,7 @@ import type { SaveData } from '../sim/save';
 import type { SkillId, SkillXp } from '../sim/skills';
 
 /** Bumped whenever a message shape changes, so client and server can refuse a mismatch. */
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 
 // ---------------------------------------------------------------------------
 // Client -> server. Intents only: the simulation validates and decides outcomes.
@@ -45,6 +45,10 @@ export type ClientMessage =
   | { type: 'closeInterface' }
   /** Make `qty` of a recipe at the open station window. */
   | { type: 'craft'; recipeId: string; qty: number }
+  /** At the open build window: build this tier of furniture, fit out the spot's room, or take down what's there. */
+  | { type: 'build'; tier: number }
+  | { type: 'buildRoom' }
+  | { type: 'removeFurniture' }
   | { type: 'bankDeposit'; slot: number; qty: number }
   | { type: 'bankDepositAll' }
   | { type: 'bankWithdraw'; index: number; qty: number }
@@ -67,7 +71,8 @@ export type ClientMessage =
   | { type: 'unequip'; slot: EquipSlot }
   | { type: 'setAttackStyle'; style: AttackStyle };
 
-export type InteractAction = 'gather' | 'take' | 'use' | 'talk' | 'offer' | 'cross' | 'inscribe' | 'farm';
+/** `build` looks at a homestead build spot; `remove` takes its furniture down; `enter` goes through the homestead gate. */
+export type InteractAction = 'gather' | 'take' | 'use' | 'talk' | 'offer' | 'cross' | 'inscribe' | 'farm' | 'build' | 'remove' | 'enter';
 
 // ---------------------------------------------------------------------------
 // Server -> client.
@@ -109,9 +114,11 @@ export interface PublicEntity {
   crossing?: { obstacle: ObstacleType; from: Point; to: Point; ms: number; fall?: boolean };
   /** Farming patches: what is growing, as the viewer's own patch. */
   patch?: PatchView;
+  /** Homestead build spots, as the viewer's own: the furniture kind, its tier (0 when empty), and whether its room is fitted out. */
+  spot?: { kind: string; tier: number; room: boolean };
 }
 
-export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith' | 'fletch' | 'light' | 'clean' | 'mix' | 'offer' | 'inscribe' | 'rake' | 'plant' | 'dig' | 'pick' | 'recall';
+export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith' | 'fletch' | 'light' | 'clean' | 'mix' | 'offer' | 'inscribe' | 'rake' | 'plant' | 'dig' | 'pick' | 'recall' | 'build';
 
 /**
  * One-off animations, sent as they happen. Players: punch, stab, slash, block, eat, death.
@@ -129,7 +136,19 @@ export type UiView =
       recipes: { id: string; output: string; outputQty: number; tool?: string; level: number; skill: SkillId; xp: number; inputs: { itemId: string; qty: number }[] }[];
     }
   /** One page of a conversation. `npcId` is who you are talking to; `speaker` says whose words these are. */
-  | { kind: 'dialogue'; npcId: EntityId; speaker: 'npc' | 'player'; name: string; text: string; options?: string[] };
+  | { kind: 'dialogue'; npcId: EntityId; speaker: 'npc' | 'player'; name: string; text: string; options?: string[] }
+  /**
+   * A homestead build spot: each tier that can go there, which one is built
+   * (0 for none), and the room it is in, with what fitting it out costs when
+   * that hasn't been done.
+   */
+  | {
+      kind: 'build';
+      title: string;
+      built: number;
+      room: { name: string; built: boolean; level: number; coins: number };
+      tiers: { name: string; level: number; xp: number; materials: { itemId: string; qty: number }[] }[];
+    };
 
 /** State only the owning player sees. */
 export interface SelfState {
@@ -163,6 +182,8 @@ export interface SelfState {
   run: boolean;
   /** The combat spell the staff casts by itself, if one is picked. */
   autocast: string | null;
+  /** Hrolf's bounty: the creature (plural, as he says it) and kills to go, and bounty points. */
+  bounty: { task?: { name: string; left: number }; points: number };
 }
 
 export type GameMessageKind = 'info' | 'warn' | 'examine' | 'quest' | 'levelup';

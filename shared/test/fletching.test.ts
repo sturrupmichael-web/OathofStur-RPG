@@ -136,6 +136,8 @@ describe('Ranged', () => {
     const sim = new Simulation({ map, seed: 3 });
     const goblin = monsters(sim, 'goblin')[0];
     const p = archer(sim, goblin, [['bronze_arrow', 1]]);
+    // Tough enough that one arrow never finishes it.
+    goblin.hp = goblin.maxHp = 100;
     sim.drain(p.id);
     sim.queueIntent(p.id, { type: 'attack', targetId: goblin.id });
     const log = watch(sim, p.id, 12);

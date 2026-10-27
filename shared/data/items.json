@@ -201,6 +201,19 @@
     { "id": "strawberry", "name": "Strawberry", "examine": "Sweet and juicy.", "value": 25, "heals": 5 },
     { "id": "watermelon", "name": "Watermelon", "examine": "Heavy, green and full of summer.", "value": 50, "heals": 7 },
     { "id": "baked_potato", "name": "Baked potato", "examine": "Fluffy inside, crispy skin.", "value": 15, "heals": 6 },
-    { "id": "cooked_sweetcorn", "name": "Cooked sweetcorn", "examine": "Buttery and golden.", "value": 20, "heals": 8 }
+    { "id": "cooked_sweetcorn", "name": "Cooked sweetcorn", "examine": "Buttery and golden.", "value": 20, "heals": 8 },
+    { "id": "contract_stone", "name": "Contract stone", "examine": "A smooth grey stone. Hold it and it tells you how your bounty is going.", "value": 30 },
+    { "id": "rock_hammer", "name": "Rock hammer", "examine": "A heavy hammer for finishing off things made of stone.", "value": 60 },
+    { "id": "salt_sack", "name": "Salt sack", "examine": "A little sack of coarse salt. Slugs hate it.", "stackable": true, "value": 6 },
+    { "id": "scent_mask", "name": "Scent mask", "examine": "A leather mask stuffed with dried herbs. It keeps the worst smells out.", "value": 180, "equip": { "slot": "helmet", "defence": 1 } },
+    { "id": "polished_shield", "name": "Polished shield", "examine": "A steel shield polished to a mirror. Look at things through it, not at them.", "value": 450, "equip": { "slot": "shield", "defence": 8, "level": 10, "magic": -4 } },
+    { "id": "bounty_helm", "name": "Bounty helm", "examine": "Hrolf's mark is stamped on the brow. Whatever you're hunting, you hunt it better.", "value": 900, "equip": { "slot": "helmet", "defence": 5, "level": 10, "magic": -2 } },
+    { "id": "plank", "name": "Plank", "examine": "A plain plank, sawn from ordinary logs.", "value": 60 },
+    { "id": "oak_plank", "name": "Oak plank", "examine": "A sturdy oak plank.", "value": 160 },
+    { "id": "yew_plank", "name": "Yew plank", "examine": "A dark, fine-grained yew plank. Fit for the best furniture.", "value": 500 },
+    { "id": "steel_nails", "name": "Steel nails", "examine": "Sharp steel nails, sold by the handful.", "stackable": true, "value": 4 },
+    { "id": "saw", "name": "Saw", "examine": "A carpenter's saw.", "value": 12 },
+    { "id": "bolt_of_cloth", "name": "Bolt of cloth", "examine": "A roll of good woven cloth, for curtains and covers.", "value": 60 },
+    { "id": "limestone_brick", "name": "Limestone brick", "examine": "A pale, square-cut brick.", "value": 30 }
   ]
 }

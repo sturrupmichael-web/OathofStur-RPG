@@ -8,7 +8,10 @@ import { paint, vertexMaterial, warp } from './skin';
  * guards) use the character rig instead; see CHARACTER_STYLES.
  */
 
-export type CreatureKind = 'cow' | 'desert_lizard' | 'scorpion' | 'cave_creeper' | 'crimson_swift' | 'cinder_drake';
+export type CreatureKind = 'cow' | 'desert_lizard' | 'scorpion' | 'cave_creeper' | 'crimson_swift' | 'cinder_drake' | 'brine_slug' | 'gloom_bat' | 'rockmaw' | 'glare_lizard';
+
+/** Creatures that fly: always on the wing, and they drop out of the air when they die. */
+const FLYING: ReadonlySet<CreatureKind> = new Set(['crimson_swift', 'gloom_bat']);
 
 interface Leg {
   hip: THREE.Group;
@@ -331,6 +334,176 @@ function swift(seed: number): CreatureRig {
 }
 
 
+/** A fat grey-green slug crusted with salt-white brine, two eyes up on stalks. Its body is three segments that ripple as it creeps. */
+/** Brine slugs are big: about knee high. */
+const SLUG_SCALE = 1.5;
+
+function slug(seed: number): CreatureRig {
+  const r = base('brine_slug', seed);
+  const skin = 0x55645a;
+  const dark = 0x3e4a42;
+  const foot = 0x7a7a6c;
+  // Wet skin, darker along the back, with a few flecks of dried brine.
+  const hide = (p: THREE.Vector3) => (p.y < -0.05 ? foot : noise(p, seed * 5.1, 40) > 0.86 ? 0xd8dcd2 : p.y > 0.05 ? dark : skin);
+  r.torso.position.y = 0.11;
+  part(r.torso, warp(rounded(0.16, 0.12, 0.2, 2.2, 22), (p) => (p.y < -0.06 ? (p.y = -0.06 - (p.y + 0.06) * 0.3) : 0)), hide);
+  let parent: THREE.Object3D = r.torso;
+  let z = -0.16;
+  for (let i = 0; i < 3; i++) {
+    const seg = pivot(parent, 0, -0.01 * i, z);
+    const rr = 0.145 - i * 0.03;
+    part(seg, warp(rounded(rr, rr * 0.75, 0.15, 2.2, 18), (p) => (p.y < -rr * 0.5 ? (p.y = -rr * 0.5 - (p.y + rr * 0.5) * 0.3) : 0)), hide, 0, -0.01 * i, -0.08);
+    r.tail.push(seg);
+    parent = seg;
+    z = -0.13;
+  }
+  // A frilled skirt along the foot.
+  part(r.torso, warp(new THREE.TorusGeometry(0.17, 0.025, 6, 28).rotateX(Math.PI / 2).scale(1, 1, 1.9), (p) => (p.y += Math.sin(Math.atan2(p.z, p.x) * 9) * 0.008)), foot, 0, -0.085, -0.17);
+  r.head.position.set(0, 0.0, 0.17);
+  part(r.head, rounded(0.11, 0.09, 0.1, 2.2, 18), hide);
+  for (const side of [-1, 1]) {
+    const stalk = pivot(r.head, side * 0.045, 0.06, 0.04);
+    stalk.rotation.set(-0.35, 0, -side * 0.3);
+    part(stalk, limb(0.16, 0.014, 0.01, 8).rotateX(Math.PI), skin);
+    part(stalk, new THREE.SphereGeometry(0.024, 12, 8), 0x1a1a14, 0, 0.18, 0, 0, true);
+    r.arms.push(stalk);
+  }
+  for (const side of [-1, 1]) part(r.head, limb(0.05, 0.01, 0.008, 6).rotateX(-Math.PI / 2 - 0.4), skin, side * 0.05, -0.03, 0.08);
+  r.body.scale.setScalar(SLUG_SCALE);
+  return r;
+}
+
+/** A leathery bat the size of a dog: broad ragged wings on finger bones, big ears, a sour green haze about it. */
+function bat(seed: number): CreatureRig {
+  const r = base('gloom_bat', seed);
+  const fur = 0x3e3448;
+  const membrane = 0x5a4a5e;
+  r.torso.position.y = 0.95;
+  part(r.torso, rounded(0.1, 0.1, 0.15, 2, 18), (p) => (noise(p, seed, 50) > 0.6 ? 0x2e2636 : fur));
+  r.head.position.set(0, 0.05, 0.15);
+  part(r.head, warp(rounded(0.075, 0.07, 0.08, 2.2, 16), (p) => (p.z > 0.04 ? (p.y *= 0.8) : 0)), fur);
+  part(r.head, rounded(0.035, 0.028, 0.03, 2, 10), 0x6a5060, 0, -0.015, 0.075);
+  for (const side of [-1, 1]) {
+    part(r.head, horn(0.035, 0.12, -0.02).rotateZ(-side * 0.35), 0x4a3e54, side * 0.045, 0.05, -0.01);
+    part(r.head, new THREE.SphereGeometry(0.014, 10, 8), 0xc8ff6a, side * 0.032, 0.02, 0.06, 0x3a6a00, true);
+    part(r.head, horn(0.006, 0.035, 0).rotateX(Math.PI), 0xf0ead8, side * 0.012, -0.04, 0.085);
+  }
+  for (const side of [-1, 1]) {
+    const wing = pivot(r.torso, side * 0.08, 0.04, 0.02);
+    // A membrane between three long finger bones, its trailing edge scalloped.
+    const tips: [number, number][] = [[0.48, 0.08], [0.5, -0.1], [0.36, -0.2], [0.16, -0.18]];
+    const pts = [new THREE.Vector2(0, 0.05), new THREE.Vector2(0.22, 0.1)];
+    for (let k = 0; k < tips.length; k++) {
+      pts.push(new THREE.Vector2(...tips[k]));
+      if (k < tips.length - 1) pts.push(new THREE.Vector2((tips[k][0] + tips[k + 1][0]) / 2 - 0.08, (tips[k][1] + tips[k + 1][1]) / 2 + 0.01));
+    }
+    pts.push(new THREE.Vector2(0, -0.1));
+    const geo = new THREE.ShapeGeometry(new THREE.Shape(pts)).rotateX(-Math.PI / 2);
+    if (side < 0) geo.scale(-1, 1, 1);
+    const m = new THREE.Mesh(paint(geo, (p) => (Math.abs(p.x) > 0.3 ? shadeHex(membrane, 0.75) : membrane)), vertexMaterial('cloth', true));
+    m.castShadow = true;
+    wing.add(m);
+    for (const [x, zz] of tips.slice(0, 3)) {
+      const len = Math.hypot(x, zz);
+      const bone = new THREE.Mesh(limb(len, 0.012, 0.005, 6).rotateZ(Math.PI / 2).rotateY(Math.atan2(zz, x) * -1 * (side < 0 ? -1 : 1)), mat(0x2a2230));
+      if (side < 0) bone.rotation.y = Math.PI;
+      wing.add(bone);
+    }
+    r.arms.push(wing);
+  }
+  for (const side of [-1, 1]) part(r.torso, limb(0.07, 0.016, 0.01, 6), fur, side * 0.04, -0.08, -0.08);
+  // The haze: a few faint green puffs that drift about it.
+  for (let k = 0; k < 3; k++) {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.06 + k * 0.02, 10, 8), shared(new THREE.MeshBasicMaterial({ color: 0x6a7a3a, transparent: true, opacity: 0.09, depthWrite: false })));
+    puff.position.set(Math.cos(k * 2.1) * 0.12, -0.05 + k * 0.05, Math.sin(k * 2.1) * 0.12);
+    puff.name = 'haze';
+    r.torso.add(puff);
+  }
+  return r;
+}
+
+/** A boulder that walks: lumpy mossy stone over four stubby legs, a wide stone jaw and two ember eyes. */
+function rockmaw(seed: number): CreatureRig {
+  const r = base('rockmaw', seed);
+  const stone = 0x7a756c;
+  const moss = 0x5a7a3a;
+  const rocky = (p: THREE.Vector3) => (p.y > 0.12 && noise(p, seed * 2.3, 11) > 0.62 ? moss : mix(stone, 0x5a564e, noise(p, seed, 18)));
+  const lump = (rx: number, ry: number, rz: number) =>
+    warp(new THREE.IcosahedronGeometry(1, 3), (p) => {
+      const n = 1 + (noise(p, seed * 1.7, 3.2) - 0.5) * 0.35;
+      p.set(p.x * rx * n, p.y * ry * n, p.z * rz * n);
+    });
+  r.torso.position.y = 0.36;
+  // The upper shell is the head, so a bite tips it back and the jaw drops.
+  part(r.torso, lump(0.3, 0.16, 0.3), rocky, 0, -0.06, -0.02);
+  r.head.position.set(0, 0.0, 0.06);
+  part(r.head, lump(0.34, 0.24, 0.32), rocky, 0, 0.12, -0.06);
+  for (const side of [-1, 1]) {
+    part(r.head, new THREE.SphereGeometry(0.03, 10, 8), 0xffa040, side * 0.11, 0.12, 0.24, 0xc05000, true);
+    part(r.head, rounded(0.06, 0.02, 0.04, 2, 10).rotateZ(side * 0.3), 0x5a564e, side * 0.11, 0.17, 0.23);
+  }
+  for (let k = 0; k < 6; k++) part(r.head, horn(0.022, 0.06, 0.01).rotateX(Math.PI), 0xd8d0b8, -0.2 + k * 0.08, -0.01, 0.2 - Math.abs(k - 2.5) * 0.02);
+  const jaw = pivot(r.torso, 0, -0.06, 0.02);
+  part(jaw, warp(lump(0.3, 0.09, 0.26), (p) => (p.y = Math.min(p.y, 0.02))), rocky, 0, -0.02, 0.06);
+  for (let k = 0; k < 5; k++) part(jaw, horn(0.02, 0.05, -0.01), 0xd8d0b8, -0.16 + k * 0.08, 0.0, 0.26 - Math.abs(k - 2) * 0.025);
+  r.jaw = jaw;
+  for (const [x, z, offset] of [[-0.2, 0.14, 0], [0.2, 0.14, Math.PI], [-0.2, -0.16, Math.PI], [0.2, -0.16, 0]] as const) {
+    const hip = pivot(r.torso, x, -0.16, z);
+    part(hip, limb(0.12, 0.07, 0.06, 10), stone);
+    part(hip, rounded(0.08, 0.04, 0.09, 2.6, 12), 0x5a564e, 0, -0.17, 0.02);
+    r.legs.push({ hip, knee: null, side: Math.sign(x), offset, splay: 0 });
+  }
+  return r;
+}
+
+/** A big teal lizard with a spined back, a frill about its neck and great lamp-bright eyes. */
+function glareLizard(seed: number): CreatureRig {
+  const r = base('glare_lizard', seed);
+  const skin = 0x3a8a7a;
+  const band = 0x1e5a52;
+  const belly = 0xc8d8a0;
+  const scales = (p: THREE.Vector3) => (p.y < -0.015 ? belly : Math.sin(p.z * 26 + Math.abs(p.x) * 30) > 0.5 && p.y > 0.02 ? band : skin);
+  r.body.scale.setScalar(1.45);
+  r.torso.position.y = 0.17;
+  part(r.torso, warp(rounded(0.13, 0.075, 0.32, 2.3, 24), (p) => (p.x *= 1 - 0.3 * Math.abs(p.z / 0.32) ** 2)), scales);
+  for (let k = 0; k < 7; k++) part(r.torso, horn(0.018, 0.06 - Math.abs(k - 3) * 0.008, -0.015), 0xd86a3a, 0, 0.06, 0.2 - k * 0.07);
+  r.head.position.set(0, 0.03, 0.3);
+  const skull = warp(rounded(0.08, 0.05, 0.14, 2.4, 18), (p) => {
+    const front = Math.max(0, p.z / 0.14);
+    p.x *= 1 - 0.4 * front;
+    p.y *= 1 - 0.3 * front;
+  });
+  part(r.head, skull, (p) => (Math.abs(p.y + 0.004) < 0.004 && p.z > 0 ? 0x10261e : p.y < -0.01 ? belly : skin), 0, 0, 0.1);
+  // The frill: a fan of skin behind the head, ribbed and bright at the edge.
+  const frill = warp(new THREE.CylinderGeometry(0.2, 0.08, 0.02, 24, 1, false, -Math.PI * 0.85, Math.PI * 1.7).rotateX(Math.PI / 2), (p) => (p.z += Math.sin(Math.atan2(p.y, p.x) * 10) * 0.008));
+  part(r.head, frill, (p) => (Math.hypot(p.x, p.y) > 0.16 ? 0xe8a03a : Math.sin(Math.atan2(p.y, p.x) * 10) > 0.4 ? band : 0x5aaa8a), 0, 0.02, 0.02);
+  for (const side of [-1, 1]) {
+    part(r.head, new THREE.SphereGeometry(0.032, 14, 10), 0xfff070, side * 0.055, 0.035, 0.07, 0xd0a000, true);
+    part(r.head, new THREE.SphereGeometry(0.012, 8, 6).scale(0.4, 1.2, 1), 0x111111, side * 0.08, 0.036, 0.085);
+  }
+  for (const [x, z, offset] of [[-1, 0.2, 0], [1, 0.2, Math.PI], [-1, -0.18, Math.PI], [1, -0.18, 0]] as const) {
+    const hip = pivot(r.torso, x * 0.11, 0, z);
+    hip.rotation.z = x * 1.1;
+    part(hip, limb(0.14, 0.036, 0.026), skin);
+    const knee = pivot(hip, 0, -0.14);
+    knee.rotation.z = -x * 1.4;
+    part(knee, limb(0.1, 0.026, 0.018), skin);
+    for (const t of [-1, 0, 1]) part(knee, horn(0.008, 0.04, 0.01).rotateX(Math.PI / 2 + 0.3).rotateY(t * 0.4), 0x2a2a20, t * 0.012, -0.115, 0.02);
+    r.legs.push({ hip, knee, side: x, offset, splay: x * 1.1 });
+  }
+  let parent: THREE.Object3D = r.torso;
+  let z = -0.29;
+  for (let i = 0; i < 5; i++) {
+    const seg = pivot(parent, 0, 0, z);
+    const len = 0.17 - i * 0.018;
+    part(seg, along(len, 0.065 - i * 0.011, 0.054 - i * 0.011), (p) => (p.y < -0.02 + i * 0.004 ? belly : Math.sin(p.z * 26 + i) > 0.5 ? band : skin));
+    r.tail.push(seg);
+    parent = seg;
+    z = -len;
+  }
+  return r;
+}
+
 /**
  * The Cinder Drake: a coal-dark drake twice a man's height, with glowing
  * cracks along its flanks, a long neck, folded wings and a spaded tail.
@@ -477,6 +650,10 @@ const BUILDERS: Record<CreatureKind, (seed: number) => CreatureRig> = {
   cave_creeper: creeper,
   crimson_swift: swift,
   cinder_drake: drake,
+  brine_slug: slug,
+  gloom_bat: bat,
+  rockmaw,
+  glare_lizard: glareLizard,
 };
 
 export function isCreature(defKey: string): defKey is CreatureKind {
@@ -511,7 +688,7 @@ export function creatureBusy(rig: CreatureRig, now: number): boolean {
 /** Gait, idle motion, attacks and death for every creature kind. */
 export function animateCreature(rig: CreatureRig, dt: number, now: number, moving: boolean, speed = 1, fighting = false, dead = false): void {
   rig.walk += ((moving ? 1 : 0) - rig.walk) * Math.min(1, dt * 8);
-  const stride = rig.kind === 'cinder_drake' ? 1.5 : rig.kind === 'cow' ? 1.2 : 0.6; // seconds per cycle: little legs scurry
+  const stride = rig.kind === 'cinder_drake' ? 1.5 : rig.kind === 'cow' || rig.kind === 'brine_slug' ? 1.2 : rig.kind === 'rockmaw' ? 0.9 : 0.6; // seconds per cycle: little legs scurry
   if (rig.walk > 0.01) rig.phase += (dt * Math.PI * 2 * speed) / stride;
   if (rig.kind === 'cinder_drake') return animateDrake(rig, dt, now, fighting, dead);
   const w = rig.walk;
@@ -547,12 +724,29 @@ export function animateCreature(rig: CreatureRig, dt: number, now: number, movin
     rig.tail.forEach((seg, i) => (seg.rotation.x = -0.55 - (fighting ? 0.1 : 0) + Math.sin(t * 1.5 + i) * 0.03));
     rig.arms.forEach((arm, k) => (arm.rotation.x = Math.sin(t * 3 + k) * 0.08));
   }
-  if (rig.kind === 'crimson_swift') {
-    // Always on the wing: fast flaps, bobbing flight.
-    const flap = Math.sin(t * 22) * 0.9;
+  if (FLYING.has(rig.kind)) {
+    // Always on the wing: fast flaps for the swift, slow deep beats for the bat, and a bobbing flight.
+    const bat = rig.kind === 'gloom_bat';
+    const flap = bat ? Math.sin(t * 9) * 0.75 + 0.15 : Math.sin(t * 22) * 0.9;
     rig.arms.forEach((wing, k) => (wing.rotation.z = (k === 0 ? -1 : 1) * flap));
-    rig.body.position.y = Math.sin(t * 2.4) * 0.08;
+    rig.body.position.y = Math.sin(t * (bat ? 1.6 : 2.4)) * (bat ? 0.12 : 0.08) - (bat ? Math.sin(t * 9) * 0.03 : 0);
     rig.torso.rotation.x = -0.15 * w;
+    if (bat) rig.torso.children.forEach((c, k) => c.name === 'haze' && c.position.set(Math.cos(t * 0.7 + k * 2.1) * 0.14, -0.05 + k * 0.05 + Math.sin(t + k) * 0.03, Math.sin(t * 0.7 + k * 2.1) * 0.14));
+  }
+  if (rig.kind === 'brine_slug') {
+    // Creeping: waves run back along the body; the eye stalks wave about.
+    const crawl = rig.phase;
+    rig.tail.forEach((seg, i) => {
+      seg.scale.set(1, 1 + Math.sin(crawl - i * 1.3) * 0.08 * w, 1 + Math.sin(crawl - i * 1.3 + 1) * 0.1 * w);
+      seg.rotation.y = Math.sin(t * 0.8 - i * 0.7) * 0.12;
+    });
+    rig.torso.scale.z = 1 + Math.sin(crawl) * 0.06 * w;
+    rig.arms.forEach((stalk, k) => (stalk.rotation.x = rest(stalk, 'x') + Math.sin(t * 1.3 + k * 2) * 0.25));
+  }
+  if (rig.kind === 'rockmaw') {
+    // A rolling, heavy walk, and the jaw working idly.
+    rig.torso.rotation.z = Math.sin(rig.phase) * 0.06 * w;
+    if (rig.jaw) rig.jaw.rotation.x = Math.max(0, Math.sin(t * 0.9)) * 0.08 * idle;
   }
   if (rig.kind === 'cave_creeper') rig.torso.position.y = 0.3 + (fighting ? Math.sin(t * 6) * 0.015 : 0);
 
@@ -579,9 +773,10 @@ export function animateCreature(rig: CreatureRig, dt: number, now: number, movin
         rig.body.position.y -= 0.35 * k;
         rig.torso.rotation.x = 0.5 * k;
       } else {
-        // Bite: a quick lunge with the head snapping down.
+        // Bite: a quick lunge with the head snapping down (a rockmaw opens its stone jaw instead).
         rig.body.position.z = 0.15 * k;
-        rig.head.rotation.x = 0.35 * k;
+        rig.head.rotation.x = rig.kind === 'rockmaw' ? -0.4 * k : 0.35 * k;
+        if (rig.jaw) rig.jaw.rotation.x = 0.55 * k;
         rig.arms.forEach((arm, i) => (arm.rotation.y += (i === 0 ? -1 : 1) * 0.3 * k));
       }
     }
@@ -591,11 +786,22 @@ export function animateCreature(rig: CreatureRig, dt: number, now: number, movin
   rig.fallen += ((dead ? 1 : 0) - rig.fallen) * Math.min(1, dt * (dead ? 4 : 8));
   if (rig.fallen > 0.001) {
     const f = rig.fallen;
-    rig.body.rotation.z = (Math.PI / 2) * f * (rig.kind === 'cow' ? 1 : 1.9);
-    rig.body.position.y += rig.kind === 'crimson_swift' ? -0.85 * f : rig.kind === 'cow' ? 0.25 * f : 0.05 * f;
+    if (rig.kind === 'brine_slug') {
+      // A slug doesn't roll over: it shrivels flat.
+      rig.body.scale.set(SLUG_SCALE * (1 + 0.15 * f), SLUG_SCALE * (1 - 0.65 * f), SLUG_SCALE * (1 - 0.2 * f));
+    } else if (rig.kind === 'rockmaw') {
+      // A rockmaw cracks and settles, just a rock again.
+      rig.body.position.y -= 0.18 * f;
+      rig.head.rotation.x = -0.15 * f;
+      if (rig.jaw) rig.jaw.rotation.x = 0.1 * f;
+    } else rig.body.rotation.z = (Math.PI / 2) * f * (rig.kind === 'cow' ? 1 : 1.9);
+    rig.body.position.y += FLYING.has(rig.kind) ? -0.85 * f : rig.kind === 'cow' ? 0.25 * f : rig.kind === 'brine_slug' || rig.kind === 'rockmaw' ? 0 : 0.05 * f;
     rig.legs.forEach((leg) => (leg.hip.rotation.x = 0.4 * f));
-    if (rig.kind === 'crimson_swift') rig.arms.forEach((wing, k) => (wing.rotation.z = (k === 0 ? -1 : 1) * 0.2 * f));
-  } else rig.body.rotation.z = 0;
+    if (FLYING.has(rig.kind)) rig.arms.forEach((wing, k) => (wing.rotation.z = (k === 0 ? -1 : 1) * 0.2 * f));
+  } else {
+    rig.body.rotation.z = 0;
+    if (rig.kind === 'brine_slug') rig.body.scale.setScalar(SLUG_SCALE);
+  }
 }
 
 /** Rest angle of a part, remembered the first time it's animated. */

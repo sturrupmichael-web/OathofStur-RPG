@@ -1,4 +1,5 @@
 import {
+  FURNITURE,
   ITEMS,
   JsonMapSource,
   MAX_LEVEL,
@@ -16,6 +17,8 @@ import {
   packStations,
   shopForNpc,
   type EntityId,
+  type FurnitureUse,
+  type InteractAction,
   type JsonMapFile,
   type MapSource,
   type Point,
@@ -247,11 +250,15 @@ async function start(): Promise<void> {
     }),
   );
 
+  /** What built homestead furniture does, as its left-click. */
+  const FURNITURE_LABELS: Record<FurnitureUse, string> = { range: 'Cook-on', altar: 'Offer-bones', tools: 'Take-tools', rest: 'Rest', portal: 'Enter', pool: 'Drink-from' };
+
   /** The left-click action on an entity, if it has one besides walking. */
   const primaryAction = (e: PublicEntity | undefined): { label: string; run: () => void } | null => {
     if (!e) return null;
     if (e.kind === 'monster') return e.dead ? null : { label: 'Attack', run: () => server.send({ type: 'attack', targetId: e.id }) };
     const use = (action: 'gather' | 'take' | 'use' | 'talk') => () => server.send({ type: 'interact', targetId: e.id, action });
+    const use_ = (action: InteractAction) => () => server.send({ type: 'interact', targetId: e.id, action });
     if (e.kind === 'item') return { label: 'Take', run: use('take') };
     const data = e.kind === 'resource' && e.defKey ? RESOURCE_DATA[e.defKey] : undefined;
     if (data && !e.depleted) return { label: GATHER_LABELS[data.verb], run: use('gather') };
@@ -260,6 +267,12 @@ async function start(): Promise<void> {
     if (obstacle) return { label: OBSTACLE_KINDS[obstacle.type].verb, run: () => server.send({ type: 'interact', targetId: e.id, action: 'cross' }) };
     if (e.defKey === 'glyph_shrine') return { label: 'Inscribe', run: () => server.send({ type: 'interact', targetId: e.id, action: 'inscribe' }) };
     if (e.patch) return { label: patchAction(e), run: () => server.send({ type: 'interact', targetId: e.id, action: 'farm' }) };
+    if (e.defKey === 'homestead_gate') return { label: 'Open', run: () => server.send({ type: 'interact', targetId: e.id, action: 'enter' }) };
+    if (e.spot) {
+      const use = e.spot.tier ? FURNITURE[e.spot.kind]?.use : undefined;
+      if (use) return { label: FURNITURE_LABELS[use], run: use === 'altar' ? use_('offer') : use_('use') };
+      return { label: 'Build', run: use_('build') };
+    }
     const npcAction = e.kind === 'npc' && e.defKey ? NPC_ACTIONS[e.defKey] : undefined;
     if (npcAction) return { label: npcAction, run: use('use') };
     if (e.kind === 'npc') return { label: 'Talk-to', run: use('talk') };
@@ -403,6 +416,13 @@ async function start(): Promise<void> {
       if (e?.kind === 'station' && e.defKey === 'altar') {
         options.push({ label: 'Offer-bones', target, action: () => server.send({ type: 'interact', targetId: e.id, action: 'offer' }) });
       }
+      // Built furniture: pray at a homestead altar, look at what else could go there, or take it down.
+      if (e?.spot?.tier) {
+        const act = (label: string, action: InteractAction) => options.push({ label, target, action: () => server.send({ type: 'interact', targetId: e.id, action }) });
+        if (FURNITURE[e.spot.kind]?.use === 'altar') act('Pray', 'use');
+        if (primary?.label !== 'Build') act('Build', 'build');
+        act('Remove', 'remove');
+      }
       if (e?.kind === 'npc' && primary?.label !== 'Talk-to') {
         options.push({ label: 'Talk-to', target, action: () => server.send({ type: 'interact', targetId: e.id, action: 'talk' }) });
       }
@@ -470,6 +490,7 @@ async function start(): Promise<void> {
         if (item?.bury) use.unshift({ label: stack.itemId === 'ashes' ? 'Scatter' : 'Bury', target: name, action: () => server.send({ type: 'bury', slot }) });
         if (item?.clean) use.unshift({ label: 'Clean', target: name, action: () => server.send({ type: 'clean', slot }) });
         if (item?.drink) use.unshift({ label: 'Drink', target: name, action: () => server.send({ type: 'drink', slot }) });
+        if (stack.itemId === 'contract_stone') use.unshift({ label: 'Check', target: name, action: () => server.send({ type: 'useItem', slot }) });
         const pickUp = { label: 'Use', target: name, action: () => ((using = { slot, itemId: stack.itemId, name }), hud.setUsing(slot)) };
         hud.showMenu(x, y, [...use, pickUp, { label: 'Drop', target: name, action: () => server.send({ type: 'invDrop', slot }) }, examine]);
       }
@@ -530,6 +551,9 @@ async function start(): Promise<void> {
     buy: (itemId, qty) => server.send({ type: 'shopBuy', itemId, qty }),
     craft: (recipeId, qty) => server.send({ type: 'craft', recipeId, qty }),
     examine: (itemId) => hud.addMessage(ITEMS[itemId]?.examine ?? '', 'examine'),
+    build: (tier) => server.send({ type: 'build', tier }),
+    buildRoom: () => server.send({ type: 'buildRoom' }),
+    removeFurniture: () => server.send({ type: 'removeFurniture' }),
   };
 
   hud.dialogueHandlers = {

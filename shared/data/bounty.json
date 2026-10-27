@@ -1,0 +1,26 @@
+{
+  "comment": "Bounty tasks Hrolf hands out. A task is open to anyone whose combat level is from minCombat to maxCombat (no top when left out) and whose Bounty level is at least the creature's bounty level (monsters.json). count is [min, max] kills. Every kill on task gives xpPerHp Bounty XP for each of the creature's hitpoints. A finished task gives points, and every tenth one milestonePoints instead. Skipping costs skipCost points. The helm bonus raises attack and strength (or magic) levels against the task creature while the bounty helm is worn.",
+  "xpPerHp": 2,
+  "points": 10,
+  "milestonePoints": 50,
+  "skipCost": 30,
+  "helmBonus": 0.15,
+  "rewards": [
+    { "item": "bounty_helm", "points": 120 }
+  ],
+  "tasks": [
+    { "monster": "crimson_swift", "name": "crimson swifts", "minCombat": 1, "maxCombat": 15, "count": [10, 20], "weight": 6 },
+    { "monster": "goblin", "name": "goblins", "minCombat": 1, "maxCombat": 25, "count": [10, 20], "weight": 8 },
+    { "monster": "cow", "name": "cows", "minCombat": 1, "maxCombat": 20, "count": [10, 20], "weight": 6 },
+    { "monster": "desert_lizard", "name": "desert lizards", "minCombat": 10, "maxCombat": 45, "count": [12, 25], "weight": 7 },
+    { "monster": "scorpion", "name": "scorpions", "minCombat": 12, "maxCombat": 50, "count": [12, 25], "weight": 7 },
+    { "monster": "storm_druid", "name": "storm druids", "minCombat": 14, "count": [10, 20], "weight": 5 },
+    { "monster": "brine_slug", "name": "brine slugs", "minCombat": 8, "count": [12, 25], "weight": 8 },
+    { "monster": "gloom_bat", "name": "gloom bats", "minCombat": 16, "count": [12, 25], "weight": 8 },
+    { "monster": "skeleton", "name": "skeletons", "minCombat": 18, "count": [15, 30], "weight": 7 },
+    { "monster": "cave_creeper", "name": "cave creepers", "minCombat": 20, "count": [15, 30], "weight": 7 },
+    { "monster": "desert_bandit", "name": "desert bandits", "minCombat": 22, "count": [15, 30], "weight": 6 },
+    { "monster": "rockmaw", "name": "rockmaws", "minCombat": 24, "count": [15, 30], "weight": 8 },
+    { "monster": "glare_lizard", "name": "glare lizards", "minCombat": 30, "count": [15, 30], "weight": 8 }
+  ]
+}

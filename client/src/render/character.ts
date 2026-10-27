@@ -109,6 +109,31 @@ function shadeHex(hex: number, k: number): number {
 }
 
 export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
+  hrolf: {
+    tunic: 0x5a3e26,
+    trim: 0x2a1c10,
+    trousers: 0x3a3026,
+    boots: 0x22180e,
+    belt: 0x2a1c10,
+    buckle: 0xb8bcc4,
+    pouch: 0x7a5230,
+    cape: 0x3b3f2a,
+    hair: 0x8a8a84,
+    hairStyle: 'short',
+    beard: 0x8a8a84,
+    bulk: 1.12,
+  },
+  corwin: {
+    tunic: 0x2f5a4a,
+    trim: 0xd8c890,
+    trousers: 0x2a2a30,
+    boots: 0x1a1a1a,
+    belt: 0x2a1c10,
+    buckle: 0xd4a73a,
+    hair: 0xa0703a,
+    hairStyle: 'short',
+    holding: 'scroll',
+  },
   player: {
     tunic: 0x2f5fb3,
     trim: 0xd4a73a,
@@ -941,6 +966,7 @@ const ACTIVITY_TOOL: Record<string, string | undefined> = {
   chop: 'axe',
   mine: 'pickaxe',
   smith: 'hammer',
+  build: 'hammer',
   net: 'net',
   rod: 'rod',
   cook: 'pan',
@@ -1023,6 +1049,28 @@ const ACTIVITIES: Record<string, { period: number; pose: (u: number) => Pose }> 
     pose: (u) => {
       const lift = swing(u, 0.55);
       return { shoulderRx: -0.85 - 0.75 * lift, elbowR: -0.7 - 0.5 * lift, shoulderRz: 0.12, shoulderLx: -0.75, elbowL: -0.85, torsoX: 0.28, headX: 0.25 };
+    },
+  },
+  // Building: down on one knee, the other hand steadying the work, nailing with a few quick taps then a breath.
+  build: {
+    period: 1400,
+    pose: (u) => {
+      const tap = u < 0.75 ? swing((u / 0.25) % 1, 0.55) : 0.2;
+      return {
+        shoulderRx: -0.7 - 0.85 * tap,
+        elbowR: -0.55 - 0.55 * tap,
+        shoulderRz: 0.1,
+        shoulderLx: -0.95,
+        elbowL: -0.55,
+        shoulderLz: -0.15,
+        torsoX: 0.32,
+        hipsY: -0.16,
+        hipL: -0.35,
+        hipR: -1.45,
+        kneeL: 1.45,
+        kneeR: 1.5,
+        headX: 0.3,
+      };
     },
   },
   // Net: crouched at the water's edge, sweeping the net side to side.

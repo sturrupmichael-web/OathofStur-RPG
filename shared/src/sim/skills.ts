@@ -18,7 +18,9 @@ export type SkillId =
   | 'herblore'
   | 'agility'
   | 'glyphcraft'
-  | 'farming';
+  | 'farming'
+  | 'bounty'
+  | 'homesteading';
 
 export interface SkillInfo {
   id: SkillId;

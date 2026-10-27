@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CHARACTER_STYLES, animateCharacter, buildCharacter, playCharacter, withGear, type CharacterRig } from './render/character';
+import { hasAiModel } from './render/aiModels';
 import { animateCreature, buildCreature, playCreature, type CreatureKind, type CreatureRig } from './render/creatures';
 
 /**
@@ -57,9 +58,9 @@ if (set === 'monsters') {
     } else {
       const rig = buildCreature(kind as CreatureKind, entries.length);
       entries.push({ name: kind, root: rig.root, creature: rig });
-      // The built-in model beside the AI-made one, to compare.
-      if (kind === 'cinder_drake') {
-        const old = buildCreature(kind, entries.length, true);
+      // The built-in model beside each AI-made one, to compare.
+      if (hasAiModel(kind as CreatureKind)) {
+        const old = buildCreature(kind as CreatureKind, entries.length, true);
         entries.push({ name: `${kind}_classic`, root: old.root, creature: old });
       }
     }

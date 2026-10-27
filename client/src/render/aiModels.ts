@@ -1,7 +1,16 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { shared } from './dispose';
+import brineSlugGlb from './models/brine_slug.glb?inline';
+import caveCreeperGlb from './models/cave_creeper.glb?inline';
+import cowGlb from './models/cow.glb?inline';
+import crimsonSwiftGlb from './models/crimson_swift.glb?inline';
+import desertLizardGlb from './models/desert_lizard.glb?inline';
 import drakeGlb from './models/cinder_drake.glb?inline';
+import glareLizardGlb from './models/glare_lizard.glb?inline';
+import gloomBatGlb from './models/gloom_bat.glb?inline';
+import rockmawGlb from './models/rockmaw.glb?inline';
+import scorpionGlb from './models/scorpion.glb?inline';
 import type { CreatureKind, CreatureRig } from './creatures';
 
 /**
@@ -16,16 +25,30 @@ import type { CreatureKind, CreatureRig } from './creatures';
 
 interface Source {
   url: string;
-  /** Turns, scales and moves the model onto the built-in one (which faces +z). */
+  /** Tips, turns, scales and moves the model onto the built-in one (which faces +z). */
+  pitch?: number;
   yaw: number;
   scale: number;
   offset: [number, number, number];
-  /** A vertex out to the side above this height is wing, not body. */
+  /** A vertex above this height and out to the side of a wing's root is wing, not body. */
   wingAbove?: number;
+  /** How far out past a wing's root the wing starts. */
+  wingOut?: number;
 }
 
 const SOURCES: Partial<Record<CreatureKind, Source>> = {
+  // Each was laid over its built-in model by eye in the gallery.
   cinder_drake: { url: drakeGlb, yaw: -Math.PI / 2, scale: 4, offset: [0, 0, -0.65], wingAbove: 1.6 },
+  cow: { url: cowGlb, yaw: Math.PI / 2, scale: 1.35, offset: [0, 0, 0.05] },
+  desert_lizard: { url: desertLizardGlb, yaw: Math.PI / 2, scale: 1, offset: [0, 0, -0.1] },
+  scorpion: { url: scorpionGlb, yaw: Math.PI / 2, scale: 0.8, offset: [0, 0, 0.1] },
+  cave_creeper: { url: caveCreeperGlb, yaw: 0, scale: 1.1, offset: [0, 0, -0.18] },
+  crimson_swift: { url: crimsonSwiftGlb, yaw: -Math.PI / 2, scale: 0.65, offset: [0, 0.75, -0.05], wingAbove: 0.93, wingOut: 0.04 },
+  brine_slug: { url: brineSlugGlb, yaw: 0, scale: 0.8, offset: [0, 0, -0.1] },
+  // Modelled upright with its wings spread; tipped forward into flight.
+  gloom_bat: { url: gloomBatGlb, pitch: Math.PI / 2, yaw: 0, scale: 1.1, offset: [0, 1.1, -0.4], wingAbove: 0, wingOut: 0.12 },
+  rockmaw: { url: rockmawGlb, yaw: 0, scale: 0.8, offset: [0, 0, 0] },
+  glare_lizard: { url: glareLizardGlb, yaw: 0, scale: 1.5, offset: [0, 0, -0.2] },
 };
 
 /** A model ready to skin onto any rig of its kind. */
@@ -39,6 +62,7 @@ interface Prepared {
 }
 
 const ready = new Map<CreatureKind, Prepared>();
+const loading = new Set<CreatureKind>();
 /** Rigs built before their model loaded, with the built-in meshes to hide once it has. */
 const waiting = new Set<{ rig: CreatureRig; parts: THREE.Mesh[] }>();
 let builder: ((kind: CreatureKind, seed: number) => CreatureRig) | null = null;
@@ -47,26 +71,36 @@ let rest: ((rig: CreatureRig) => void) | null = null;
 export const aiModelsEnabled = typeof location === 'undefined' || !/classic/.test(location.hash);
 
 /**
- * Starts loading the models. `build` makes a fresh built-in rig and `pose`
- * puts it in its resting pose, which is the pose the model is bound in.
+ * Sets how to make a fresh built-in rig (`build`) and put it in its resting
+ * pose (`pose`), which is the pose each model is bound in.
  */
 export function loadAiModels(build: (kind: CreatureKind, seed: number) => CreatureRig, pose: (rig: CreatureRig) => void): void {
-  if (!aiModelsEnabled || builder) return;
   builder = build;
   rest = pose;
-  const loader = new GLTFLoader();
-  for (const [kind, src] of Object.entries(SOURCES) as [CreatureKind, Source][]) {
-    loader.load(
-      src.url,
-      (gltf) => {
-        ready.set(kind, prepare(kind, src, gltf.scene));
-        for (const w of waiting) if (w.rig.kind === kind) attach(w.rig, w.parts);
-        for (const w of [...waiting]) if (w.rig.kind === kind) waiting.delete(w);
-      },
-      undefined,
-      (err) => console.warn(`AI model for ${kind} failed to load; keeping the built-in one`, err),
-    );
-  }
+}
+
+/** Loads one kind's model, the first time a creature of that kind appears. */
+function load(kind: CreatureKind): void {
+  const src = SOURCES[kind];
+  if (!src || loading.has(kind)) return;
+  loading.add(kind);
+  new GLTFLoader().load(
+    src.url,
+    (gltf) => {
+      ready.set(kind, prepare(kind, src, gltf.scene));
+      for (const w of [...waiting]) {
+        if (w.rig.kind !== kind) continue;
+        attach(w.rig, w.parts);
+        waiting.delete(w);
+      }
+    },
+    undefined,
+    (err) => console.warn(`AI model for ${kind} failed to load; keeping the built-in one`, err),
+  );
+}
+
+export function hasAiModel(kind: CreatureKind): boolean {
+  return aiModelsEnabled && !!SOURCES[kind];
 }
 
 /** Puts the AI model on a freshly built rig, now or as soon as it loads. */
@@ -75,7 +109,10 @@ export function applyAiModel(rig: CreatureRig): void {
   const parts: THREE.Mesh[] = [];
   rig.root.traverse((o) => o instanceof THREE.Mesh && parts.push(o));
   if (ready.has(rig.kind)) attach(rig, parts);
-  else waiting.add({ rig, parts });
+  else {
+    waiting.add({ rig, parts });
+    load(rig.kind);
+  }
 }
 
 /** The rig's pivots, in a fixed order every rig of a kind shares. */
@@ -104,7 +141,7 @@ function prepare(kind: CreatureKind, src: Source, scene: THREE.Object3D): Prepar
   const geometry = source.geometry.clone();
   source.updateWorldMatrix(true, false);
   geometry.applyMatrix4(source.matrixWorld);
-  geometry.rotateY(src.yaw).scale(src.scale, src.scale, src.scale).translate(...src.offset);
+  geometry.rotateX(src.pitch ?? 0).rotateY(src.yaw).scale(src.scale, src.scale, src.scale).translate(...src.offset);
   if (!geometry.attributes.normal) geometry.computeVertexNormals();
   const map = (source.material as THREE.MeshStandardMaterial).map;
   // Matte, like everything else in the world.
@@ -127,7 +164,7 @@ function prepare(kind: CreatureKind, src: Source, scene: THREE.Object3D): Prepar
     for (const child of b.children) {
       if (!(child instanceof THREE.Mesh)) continue;
       const pos = child.geometry.attributes.position;
-      const step = Math.max(1, Math.floor(pos.count / 150));
+      const step = Math.max(1, Math.floor(pos.count / 40));
       for (let k = 0; k < pos.count; k += step) {
         v.fromBufferAttribute(pos, k).applyMatrix4(child.matrixWorld);
         pts.push(v.x, v.y, v.z);
@@ -137,7 +174,8 @@ function prepare(kind: CreatureKind, src: Source, scene: THREE.Object3D): Prepar
   }
 
   // Wings are raised on the model but folded on the built-in rig, so they're picked by place, not distance.
-  const wings = ref.arms.map((w) => index.get(w)!);
+  // (Arms are pincers on some creatures, which the nearest-part rule handles.)
+  const wings = src.wingAbove === undefined ? [] : ref.arms.map((w) => index.get(w)!);
   const wingRoot = ref.arms.map((w) => w.getWorldPosition(new THREE.Vector3()));
   const torso = index.get(ref.torso)!;
 
@@ -148,10 +186,11 @@ function prepare(kind: CreatureKind, src: Source, scene: THREE.Object3D): Prepar
   for (let n = 0; n < pos.count; n++) {
     v.fromBufferAttribute(pos, n);
     best.clear();
-    const wing = src.wingAbove !== undefined && v.y > src.wingAbove ? wingRoot.findIndex((w) => Math.sign(w.x) === Math.sign(v.x) && Math.abs(v.x) > Math.abs(w.x) + 0.05) : -1;
+    const out = src.wingOut ?? 0.05;
+    const wing = src.wingAbove !== undefined && v.y > src.wingAbove ? wingRoot.findIndex((w) => Math.sign(w.x) === Math.sign(v.x) && Math.abs(v.x) > Math.abs(w.x) + out) : -1;
     if (wing >= 0) {
       // Fully the wing's out along it, shared with the shoulders near its root.
-      const k = THREE.MathUtils.smoothstep(Math.abs(v.x) - Math.abs(wingRoot[wing].x), 0.05, 0.35);
+      const k = THREE.MathUtils.smoothstep(Math.abs(v.x) - Math.abs(wingRoot[wing].x), out, out + 0.3);
       skinIndex.set([wings[wing], torso, 0, 0], n * 4);
       skinWeight.set([k, 1 - k, 0, 0], n * 4);
       continue;

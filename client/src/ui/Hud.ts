@@ -49,6 +49,10 @@ export interface WindowHandlers {
   buy: (itemId: string, qty: number) => void;
   craft: (recipeId: string, qty: number) => void;
   examine: (itemId: string) => void;
+  /** The build window: build a tier, fit out the room, take down what's built. */
+  build: (tier: number) => void;
+  buildRoom: () => void;
+  removeFurniture: () => void;
 }
 
 /** What the conversation box asks the game to do: carry on (option 0) or pick an option. */
@@ -90,7 +94,17 @@ export class Hud {
   private closedByOutsidePress = false;
   private inventory: Inventory = [];
   inventoryHandlers: InventoryHandlers = { open: () => {}, move: () => {} };
-  windowHandlers: WindowHandlers = { close: () => {}, withdraw: () => {}, depositAll: () => {}, buy: () => {}, craft: () => {}, examine: () => {} };
+  windowHandlers: WindowHandlers = {
+    close: () => {},
+    withdraw: () => {},
+    depositAll: () => {},
+    buy: () => {},
+    craft: () => {},
+    examine: () => {},
+    build: () => {},
+    buildRoom: () => {},
+    removeFurniture: () => {},
+  };
   private readonly win = el('window');
   private windowKey = '';
   private equipmentKey = '';
@@ -233,7 +247,7 @@ export class Hud {
   renderWindow(self: SelfState): void {
     const ui = self.ui;
     // Redraw only when what it shows changes; crafting also depends on the inventory and levels.
-    const key = JSON.stringify(ui?.kind === 'craft' ? [ui, self.inventory, self.skills] : ui);
+    const key = JSON.stringify(ui?.kind === 'craft' || ui?.kind === 'build' ? [ui, self.inventory, self.skills] : ui);
     if (key === this.windowKey) return;
     this.windowKey = key;
     if (ui?.kind !== 'dialogue') {
@@ -252,6 +266,7 @@ export class Hud {
     foot.replaceChildren();
     if (ui.kind === 'bank') this.drawBank(ui, body, foot);
     else if (ui.kind === 'shop') this.drawShop(ui, body, foot);
+    else if (ui.kind === 'build') this.drawBuild(ui, self, body, foot);
     else this.drawCraft(ui, self, body);
   }
 
@@ -338,6 +353,57 @@ export class Hud {
       }
       row.append(icon, info, buttons);
       body.appendChild(row);
+    }
+  }
+
+  /** A homestead build spot: the room to fit out first, then each tier with what it takes. */
+  private drawBuild(ui: Extract<UiView, { kind: 'build' }>, self: SelfState, body: HTMLElement, foot: HTMLElement): void {
+    el('win-title').textContent = ui.title;
+    const level = levelForXp(self.skills.homesteading);
+    if (!ui.room.built) {
+      const row = document.createElement('div');
+      row.className = 'build-room';
+      const info = document.createElement('div');
+      info.append(
+        line(`Fit out the ${ui.room.name.toLowerCase()} first`, 'recipe-name'),
+        line(`Homesteading ${ui.room.level} · ${ui.room.coins.toLocaleString()} coins`, 'recipe-detail'),
+      );
+      const b = document.createElement('button');
+      b.textContent = 'Fit out';
+      b.disabled = level < ui.room.level || countItem(self.inventory, 'coins') < ui.room.coins;
+      b.addEventListener('click', () => this.windowHandlers.buildRoom());
+      row.append(info, b);
+      body.appendChild(row);
+    }
+    const tools = countItem(self.inventory, 'hammer') > 0 && countItem(self.inventory, 'saw') > 0;
+    ui.tiers.forEach((t, i) => {
+      const tier = i + 1;
+      const has = t.materials.every((m) => countItem(self.inventory, m.itemId) >= m.qty);
+      const ok = ui.room.built && level >= t.level && has && tools && ui.built !== tier;
+      const row = document.createElement('div');
+      row.className = `recipe${ok || ui.built === tier ? '' : ' unavailable'}${ui.built === tier ? ' built' : ''}`;
+      const icon = document.createElement('div');
+      icon.className = 'recipe-icon';
+      icon.innerHTML = itemIcon(t.materials[0].itemId);
+      const info = document.createElement('div');
+      const needs = t.materials.map((m) => `${m.qty} × ${ITEMS[m.itemId]?.name ?? m.itemId}`).join(', ');
+      info.append(line(t.name, 'recipe-name'), line(`Homesteading ${t.level} · ${needs} · ${t.xp} XP`, 'recipe-detail'));
+      const b = document.createElement('button');
+      b.textContent = ui.built && ui.built !== tier ? 'Replace' : 'Build';
+      b.disabled = !ok;
+      b.addEventListener('click', () => this.windowHandlers.build(tier));
+      const buttons = document.createElement('div');
+      buttons.className = 'recipe-buttons';
+      buttons.appendChild(b);
+      row.append(icon, info, buttons);
+      body.appendChild(row);
+    });
+    foot.textContent = tools ? 'Building takes the materials shown.' : 'You need a hammer and a saw to build.';
+    if (ui.built) {
+      const remove = document.createElement('button');
+      remove.textContent = 'Remove';
+      remove.addEventListener('click', () => this.windowHandlers.removeFurniture());
+      foot.append(' ', remove);
     }
   }
 
@@ -608,7 +674,7 @@ export class Hud {
     orb.setAttribute('aria-pressed', String(self.run));
     orb.title = `Run energy ${self.energy}%. Click to ${self.run ? 'walk' : 'run'}.`;
     // The state comes every tick something changes; rebuild the skills only when XP or boosts move.
-    const key = JSON.stringify([self.skills, self.boosts]);
+    const key = JSON.stringify([self.skills, self.boosts, self.bounty]);
     if (key === this.skillsKey) return;
     this.skillsKey = key;
     const grid = el('skills-grid');
@@ -622,6 +688,10 @@ export class Hud {
       const cell = document.createElement('div');
       cell.className = 'skill';
       cell.title = next === null ? `${skill.name}: ${xp.toLocaleString()} XP` : `${skill.name}: ${xp.toLocaleString()} XP\n${(next - xp).toLocaleString()} XP to level ${level + 1}`;
+      if (skill.id === 'bounty') {
+        const task = self.bounty.task;
+        cell.title += `\n${task ? `Bounty: ${task.left} ${task.name} to go` : 'No bounty: see Hrolf in Brakk Village'}\nBounty points: ${self.bounty.points}`;
+      }
       const icon = span(skill.name.slice(0, 2), `skill-icon skill-${skill.id}`);
       const info = document.createElement('div');
       info.className = 'skill-info';
@@ -789,6 +859,14 @@ function span(content: string, className: string): HTMLSpanElement {
   s.className = className;
   s.textContent = content;
   return s;
+}
+
+/** A line of text on its own row. */
+function line(content: string, className: string): HTMLDivElement {
+  const d = document.createElement('div');
+  d.className = className;
+  d.textContent = content;
+  return d;
 }
 
 function text(content: string): Text {

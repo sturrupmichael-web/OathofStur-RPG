@@ -21,7 +21,7 @@
       "stock": ["minnows", "perch", "beef"] },
     "kelmoor_sawmill": { "name": "Kelmoor Sawmill", "npc": "jory",
       "buys": ["logs", "oak_logs", "willow_logs", "yew_logs", "starwood_logs", "ashwood_logs"],
-      "stock": ["bronze_axe", "iron_axe", "steel_axe"] },
+      "stock": ["bronze_axe", "iron_axe", "steel_axe", "saw"] },
     "falcrest_forge": { "name": "Falcrest Forge", "npc": "gunnar",
       "buys": ["copper_ore", "tin_ore", "iron_ore", "coal", "gold_ore", "cobalt_ore", "verdite_ore", "glacite_ore", "bronze_bar", "iron_bar", "steel_bar", "gold_bar"],
       "stock": ["hammer", "steel_axe", "steel_pickaxe", "iron_bar", "steel_bar"] },
@@ -59,6 +59,12 @@
       "stock": ["vial_of_water", "vial", "grimy_sunleaf", "grimy_marshwort", "attack_potion3", "strength_potion3", "sunleaf_seed", "marshwort_seed"] },
     "witchs_hut": { "name": "Nessa's Hut", "npc": "old_nessa",
       "buys": ["grimy_sunleaf", "grimy_marshwort", "grimy_duskroot", "grimy_silverfern", "grimy_hawkweed", "grimy_emberbloom", "sunleaf", "marshwort", "duskroot", "silverfern", "hawkweed", "emberbloom", "vial", "vial_of_water", "cow_horn", "spirit_dust", "scorpion_stinger", "crimson_feathers", "lizard_scales", "ashes", "sunleaf_potion_unf", "marshwort_potion_unf", "duskroot_potion_unf", "silverfern_potion_unf", "hawkweed_potion_unf", "emberbloom_potion_unf", "attack_potion3", "attack_potion2", "attack_potion1", "strength_potion3", "strength_potion2", "strength_potion1", "devotion_potion3", "devotion_potion2", "devotion_potion1", "defence_potion3", "defence_potion2", "defence_potion1", "ranging_potion3", "ranging_potion2", "ranging_potion1", "fireward_potion3", "fireward_potion2", "fireward_potion1"],
-      "stock": ["vial_of_water", "grimy_sunleaf", "grimy_marshwort", "grimy_duskroot", "cow_horn", "devotion_potion3"] }
+      "stock": ["vial_of_water", "grimy_sunleaf", "grimy_marshwort", "grimy_duskroot", "cow_horn", "devotion_potion3"] },
+    "hrolfs_bounty_store": { "name": "Hrolf's Bounty Store", "npc": "hrolf",
+      "buys": ["contract_stone", "rock_hammer", "salt_sack", "scent_mask", "polished_shield"],
+      "stock": ["contract_stone", "rock_hammer", "salt_sack", "scent_mask", "polished_shield"] },
+    "falcrest_estates": { "name": "Falcrest Estates", "npc": "corwin",
+      "buys": ["plank", "oak_plank", "yew_plank", "steel_nails", "bolt_of_cloth", "limestone_brick"],
+      "stock": ["plank", "steel_nails", "saw", "hammer", "bolt_of_cloth", "limestone_brick"] }
   }
 }

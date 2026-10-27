@@ -12,6 +12,7 @@ export type SoundName =
   | 'cook'
   | 'smelt'
   | 'smith'
+  | 'build'
   | 'fletch'
   | 'light'
   | 'ignite'
@@ -226,6 +227,12 @@ const RECIPES: Record<SoundName, (v: Voice) => void> = {
     v.tone('sine', 1180, 1170, 0.45, 0, 0.002, 0.5);
     v.tone('sine', 3230, 3200, 0.18, 0, 0.002, 0.3);
     v.hiss('highpass', 3000, 2000, 0.4, 0, 0.002, 0.04);
+  },
+  // Hammer on a nail in wood: a sharp tap over a hollow knock.
+  build: (v) => {
+    v.tone('square', 1400, 900, 0.1, 0, 0.001, 0.03);
+    v.tone('sine', 420, 220, 0.5, 0, 0.003, 0.12);
+    v.hiss('bandpass', 1500, 900, 0.35, 0, 0.002, 0.07, 2);
   },
   // Knife shaving wood: a short dry scrape.
   fletch: (v) => {

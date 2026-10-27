@@ -90,9 +90,11 @@ const OBJECT_KINDS: Record<string, Exclude<PlacementKind, 'npc' | 'monster'>> = 
   agility_obstacle: 'scenery',
   glyph_shrine: 'scenery',
   farming_patch: 'scenery',
+  // Homesteading: the plot's gate, and the spots furniture is built on.
+  homestead_gate: 'scenery',
+  build_spot: 'scenery',
   // Waiting for the phase that adds their skill, so they are props for now.
   spinning_wheel: 'scenery',
-  homestead_gate: 'scenery',
   cave_entrance: 'scenery',
   training_dummy: 'scenery',
   archery_target: 'scenery',

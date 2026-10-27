@@ -1,7 +1,9 @@
 import type { Point } from '../map/types';
+import { BOUNTY_TASKS, type BountyState } from './bounty';
 import { ATTACK_STYLES, type AttackStyle } from './combat';
 import { QUESTS, QUEST_IDS, doneStage } from './quests';
 import { CROPS, MAX_WEEDS, type PatchState } from './farming';
+import { FURNITURE, ROOMS, SPOTS, type HomesteadState } from './homestead';
 import { SPELL_BY_ID } from './magic';
 import { EQUIP_SLOTS, INVENTORY_SIZE, ITEMS, type Equipment, type Inventory, type ItemStack } from './items';
 import { MAX_XP, SKILLS, startingXp, type SkillXp } from './skills';
@@ -39,6 +41,10 @@ export interface SaveData {
   farm?: Record<string, PatchState>;
   /** The combat spell a staff casts by itself. */
   autocast?: string;
+  /** Hrolf's bounty and points. */
+  bounty?: BountyState;
+  /** The homestead plot, its rooms and furniture. */
+  homestead?: HomesteadState;
   bank: ItemStack[];
   quests: Record<string, number>;
   createdAt: string;
@@ -97,6 +103,8 @@ export function parseSave(raw: unknown): SaveData | null {
   const style = typeof s.attackStyle === 'string' && s.attackStyle in ATTACK_STYLES ? s.attackStyle : undefined;
   const energy = Number(s.energy);
   const farm = parseFarm(s.farm);
+  const bounty = parseBounty(s.bounty);
+  const homestead = parseHomestead(s.homestead);
   const quests: Record<string, number> = {};
   const saved = (s.quests ?? {}) as Record<string, unknown>;
   for (const id of QUEST_IDS) {
@@ -119,6 +127,8 @@ export function parseSave(raw: unknown): SaveData | null {
     ...(s.run === true && { run: true }),
     ...(farm && { farm }),
     ...(typeof s.autocast === 'string' && SPELL_BY_ID[s.autocast]?.kind === 'combat' && { autocast: s.autocast }),
+    ...(bounty && { bounty }),
+    ...(homestead && { homestead }),
     bank,
     quests,
     createdAt: typeof s.createdAt === 'string' ? s.createdAt : now,
@@ -151,4 +161,35 @@ function parseFarm(raw: unknown): Record<string, PatchState> | null {
     out[key] = patch;
   }
   return Object.keys(out).length ? out : null;
+}
+
+/** Points and tasks done are whole and not negative; a task must be for a creature Hrolf hands out. */
+function parseBounty(raw: unknown): BountyState | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const b = raw as Partial<BountyState>;
+  const points = Number(b.points);
+  const done = Number(b.done);
+  const out: BountyState = { points: Number.isInteger(points) && points >= 0 ? points : 0, done: Number.isInteger(done) && done >= 0 ? done : 0 };
+  const t = b.task;
+  if (t && typeof t.monster === 'string' && BOUNTY_TASKS[t.monster]) {
+    const left = Number(t.left);
+    const total = Number(t.total);
+    if (Number.isInteger(left) && Number.isInteger(total) && left >= 1 && total >= left) out.task = { monster: t.monster, left, total };
+  }
+  return out.points || out.done || out.task ? out : null;
+}
+
+/** Only known rooms, and furniture at known spots at a tier that exists. */
+function parseHomestead(raw: unknown): HomesteadState | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const h = raw as Partial<HomesteadState>;
+  if (h.owned !== true) return null;
+  const rooms = Array.isArray(h.rooms) ? [...new Set(h.rooms.filter((r): r is string => typeof r === 'string' && !!ROOMS[r] && r !== 'garden'))] : [];
+  const built: Record<string, number> = {};
+  for (const [key, value] of Object.entries((h.built ?? {}) as Record<string, unknown>)) {
+    const spot = SPOTS[key];
+    const tier = Number(value);
+    if (spot && Number.isInteger(tier) && tier >= 1 && tier <= FURNITURE[spot.kind].tiers.length) built[key] = tier;
+  }
+  return { owned: true, rooms, built };
 }

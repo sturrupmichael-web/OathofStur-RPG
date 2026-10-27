@@ -5,7 +5,8 @@ import { CAST_MS, CAST_RELEASE, CHARACTER_STYLES, SHOOT_MS, SHOOT_RELEASE, activ
 import { animateCreature, buildCreature, creatureBusy, isCreature, playCreature, shotMs, type CreatureRig } from './creatures';
 import { disposeModel } from './dispose';
 import { Effects } from './effects';
-import { FLICKER, RESOURCE_STYLES, buildGroundItem, buildStation, type PartStyle } from './models';
+import { buildFurniture } from './furniture';
+import { FLICKER, GATE_LEAF, RESOURCE_STYLES, buildGroundItem, buildStation, type PartStyle } from './models';
 import type { Heightmap } from './heightmap';
 import { GLYPH_COLOURS, ROPE, buildObstacle, buildPatch, buildSkillItem } from './skillModels';
 import { hash2, shade, type TileInfo } from './palette';
@@ -41,6 +42,8 @@ export class EntityLayer {
   /** Who has a Hearth Recall ring going. */
   private readonly chanting = new Set<EntityId>();
   private readonly ropes = new Map<string, THREE.Object3D>();
+  /** Homestead gate leaves by tile, and when each was last walked through. */
+  private readonly gates = new Map<string, { leaf: THREE.Object3D; openedAt: number }>();
 
   constructor(
     private readonly state: ClientState,
@@ -87,8 +90,8 @@ export class EntityLayer {
     state.on('changed', (v) => {
       // A tree felled or grown back swaps models; a player changing gear is rebuilt in it.
       const gearChanged = v.data.kind === 'player' && this.meshes.get(v.data.id)?.userData.gear !== JSON.stringify(v.data.gear ?? {});
-      // A patch is rebuilt as its crop grows.
-      if (v.data.kind !== 'resource' && !gearChanged && !v.data.patch) return;
+      // A patch is rebuilt as its crop grows, a build spot as furniture goes up or comes down.
+      if (v.data.kind !== 'resource' && !gearChanged && !v.data.patch && !v.data.spot) return;
       const yaw = this.meshes.get(v.data.id)?.rotation.y;
       this.remove(v.data.id);
       this.add(v);
@@ -142,6 +145,16 @@ export class EntityLayer {
       if (view.data.kind === 'player' || view.data.kind === 'npc' || view.data.kind === 'monster') this.placeCharacter(id, obj, view, now, dt);
     }
     for (const pool of this.pools.values()) if (pool.ripple && pool.slotOf.size) this.animateRipples(pool, now);
+    // A gate swings open as someone steps through it, then falls shut.
+    for (const view of this.state.entities.values()) {
+      const via = view.data.kind === 'player' ? view.data.via : undefined;
+      const gate = via && this.gates.get(`${via.x},${via.y}`);
+      if (gate && now - view.movedAt < this.state.tickMs) gate.openedAt = view.movedAt;
+    }
+    for (const gate of this.gates.values()) {
+      const open = now - gate.openedAt < this.state.tickMs * 2 ? 1.5 : 0;
+      gate.leaf.rotation.y += (open - gate.leaf.rotation.y) * Math.min(1, dt * (open ? 9 : 3));
+    }
     // Ropes nobody is swinging on settle back to hanging straight.
     for (const rope of this.ropes.values()) if (!rope.userData.swungAt || now - rope.userData.swungAt > 100) rope.rotation.x *= Math.max(0, 1 - dt * 3);
     this.effects.update(now, dt);
@@ -179,6 +192,8 @@ export class EntityLayer {
         obj.userData.rope = `${data.x},${data.y}`;
         this.ropes.set(obj.userData.rope, rope);
       }
+    } else if (data.spot) {
+      obj = buildFurniture(data.spot.kind, data.spot.tier, data.spot.room);
     } else if (data.patch) {
       obj = buildPatch(data.name === PATCH_KINDS.allotment.name ? 'allotment' : 'herb', data.patch, hash2(data.x, data.y, 5));
     } else if (data.defKey === 'glyph_shrine') {
@@ -207,9 +222,10 @@ export class EntityLayer {
     obj.userData.entityId = data.id;
     obj.position.set(data.x + 0.5, this.hm.tileCentre(data.x, data.y), data.y + 0.5);
     // Multi-tile props (tents) are laid out in map axes and keep their rotation.
-    if ((data.kind === 'station' || data.kind === 'scenery' || data.kind === 'npc') && !obj.userData.span) obj.rotation.y = this.faceOpenSide(data.x, data.y);
+    if ((data.kind === 'station' || data.kind === 'scenery' || data.kind === 'npc') && !obj.userData.span) obj.rotation.y = data.spot ? this.backToWall(data.x, data.y) : this.faceOpenSide(data.x, data.y);
     obj.traverse((o) => {
       if (o.name === FLICKER) this.flickers.push(o);
+      if (o.name === GATE_LEAF) this.gates.set(`${data.x},${data.y}`, { leaf: o, openedAt: -Infinity });
     });
     this.meshes.set(data.id, obj);
     this.group.add(obj);
@@ -397,6 +413,17 @@ export class EntityLayer {
   }
 
   /** Face NPCs and stations toward a walkable neighbour, preferring south. */
+  /** Furniture faces into the room with its back to a wall when it can. */
+  private backToWall(x: number, y: number): number {
+    let best = 0;
+    let bestScore = -1;
+    for (const [dx, dy, yaw] of [[0, 1, 0], [1, 0, Math.PI / 2], [-1, 0, -Math.PI / 2], [0, -1, Math.PI]] as const) {
+      const score = (this.grid.isWalkable(x + dx, y + dy) ? 1 : 0) + (this.grid.isWalkable(x - dx, y - dy) ? 0 : 2);
+      if (score > bestScore) [best, bestScore] = [yaw, score];
+    }
+    return best;
+  }
+
   private faceOpenSide(x: number, y: number): number {
     const options: [number, number, number][] = [
       [0, 1, 0],
@@ -426,6 +453,7 @@ const IMPACT: Record<string, number[]> = {
   chop: [0.8],
   mine: [0.78],
   smith: [0.7],
+  build: [0.24, 0.49, 0.74],
   net: [0.25, 0.75],
   rod: [0.9],
   cook: [0.1],

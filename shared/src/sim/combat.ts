@@ -55,8 +55,21 @@ export interface MonsterStats {
   magic?: number;
   /** A spell thrown now and then instead of the usual attack, and from up to `range` tiles. */
   casts?: { element: string; chance: number; maxHit: number; range: number };
+  /** A Bounty creature: the Bounty level to fight it, and what it takes to beat it. */
+  bounty?: BountyNeeds;
   examine: string;
   drops: Drop[];
+}
+
+/**
+ * What a Bounty creature asks of whoever fights it. `requires`: worn, or its
+ * attacks always land and hit up to three times as hard. `finisher`: carried
+ * to land the killing blow, and used up when `consume` is set.
+ */
+export interface BountyNeeds {
+  level: number;
+  requires?: { item: string; worn: true; warning: string };
+  finisher?: { item: string; consume?: boolean; finish: string; clings: string };
 }
 
 export const MONSTERS: Readonly<Record<string, MonsterStats>> = monsterData.monsters as unknown as Record<string, MonsterStats>;

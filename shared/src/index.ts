@@ -17,4 +17,6 @@ export * from './sim/prayer';
 export { COURSES, OBSTACLE_KINDS, obstacleAt, type ObstacleDef, type ObstacleType } from './sim/agility';
 export { CROPS, PATCH_KINDS, cropForSeed, type CropDef, type PatchKind, type PatchView } from './sim/farming';
 export { GLYPHS, SHARD, glyphForArea, type GlyphDef } from './sim/glyphcraft';
+export { BOUNTY, BOUNTY_TASKS, taskName, type BountyTask } from './sim/bounty';
+export { FURNITURE, HOMESTEAD, ROOMS, SPOTS, spotName, type FurnitureDef, type FurnitureUse } from './sim/homestead';
 export { SPELLS, SPELL_BY_ID, MAGIC_RANGE, castsLeft, glyphCost, glyphItem, missingGlyphs, staffElement, type SpellDef, type SpellKind } from './sim/magic';

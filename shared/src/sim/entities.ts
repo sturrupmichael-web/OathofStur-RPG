@@ -1,7 +1,9 @@
 import type { Point } from '../map/types';
+import type { BountyState } from './bounty';
 import type { AttackStyle } from './combat';
 import type { StationKind } from './crafting';
 import type { PatchKind, PatchState } from './farming';
+import type { HomesteadState } from './homestead';
 import type { Equipment, Inventory, ItemStack } from './items';
 import type { DialoguePage } from './quests';
 import type { PrayerId } from './prayer';
@@ -39,8 +41,15 @@ export type PlayerAction =
   | { kind: 'farm'; targetId: EntityId; itemId?: string; task?: FarmTask; nextAttempt: number }
   /** Fighting a monster: chase it into reach, then swing whenever the weapon is ready. `spell` is one spell to cast at it. */
   | { kind: 'attack'; targetId: EntityId; chasing?: Point; spell?: string }
-  /** Teleporting: (chanting until `departAt` for Hearth Recall), vanishing, then arriving at `to` on `arriveAt`. */
-  | { kind: 'teleport'; spell: string; to: Point; departAt: number; arriveAt: number; departed?: boolean };
+  /** Teleporting: (chanting until `departAt` for Hearth Recall), vanishing, then arriving at `to` on `arriveAt`. `place` names where, for a portal. */
+  | { kind: 'teleport'; spell: string; to: Point; departAt: number; arriveAt: number; departed?: boolean; place?: string }
+  /**
+   * At the homestead: through the gate, look at a build spot (its window opens),
+   * build a tier there (done at `doneAt`), use what's built, or take it down.
+   */
+  | { kind: 'home'; targetId: EntityId; task: HomeTask; tier?: number; doneAt?: number };
+
+export type HomeTask = 'gate' | 'plan' | 'build' | 'use' | 'remove';
 
 export type FarmTask = 'rake' | 'plant' | 'compost' | 'cure' | 'harvest' | 'clear';
 
@@ -50,7 +59,9 @@ export type OpenUi =
   | { kind: 'shop'; shopId: string; at: EntityId }
   | { kind: 'craft'; station: StationKind; at: EntityId }
   /** A conversation: the pages to show and which one is showing. */
-  | { kind: 'dialogue'; at: EntityId; pages: DialoguePage[]; index: number };
+  | { kind: 'dialogue'; at: EntityId; pages: DialoguePage[]; index: number }
+  /** What can be built at a homestead build spot. */
+  | { kind: 'build'; at: EntityId };
 
 export interface PlayerEntity {
   id: EntityId;
@@ -110,6 +121,10 @@ export interface PlayerEntity {
   farm: Record<string, PatchState>;
   /** The combat spell a staff casts by itself in a fight. */
   autocast?: string;
+  /** Hrolf's bounty and points. */
+  bounty: BountyState;
+  /** Their plot, rooms and furniture. */
+  homestead: HomesteadState;
 }
 
 /** A monster at its spawn point. Dead monsters stay in the world, hidden, until they respawn. */

@@ -14,6 +14,7 @@ import {
 } from '../protocol/messages';
 import { Rng } from '../rng';
 import { COURSES, OBSTACLE_KINDS, RUN_DRAIN, energyRestore, failChance, obstacleAt } from './agility';
+import { BOUNTY, bountyLevel, pickTask, pointsFor, taskName } from './bounty';
 import {
   ATTACK_STYLES,
   EAT_DELAY,
@@ -31,11 +32,13 @@ import {
   playerMaxHit,
   rangedFighter,
   rollQty,
+  type Fighter,
 } from './combat';
 import { RECIPES, RECIPE_BY_ID, SELL_RATE, SHOPS, STATION_TITLES, burnChance, isBanker, packStations, shopBuys, shopForNpc, type PackStation, type StationKind } from './crafting';
-import type { Entity, EntityId, FarmTask, GroundItemEntity, MonsterEntity, ObjectEntity, PlayerEntity } from './entities';
+import type { Entity, EntityId, FarmTask, GroundItemEntity, HomeTask, MonsterEntity, ObjectEntity, PlayerEntity } from './entities';
 import { CROPS, FARMING, PATCH_KINDS, cropForSeed, growPatch, isGrown, offlineTicks, overgrown, patchView, type PatchKind, type PatchState } from './farming';
 import { ATTEMPT_TICKS, EXAMINE, RESOURCE_DATA, gatherChance, requiredLevel } from './gathering';
+import { FURNITURE, HOMESTEAD, PORTALS, ROOMS, SPOTS, newHomestead, spotName, spotState } from './homestead';
 import { INSCRIBE_TICKS, SHARD, glyphForArea, glyphsPerShard } from './glyphcraft';
 import { WorldGrid } from './grid';
 import {
@@ -222,6 +225,8 @@ export class Simulation {
       run: save?.run ?? false,
       farm: Object.fromEntries(Object.entries(save?.farm ?? {}).map(([k, v]) => [k, { ...v }])),
       ...(save?.autocast && { autocast: save.autocast }),
+      bounty: save?.bounty ? { ...save.bounty, ...(save.bounty.task && { task: { ...save.bounty.task } }) } : { points: 0, done: 0 },
+      homestead: save?.homestead ? { owned: save.homestead.owned, rooms: [...save.homestead.rooms], built: { ...save.homestead.built } } : newHomestead(),
     };
     // Crops kept growing while the player was away.
     const away = save ? offlineTicks(save.updatedAt, now) : 0;
@@ -269,6 +274,8 @@ export class Simulation {
       ...(p.run && { run: true }),
       ...(Object.keys(p.farm).length && { farm: Object.fromEntries(Object.entries(p.farm).map(([k, v]) => [k, { ...v }])) }),
       ...(p.autocast && { autocast: p.autocast }),
+      ...((p.bounty.points || p.bounty.done || p.bounty.task) && { bounty: { ...p.bounty, ...(p.bounty.task && { task: { ...p.bounty.task } }) } }),
+      ...(p.homestead.owned && { homestead: { owned: true, rooms: [...p.homestead.rooms], built: { ...p.homestead.built } } }),
       bank: p.bank.map((s) => ({ ...s })),
       quests: { ...p.quests },
       createdAt: p.createdAt || now,
@@ -317,6 +324,7 @@ export class Simulation {
       else if (e.action?.kind === 'inscribe') this.inscribeStep(e);
       else if (e.action?.kind === 'farm') this.farmStep(e);
       else if (e.action?.kind === 'teleport') this.teleportStep(e);
+      else if (e.action?.kind === 'home') this.homeStep(e);
     }
     for (const e of [...this.entities.values()]) {
       if (e.kind === 'player') {
@@ -409,6 +417,17 @@ export class Simulation {
       case 'craft':
         this.startCraft(player, msg.recipeId, msg.qty);
         return;
+      case 'build':
+        this.startBuild(player, msg.tier);
+        return;
+      case 'buildRoom':
+        this.buildRoom(player);
+        return;
+      case 'removeFurniture': {
+        const spot = player.ui?.kind === 'build' ? this.entities.get(player.ui.at) : undefined;
+        if (spot?.kind === 'scenery' && this.adjacent(player, spot)) this.removeFurniture(player, spot);
+        return;
+      }
       case 'bankDeposit':
         this.bankDeposit(player, msg.slot, msg.qty);
         return;
@@ -491,7 +510,7 @@ export class Simulation {
       this.walkTo(player, target);
       return;
     }
-    if (action === 'offer' && target?.kind === 'station' && target.defKey === 'altar') {
+    if (action === 'offer' && target && (target.kind === 'station' || target.kind === 'scenery') && this.altarMultiplier(player, target)) {
       player.action = { kind: 'offer', targetId: target.id, nextAttempt: 0 };
       this.walkTo(player, target);
       return;
@@ -513,6 +532,12 @@ export class Simulation {
       this.walkTo(player, target);
       return;
     }
+    const home = target?.kind === 'scenery' ? this.homeTask(player, target, action) : null;
+    if (home && target) {
+      player.action = { kind: 'home', targetId: target.id, task: home };
+      this.walkTo(player, target);
+      return;
+    }
     if (action === 'use' && target && (target.kind === 'station' || target.kind === 'npc') && this.usable(target)) {
       player.action = { kind: 'use', targetId: target.id };
       this.walkTo(player, target);
@@ -528,6 +553,10 @@ export class Simulation {
     if (target.kind === 'player') text = target.id === player.id ? "It's you. Looking sharp." : `A fellow adventurer, ${target.name}.`;
     else if (target.kind === 'item') text = ITEMS[target.itemId].examine;
     else if (target.kind === 'monster') text = MONSTERS[target.defKey]?.examine ?? `It's a ${target.name.toLowerCase()}.`;
+    else if (target.defKey === 'build_spot') {
+      const spot = spotState(player.homestead, `${target.x},${target.y}`);
+      text = spot?.tier ? `Your own handiwork: ${aOrSome(spotName(spot.def.kind, spot.tier).toLowerCase())}.` : 'An empty space, waiting for furniture.';
+    }
     else {
       const obstacle = target.defKey === 'agility_obstacle' ? obstacleAt(target.x, target.y) : undefined;
       const key = obstacle ? `obstacle_${obstacle.type}` : target.depletedUntil !== undefined ? `${target.defKey}_stump` : target.defKey;
@@ -819,6 +848,7 @@ export class Simulation {
       this.reject(player.id, "You can't attack that.");
       return;
     }
+    if (this.bountyLocked(player, target)) return;
     player.action = { kind: 'attack', targetId };
   }
 
@@ -834,6 +864,7 @@ export class Simulation {
     if (this.canHit(player, target)) {
       player.path = [];
       player.destination = null;
+      if (this.bountyLocked(player, target)) return void (player.action = null);
       if (this.tick >= player.nextAttack) this.playerAttack(player, target);
       return;
     }
@@ -882,7 +913,7 @@ export class Simulation {
     if (spell) return this.playerCast(player, monster, spell);
     if (isBow(player.equipment.weapon)) return this.playerShoot(player, monster);
     const stats = MONSTERS[monster.defKey];
-    const attacker = playerFighter(player.skills, player.equipment, player.attackStyle, player);
+    const attacker = this.helmed(player, monster, playerFighter(player.skills, player.equipment, player.attackStyle, player));
     const landed = this.rng.chance(hitChance(attacker, monsterFighter(stats)));
     const damage = landed ? Math.min(monster.hp, this.rng.int(1, playerMaxHit(attacker))) : 0;
     const weapon = player.equipment.weapon ? ITEMS[player.equipment.weapon]?.equip : undefined;
@@ -902,7 +933,7 @@ export class Simulation {
       return;
     }
     removeItem(player.inventory, arrow.id, 1);
-    const attacker = rangedFighter(player.skills, player.equipment, player.attackStyle, arrow.ammo!.strength, player);
+    const attacker = this.helmed(player, monster, rangedFighter(player.skills, player.equipment, player.attackStyle, arrow.ammo!.strength, player));
     const landed = this.rng.chance(hitChance(attacker, monsterFighter(MONSTERS[monster.defKey])));
     const damage = landed ? Math.min(monster.hp, this.rng.int(1, playerMaxHit(attacker))) : 0;
     player.nextAttack = this.tick + (bow.speed ?? WEAPON_SPEED) - (player.attackStyle === 'aggressive' ? 1 : 0);
@@ -924,7 +955,7 @@ export class Simulation {
       player.action = null;
       return;
     }
-    const attacker = magicFighter(player.skills, player.equipment, player);
+    const attacker = this.helmed(player, monster, magicFighter(player.skills, player.equipment, player));
     const landed = this.rng.chance(hitChance(attacker, monsterMagicFighter(MONSTERS[monster.defKey])));
     const damage = landed ? Math.min(monster.hp, this.rng.int(1, spell.maxHit!)) : 0;
     player.nextAttack = this.tick + CAST_TICKS;
@@ -961,6 +992,17 @@ export class Simulation {
   /** A player's blow or arrow lands (or misses): XP split between `skills`, and the monster turns on them. */
   private landPlayerHit(player: PlayerEntity, monster: MonsterEntity, damage: number, skills: [SkillId, number][], spell?: HitSpell): void {
     const stats = MONSTERS[monster.defKey];
+    // Some Bounty creatures can't be finished without the right thing in the pack.
+    const finisher = stats.bounty?.finisher;
+    if (finisher && damage > 0 && damage >= monster.hp) {
+      if (hasItem(player.inventory, finisher.item)) {
+        if (finisher.consume) removeItem(player.inventory, finisher.item, 1);
+        this.message(player.id, finisher.finish);
+      } else {
+        damage = monster.hp - 1;
+        this.message(player.id, finisher.clings, 'warn');
+      }
+    }
     monster.hp -= damage;
     monster.damageBy.set(player.id, (monster.damageBy.get(player.id) ?? 0) + damage);
     this.broadcastHit(player, monster, damage, monster.hp, monster.maxHp, spell);
@@ -981,10 +1023,14 @@ export class Simulation {
     if (stats.breath && this.rng.chance(stats.breath.chance)) return this.breathe(monster, player);
     if (stats.casts && this.rng.chance(stats.casts.chance)) return this.monsterCast(monster, player);
     const defender = playerFighter(player.skills, player.equipment, player.attackStyle, player);
-    const landed = this.rng.chance(hitChance(monsterFighter(stats), defender));
+    // A Bounty creature met without the gear it calls for always lands, and hard.
+    const needs = stats.bounty?.requires;
+    const exposed = !!needs && player.equipment[ITEMS[needs.item].equip!.slot] !== needs.item;
+    const landed = exposed || this.rng.chance(hitChance(monsterFighter(stats), defender));
     // The Ward of Blades turns every bite and blow aside.
     const warded = player.prayers.includes('ward_of_blades');
-    const damage = landed && !warded ? Math.min(player.hp, this.rng.int(1, stats.maxHit)) : 0;
+    const damage = landed && !warded ? Math.min(player.hp, this.rng.int(1, stats.maxHit * (exposed ? 3 : 1))) : 0;
+    if (exposed && !warded) this.message(player.id, needs!.warning, 'warn');
     monster.nextAttack = this.tick + stats.attackSpeed;
     this.animate(monster, stats.attackAnim);
     this.landMonsterHit(monster, player, damage);
@@ -1061,7 +1107,10 @@ export class Simulation {
       if (dealt > best && this.entities.has(id)) [killer, best] = [id, dealt];
     }
     const winner = killer !== undefined ? this.entities.get(killer) : undefined;
-    if (winner?.kind === 'player') this.questKill(winner, monster);
+    if (winner?.kind === 'player') {
+      this.questKill(winner, monster);
+      this.bountyKill(winner, monster);
+    }
     for (const drop of MONSTERS[monster.defKey].drops) {
       if (!this.rng.chance(drop.chance)) continue;
       const qty = rollQty(drop.qty, (a, b) => this.rng.int(a, b));
@@ -1276,7 +1325,7 @@ export class Simulation {
       return;
     }
     player.inventory[slot] = bones.qty > 1 ? { ...bones, qty: bones.qty - 1 } : null;
-    this.addXp(player, 'prayer', ITEMS[bones.itemId].bury!.xp * ALTAR_MULTIPLIER);
+    this.addXp(player, 'prayer', ITEMS[bones.itemId].bury!.xp * this.altarMultiplier(player, altar));
     this.message(player.id, `The gods are pleased with your offering of ${ITEMS[bones.itemId].name.toLowerCase()}.`);
     action.nextAttempt = this.tick + OFFER_TICKS;
   }
@@ -1431,8 +1480,7 @@ export class Simulation {
     player.attackedBy = null;
     for (const e of this.entities.values()) if (e.kind === 'monster' && e.target === player.id) e.target = null;
     this.animate(player, 'arrive');
-    const spell = SPELL_BY_ID[action.spell];
-    this.message(player.id, `You arrive in ${spell.place}.`);
+    this.message(player.id, `You arrive in ${action.place ?? SPELL_BY_ID[action.spell].place}.`);
   }
 
   /** Whether a monster is fighting this player right now. */
@@ -1595,6 +1643,8 @@ export class Simulation {
     for (const e of this.entities.values()) {
       if (e.kind !== 'player' || e.deadUntil !== undefined) continue;
       if (distance(m, e) > range || (!boss && combatLevel(e.skills) > m.level * 2)) continue;
+      // Bounty creatures leave alone anyone who doesn't yet know how to fight them.
+      if (levelForXp(e.skills.bounty) < bountyLevel(m.defKey)) continue;
       if (!best || distance(m, e) < distance(m, best)) best = e;
     }
     return best;
@@ -2019,6 +2069,7 @@ export class Simulation {
   private useItem(player: PlayerEntity, slot: number, wanted?: PackStation): void {
     const stack = this.slot(player, slot);
     if (!stack) return;
+    if (stack.itemId === 'contract_stone') return this.checkBounty(player);
     const stations = packStations(stack.itemId);
     const station = wanted && stations.includes(wanted) ? wanted : stations[0];
     if (!station) {
@@ -2176,12 +2227,13 @@ export class Simulation {
         kind: 'dialogue',
         npcId: ui.at,
         speaker: page.speaker,
-        name: page.speaker === 'player' ? player.name : npc?.kind === 'npc' ? npc.name : '',
+        name: page.speaker === 'player' ? player.name : npc && npc.kind !== 'item' ? this.nameFor(npc, player) : '',
         text: page.text,
         ...(page.options && { options: page.options.map((o) => o.label) }),
       };
     }
     if (ui.kind === 'bank') return { kind: 'bank', items: player.bank.map((b) => ({ ...b })) };
+    if (ui.kind === 'build') return this.buildView(player, ui.at);
     if (ui.kind === 'shop') {
       const shop = SHOPS[ui.shopId];
       return {
@@ -2235,7 +2287,11 @@ export class Simulation {
       const shrine = this.entities.get(a.targetId);
       return shrine ? { target: shrine, activity: 'inscribe' } : null;
     }
-    if (a?.kind === 'teleport' && !a.departed) return { target: player, activity: 'recall' };
+    if (a?.kind === 'teleport' && !a.departed && !a.place) return { target: player, activity: 'recall' };
+    if (a?.kind === 'home' && a.task === 'build' && a.doneAt !== undefined) {
+      const spot = this.entities.get(a.targetId);
+      return spot ? { target: spot, activity: 'build' } : null;
+    }
     if (a?.kind === 'farm' && a.task && a.task !== 'compost' && a.task !== 'cure') {
       const patch = this.entities.get(a.targetId);
       if (!patch || patch.kind !== 'scenery') return null;
@@ -2330,6 +2386,19 @@ export class Simulation {
       complete: (quest) => this.completeQuest(player, quest),
       ...(shop && { trade: () => void (player.ui = { kind: 'shop', shopId: shop.id, at: npc.id }) }),
       ...(isBanker(def) && { bank: () => void (player.ui = { kind: 'bank', at: npc.id }) }),
+      bounty: this.bountyActions(player),
+      homestead: {
+        owned: () => player.homestead.owned,
+        buyPlot: () => {
+          if (player.homestead.owned) return 'owned';
+          if (!hasItem(player.inventory, 'coins', HOMESTEAD.plotPrice)) return 'coins';
+          removeItem(player.inventory, 'coins', HOMESTEAD.plotPrice);
+          player.homestead.owned = true;
+          this.message(player.id, 'You now own the homestead plot outside Falcrest\'s south gate.', 'quest');
+          return 'ok';
+        },
+      },
+      sawmill: { make: (logs) => this.makePlanks(player, logs) },
     };
   }
 
@@ -2369,6 +2438,296 @@ export class Simulation {
       this.setQuestStage(player, 'first_oath', 5);
       this.message(player.id, "That's the goblin beaten. Elder Maren will want to hear about it.", 'quest');
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Bounty
+  // -------------------------------------------------------------------------
+
+  /** Bounty creatures can't be fought below their Bounty level. Says so, and returns true, when that's the case. */
+  private bountyLocked(player: PlayerEntity, monster: MonsterEntity): boolean {
+    const need = MONSTERS[monster.defKey]?.bounty?.level;
+    if (!need || levelForXp(player.skills.bounty) >= need) return false;
+    this.message(player.id, `You need a Bounty level of ${need} to know how to fight ${aOrSome(monster.name.toLowerCase())}.`, 'warn');
+    return true;
+  }
+
+  /** The bounty helm sharpens every blow against whatever you're hunting. */
+  private helmed(player: PlayerEntity, monster: MonsterEntity, f: Fighter): Fighter {
+    if (player.equipment.helmet !== 'bounty_helm' || player.bounty.task?.monster !== monster.defKey) return f;
+    const k = 1 + BOUNTY.helmBonus;
+    return { ...f, attack: Math.floor(f.attack * k), strength: Math.floor(f.strength * k) };
+  }
+
+  /** A kill on task: Bounty XP for the creature's hitpoints, and the task counts down. */
+  private bountyKill(player: PlayerEntity, monster: MonsterEntity): void {
+    const task = player.bounty.task;
+    if (task?.monster !== monster.defKey) return;
+    this.addXp(player, 'bounty', MONSTERS[monster.defKey].hitpoints * BOUNTY.xpPerHp);
+    task.left--;
+    if (task.left > 0) return;
+    delete player.bounty.task;
+    player.bounty.done++;
+    const points = pointsFor(player.bounty.done);
+    player.bounty.points += points;
+    this.message(player.id, `You've finished your bounty and earned ${points} points (${player.bounty.points} in all). Hrolf will have another.`, 'quest');
+  }
+
+  /** The contract stone: how the bounty is going. */
+  private checkBounty(player: PlayerEntity): void {
+    const task = player.bounty.task;
+    const points = `You have ${player.bounty.points} bounty points.`;
+    this.message(player.id, task ? `Your bounty: ${task.left} ${taskName(task.monster)} still to go, out of ${task.total}. ${points}` : `You have no bounty. Hrolf, in Brakk Village, hands them out. ${points}`);
+  }
+
+  private bountyActions(player: PlayerEntity): NonNullable<TalkActions['bounty']> {
+    // A new task after a skip is never the one just dropped.
+    let last = player.bounty.task?.monster;
+    return {
+      task: () => player.bounty.task ?? null,
+      points: () => player.bounty.points,
+      assign: () => {
+        const task = pickTask(combatLevel(player.skills), levelForXp(player.skills.bounty), this.rng, last);
+        if (task) {
+          player.bounty.task = task;
+          last = task.monster;
+        }
+        return task;
+      },
+      skip: () => {
+        if (!player.bounty.task || player.bounty.points < BOUNTY.skipCost) return false;
+        player.bounty.points -= BOUNTY.skipCost;
+        delete player.bounty.task;
+        return true;
+      },
+      buy: (itemId) => {
+        const reward = BOUNTY.rewards.find((r) => r.item === itemId);
+        if (!reward || player.bounty.points < reward.points) return 'points';
+        if (!canAdd(player.inventory, itemId, 1)) return 'space';
+        player.bounty.points -= reward.points;
+        addItem(player.inventory, itemId, 1);
+        return 'ok';
+      },
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Homesteading
+  // -------------------------------------------------------------------------
+
+  /** What clicking a homestead object does: through the gate, or a build spot's build, use or remove. */
+  private homeTask(player: PlayerEntity, target: ObjectEntity, action: InteractAction): HomeTask | null {
+    if (target.defKey === 'homestead_gate') return action === 'enter' ? 'gate' : null;
+    if (target.defKey !== 'build_spot') return null;
+    if (action === 'build') return 'plan';
+    if (action === 'remove') return 'remove';
+    const spot = spotState(player.homestead, `${target.x},${target.y}`);
+    return action === 'use' && spot?.tier && FURNITURE[spot.def.kind].use ? 'use' : null;
+  }
+
+  private homeStep(player: PlayerEntity): void {
+    const action = player.action;
+    if (action?.kind !== 'home') return;
+    const target = this.entities.get(action.targetId);
+    if (target?.kind !== 'scenery') return void (player.action = null);
+    if (action.task === 'gate') {
+      player.action = null;
+      return this.throughGate(player, target);
+    }
+    if (!this.adjacent(player, target)) {
+      player.action = null;
+      return this.message(player.id, "I can't reach that.", 'warn');
+    }
+    const spot = spotState(player.homestead, `${target.x},${target.y}`);
+    if (!spot || !player.homestead.owned) {
+      player.action = null;
+      return this.message(player.id, "This isn't your house to build in.", 'warn');
+    }
+    if (action.task === 'build') {
+      if (this.tick < action.doneAt!) return;
+      player.action = null;
+      return this.finishBuild(player, target, action.tier!);
+    }
+    player.action = null;
+    if (action.task === 'plan') player.ui = { kind: 'build', at: target.id };
+    else if (action.task === 'remove') this.removeFurniture(player, target);
+    else this.useFurniture(player, target);
+  }
+
+  /** The homestead gate opens for its owner: a step through to the other side. */
+  private throughGate(player: PlayerEntity, gate: ObjectEntity): void {
+    const dx = gate.x - player.x;
+    const dy = gate.y - player.y;
+    if (Math.abs(dx) + Math.abs(dy) !== 1) return this.message(player.id, "I can't reach that.", 'warn');
+    if (!player.homestead.owned) {
+      return this.message(player.id, 'The gate is locked. The plot is for sale: Corwin, the estate agent in Falcrest, has the key.', 'warn');
+    }
+    const to = { x: gate.x + dx, y: gate.y + dy };
+    if (!this.grid.isWalkable(to.x, to.y)) return;
+    player.via = { x: gate.x, y: gate.y };
+    player.x = to.x;
+    player.y = to.y;
+  }
+
+  /** Whether this tier can be built at a spot now; says why not when it can't. */
+  private canBuild(player: PlayerEntity, spot: NonNullable<ReturnType<typeof spotState>>, tier: number): boolean {
+    const t = FURNITURE[spot.def.kind].tiers[tier - 1];
+    const warn = (text: string) => (this.message(player.id, text, 'warn'), false);
+    if (!spot.room) return warn(`You need to fit out the ${ROOMS[spot.def.room].name.toLowerCase()} before you can build in it.`);
+    if (spot.tier === tier) return warn(`There's already ${aOrSome(t.name.toLowerCase())} here.`);
+    if (levelForXp(player.skills.homesteading) < t.level) return warn(`You need a Homesteading level of ${t.level} to build ${aOrSome(t.name.toLowerCase())}.`);
+    if (!hasItem(player.inventory, 'hammer') || !hasItem(player.inventory, 'saw')) return warn('You need a hammer and a saw to build anything.');
+    const short = t.materials.find(([itemId, qty]) => !hasItem(player.inventory, itemId, qty));
+    if (short) return warn(`You need ${short[1]} ${ITEMS[short[0]].name.toLowerCase()}${short[1] > 1 && !ITEMS[short[0]].name.endsWith('s') ? 's' : ''} to build ${aOrSome(t.name.toLowerCase())}.`);
+    return true;
+  }
+
+  /** Picked in the build window: start building, done a few ticks later. */
+  private startBuild(player: PlayerEntity, tier: number): void {
+    const ui = player.ui;
+    if (ui?.kind !== 'build' || !Number.isInteger(tier)) return;
+    const target = this.entities.get(ui.at);
+    if (target?.kind !== 'scenery' || !this.adjacent(player, target)) return;
+    const spot = spotState(player.homestead, `${target.x},${target.y}`);
+    if (!spot || !FURNITURE[spot.def.kind].tiers[tier - 1] || !this.canBuild(player, spot, tier)) return;
+    player.ui = null;
+    player.action = { kind: 'home', targetId: target.id, task: 'build', tier, doneAt: this.tick + HOMESTEAD.buildTicks };
+  }
+
+  private finishBuild(player: PlayerEntity, target: ObjectEntity, tier: number): void {
+    const key = `${target.x},${target.y}`;
+    const spot = spotState(player.homestead, key);
+    if (!spot || !this.canBuild(player, spot, tier)) return;
+    const t = FURNITURE[spot.def.kind].tiers[tier - 1];
+    for (const [itemId, qty] of t.materials) removeItem(player.inventory, itemId, qty);
+    player.homestead.built[key] = tier;
+    this.addXp(player, 'homesteading', t.xp);
+    this.message(player.id, `You build ${aOrSome(t.name.toLowerCase())}.`);
+  }
+
+  /** Fits out the room the open build window's spot is in, for coins. */
+  private buildRoom(player: PlayerEntity): void {
+    const ui = player.ui;
+    if (ui?.kind !== 'build') return;
+    const target = this.entities.get(ui.at);
+    if (target?.kind !== 'scenery' || !this.adjacent(player, target)) return;
+    const spot = spotState(player.homestead, `${target.x},${target.y}`);
+    if (!spot || spot.room) return;
+    const room = ROOMS[spot.def.room];
+    if (levelForXp(player.skills.homesteading) < room.level) {
+      return this.message(player.id, `You need a Homesteading level of ${room.level} to fit out the ${room.name.toLowerCase()}.`, 'warn');
+    }
+    if (!hasItem(player.inventory, 'coins', room.coins)) {
+      return this.message(player.id, `Fitting out the ${room.name.toLowerCase()} costs ${room.coins.toLocaleString('en-GB')} coins.`, 'warn');
+    }
+    removeItem(player.inventory, 'coins', room.coins);
+    player.homestead.rooms.push(room.id);
+    this.message(player.id, `You fit out the ${room.name.toLowerCase()}. Now you can build in it.`);
+  }
+
+  private removeFurniture(player: PlayerEntity, target: ObjectEntity): void {
+    const key = `${target.x},${target.y}`;
+    const spot = spotState(player.homestead, key);
+    if (!spot?.tier) return this.message(player.id, "There's nothing built here.");
+    delete player.homestead.built[key];
+    this.message(player.id, `You take the ${spotName(spot.def.kind, spot.tier).toLowerCase()} down.`);
+  }
+
+  private buildView(player: PlayerEntity, at: EntityId): UiView | null {
+    const target = this.entities.get(at);
+    const spot = target ? spotState(player.homestead, `${target.x},${target.y}`) : null;
+    if (!spot) return null;
+    const f = FURNITURE[spot.def.kind];
+    const room = ROOMS[spot.def.room];
+    return {
+      kind: 'build',
+      title: f.space,
+      built: spot.tier,
+      room: { name: room.name, built: spot.room, level: room.level, coins: room.coins },
+      tiers: f.tiers.map((t) => ({ name: t.name, level: t.level, xp: t.xp, materials: t.materials.map(([itemId, qty]) => ({ itemId, qty })) })),
+    };
+  }
+
+  /** What built furniture does: cook, pray, take tools, rest, travel or drink. */
+  private useFurniture(player: PlayerEntity, target: ObjectEntity): void {
+    const spot = spotState(player.homestead, `${target.x},${target.y}`);
+    const f = spot ? FURNITURE[spot.def.kind] : undefined;
+    const t = spot?.tier ? f?.tiers[spot.tier - 1] : undefined;
+    if (!spot || !f?.use || !t) return this.message(player.id, 'Nothing interesting happens.');
+    const maxHp = levelForXp(player.skills.hitpoints);
+    switch (f.use) {
+      case 'range':
+        player.ui = { kind: 'craft', station: 'range', at: target.id };
+        return;
+      case 'altar':
+        return this.pray(player);
+      case 'tools': {
+        const carried = (id: string) => hasItem(player.inventory, id) || player.equipment.weapon === id;
+        const missing = t.tools!.filter((id) => !carried(id));
+        if (!missing.length) return this.message(player.id, 'You already carry every tool on the rack.');
+        const taken = missing.filter((id) => addItem(player.inventory, id, 1));
+        if (!taken.length) return this.message(player.id, "You don't have room for any of the tools.", 'warn');
+        const names = taken.map((id) => aOrSome(ITEMS[id].name.toLowerCase()));
+        return this.message(player.id, `You take ${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]} from the rack.`);
+      }
+      case 'rest':
+        player.energy = 100;
+        player.hp = Math.max(player.hp, Math.min(maxHp, player.hp + Math.ceil(maxHp * t.heal!)));
+        this.animate(player, 'pray');
+        return this.message(player.id, 'You lie down for a moment, and get up refreshed.');
+      case 'pool':
+        player.energy = 100;
+        if (spot.tier >= 2) player.prayer = levelForXp(player.skills.prayer);
+        if (spot.tier >= 3) player.hp = Math.max(player.hp, maxHp);
+        this.animate(player, 'drink');
+        return this.message(player.id, spot.tier >= 3 ? 'The water restores you completely.' : spot.tier >= 2 ? 'The water restores your energy and your prayer.' : 'The cool water restores your energy.');
+      case 'portal':
+        return this.showPages(player, target.id, [
+          {
+            speaker: 'npc',
+            text: 'The portal shimmers. Where would you like to go?',
+            options: [
+              ...t.to!.map((id) => ({ label: PORTALS[id].name, then: () => (this.portalTo(player, id), []) })),
+              { label: 'Nowhere for now.', then: () => [] },
+            ],
+          },
+        ]);
+    }
+  }
+
+  /** Stepping through a homestead portal: a teleport with no glyphs and no chant. */
+  private portalTo(player: PlayerEntity, id: string): void {
+    const place = PORTALS[id];
+    player.path = [];
+    player.destination = null;
+    player.action = { kind: 'teleport', spell: 'portal', to: this.openTileNear(place), departAt: this.tick, arriveAt: this.tick + TELEPORT_TICKS, place: place.name };
+  }
+
+  /** Altars multiply Prayer XP: town altars by the usual, homestead altars by their tier and the lamps lit beside them. */
+  private altarMultiplier(player: PlayerEntity, target: Entity): number {
+    if (target.kind === 'station' && target.defKey === 'altar') return ALTAR_MULTIPLIER;
+    if (target.kind !== 'scenery' || target.defKey !== 'build_spot') return 0;
+    const spot = spotState(player.homestead, `${target.x},${target.y}`);
+    if (!spot?.tier || FURNITURE[spot.def.kind].use !== 'altar') return 0;
+    let multiplier = FURNITURE[spot.def.kind].tiers[spot.tier - 1].multiplier!;
+    for (const [key, def] of Object.entries(SPOTS)) {
+      if (def.room === spot.def.room && def.kind === 'lamp') multiplier += HOMESTEAD.lampBonus * (player.homestead.built[key] ?? 0);
+    }
+    return multiplier;
+  }
+
+  /** Jory cuts every log of a kind carried into planks, for as many as the fee can be paid. */
+  private makePlanks(player: PlayerEntity, logs: string): { made: number; short?: 'logs' | 'coins' } {
+    const kind = HOMESTEAD.planks.find((p) => p.logs === logs);
+    const have = kind ? countItem(player.inventory, logs) : 0;
+    if (!kind || !have) return { made: 0, short: 'logs' };
+    const made = Math.min(have, Math.floor(countItem(player.inventory, 'coins') / kind.fee));
+    if (made) {
+      removeItem(player.inventory, logs, made);
+      removeItem(player.inventory, 'coins', made * kind.fee);
+      addItem(player.inventory, kind.plank, made);
+    }
+    return made < have ? { made, short: 'coins' } : { made };
   }
 
   // -------------------------------------------------------------------------
@@ -2452,17 +2811,26 @@ export class Simulation {
       };
     }
     if (e.kind === 'item') return { id: e.id, kind: e.kind, x: e.x, y: e.y, name: e.name, defKey: e.itemId, qty: e.qty };
+    const spot = e.defKey === 'build_spot' ? spotState(viewer.homestead, `${e.x},${e.y}`) : null;
     return {
       id: e.id,
       kind: e.kind,
       x: e.x,
       y: e.y,
-      name: e.name,
+      name: this.nameFor(e, viewer),
       defKey: e.defKey,
       ...(e.size && { size: e.size }),
       ...(e.depletedUntil !== undefined && { depleted: true }),
       ...(e.patch && { patch: patchView(viewer.farm[`${e.x},${e.y}`] ?? overgrown()) }),
+      ...(spot && { spot: { kind: spot.def.kind, tier: spot.tier, room: spot.room } }),
     };
+  }
+
+  /** An object's name as `viewer` sees it: a build spot is named for what they built there. */
+  private nameFor(e: ObjectEntity | PlayerEntity | MonsterEntity, viewer: PlayerEntity): string {
+    if (e.kind !== 'scenery' || e.defKey !== 'build_spot') return e.name;
+    const spot = spotState(viewer.homestead, `${e.x},${e.y}`);
+    return spot ? spotName(spot.def.kind, spot.tier) : e.name;
   }
 
   private crossingView(action: Extract<PlayerEntity['action'], { kind: 'cross' }>): PublicEntity['crossing'] {
@@ -2525,6 +2893,10 @@ export class Simulation {
       energy: Math.floor(player.energy),
       run: player.run,
       autocast: player.autocast ?? null,
+      bounty: {
+        ...(player.bounty.task && { task: { name: taskName(player.bounty.task.monster), left: player.bounty.task.left } }),
+        points: player.bounty.points,
+      },
     };
     const json = JSON.stringify(state);
     if (json === session.lastSelf) return;

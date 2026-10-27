@@ -1,4 +1,6 @@
 import type { NpcDef } from '../map/types';
+import { hrolfTalk, type BountyActions } from './bounty';
+import { corwinTalk, joryTalk, type HomesteadActions, type SawmillActions } from './homestead';
 import type { SkillId } from './skills';
 
 /**
@@ -32,6 +34,12 @@ export interface TalkActions {
   /** Opens this NPC's shop or bank, for people who have one. */
   trade?: () => void;
   bank?: () => void;
+  /** Hrolf's bounties. */
+  bounty?: BountyActions;
+  /** Corwin's plot. */
+  homestead?: HomesteadActions;
+  /** Jory's saw. */
+  sawmill?: SawmillActions;
 }
 
 export type QuestId = 'first_oath' | 'dukes_feast' | 'hull_and_nails' | 'feathers_for_ivy' | 'emirs_seal' | 'nessas_cauldron';
@@ -582,6 +590,9 @@ const QUEST_TALK: Record<string, (def: NpcDef, a: TalkActions) => DialoguePage[]
   ivy,
   emir_tarek: emirTarek,
   old_nessa: oldNessa,
+  hrolf: (_def, a) => hrolfTalk(a),
+  corwin: (_def, a) => corwinTalk(a),
+  jory: (_def, a) => joryTalk(a),
 };
 
 /** The conversation you get when you talk to someone. */

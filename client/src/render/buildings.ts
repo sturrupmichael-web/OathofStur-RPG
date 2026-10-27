@@ -851,7 +851,8 @@ export class BuildingLayer {
     const wood = lambert(0xffffff);
 
     // Rug: each building's own colours and weave, and for homes its own size.
-    const rug = RUGS[b.kind];
+    // The homestead is left bare: its owner furnishes it.
+    const rug = b.name === 'Homestead House' ? undefined : RUGS[b.kind];
     if (rug) {
       const r = (salt: number) => hash2(main.x0, main.y0, salt);
       const [base, trim, accent] = b.kind === 'house' ? RUG_COLOURS[Math.floor(r(1) * RUG_COLOURS.length)] : rug;

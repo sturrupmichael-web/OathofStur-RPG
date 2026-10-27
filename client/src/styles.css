@@ -467,6 +467,24 @@ body {
   opacity: 0.45;
 }
 
+/* The build window: a room still to fit out, and the tier already built. */
+.build-room {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 6px;
+  margin-bottom: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+.recipe.built .recipe-name::after {
+  content: ' (built)';
+  color: var(--gold);
+  font-weight: normal;
+}
+
 .recipe-icon {
   width: 40px;
   height: 40px;
@@ -587,6 +605,8 @@ body {
 .skill-agility { background: #5a7ad8; }
 .skill-glyphcraft { background: #b89af0; }
 .skill-farming { background: #6aa83a; }
+.skill-bounty { background: #c4563a; }
+.skill-homesteading { background: #c8945a; }
 
 /* A level raised by a potion shows green, lowered shows red. */
 .skill-level.boosted { color: #7fe05a; }

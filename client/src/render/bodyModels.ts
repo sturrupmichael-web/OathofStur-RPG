@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { BodyType } from '@rpg/shared';
 import { shared } from './dispose';
-import type { BodyBones, BodyFrame } from './humanoid';
+import type { BodyBones, BodyFrame, HeadFit } from './humanoid';
 import femaleGlb from './models/body_female.glb?inline';
 import femaleMask from './models/body_female_mask.png?inline';
 import maleGlb from './models/body_male.glb?inline';
@@ -25,6 +25,11 @@ import maleMask from './models/body_male_mask.png?inline';
 
 /** Regions in the map, in order. 0 keeps the sculpt's own colour (eyes, mouth). */
 export const REGIONS = ['keep', 'skin', 'shirt', 'trousers', 'boots', 'belt', 'brows'] as const;
+/** A head fit that changes nothing. */
+const FIT0: HeadFit = { x: 0, y: 0, z: 0, size: 1, w: 1, h: 1, d: 1, tilt: 0 };
+/** Fits for hair and headwear on each sculpt, tuned by eye in the fitting room. */
+const fit = (hair: Partial<HeadFit>, hat: Partial<HeadFit> = {}) => ({ hair: { ...FIT0, ...hair }, hat: { ...FIT0, ...hat } });
+
 export type Region = (typeof REGIONS)[number];
 
 interface Source {
@@ -51,6 +56,7 @@ const SOURCES: Record<BodyType, Source> = {
     mask: maleMask,
     scale: S,
     frame: {
+      fit: fit({ size: 0.96 }),
       hipsY: 0.46 * S,
       hipX: 0.065 * S,
       hipJoint: -0.03 * S,
@@ -83,6 +89,7 @@ const SOURCES: Record<BodyType, Source> = {
     mask: femaleMask,
     scale: S,
     frame: {
+      fit: fit({ size: 0.94 }),
       hipsY: 0.45 * S,
       hipX: 0.056 * S,
       hipJoint: -0.03 * S,
@@ -141,6 +148,11 @@ export function loadBodyModels(): Promise<void> {
 }
 
 /** The joints of a sculpted body, once it has loaded. */
+/** The head fits in use, for the fitting room to change live. */
+export function headFits(kind: BodyType): { hair: HeadFit; hat: HeadFit } {
+  return SOURCES[kind].frame.fit!;
+}
+
 export function bodyFrame(kind: BodyType | undefined): BodyFrame | null {
   return kind && ready.has(kind) ? SOURCES[kind].frame : null;
 }

@@ -856,6 +856,12 @@ async function start(): Promise<void> {
     // Saved once the next tick has applied it.
     if (chosen) setTimeout(requestSave, 1500);
   });
+  // For tuning hair and hats on the sculpted heads: in the play-test (shown in a frame) or with #dev.
+  const fitRoom = document.getElementById('fit-room') as HTMLButtonElement;
+  fitRoom.hidden = window.top === window && location.hash !== '#dev';
+  fitRoom.addEventListener('click', () => {
+    if (!creator.isOpen) void creator.open({ look: me()?.look, first: false, fitting: true });
+  });
   if (me() && !me()!.look) {
     const chosen = await creator.open({ first: true, name: me()!.name });
     if (chosen) server.send({ type: 'setLook', ...chosen });

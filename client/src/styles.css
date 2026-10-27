@@ -1798,7 +1798,62 @@ body {
   display: none;
 }
 
+.creator-row[hidden] {
+  display: none;
+}
+
+#creator.fitting .creator-preview canvas {
+  width: 300px;
+  height: 340px;
+}
+
+#creator.fitting .creator-preview {
+  flex-basis: 300px;
+}
+
+#creator.fitting .creator-box {
+  width: 760px;
+}
+
+.creator-row .fit-sliders {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.fit-sliders label {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.fit-sliders label b {
+  font-weight: normal;
+  color: var(--muted);
+  text-align: right;
+}
+
+.fit-sliders button {
+  align-self: flex-start;
+}
+
+.creator-row textarea {
+  width: 100%;
+  font: 11px monospace;
+  color: var(--ink);
+  background: var(--panel-dark);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  resize: vertical;
+}
+
 @media (max-width: 560px) {
+  #creator.fitting .creator-preview canvas {
+    width: 240px;
+    height: 260px;
+  }
+
   .creator-main {
     flex-direction: column;
     align-items: center;

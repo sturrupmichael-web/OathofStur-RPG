@@ -37,9 +37,28 @@ export type BodyFrame = typeof BODY & {
    * not shaped like the built-in egg: smoothed outward, or (`tucked`) inward.
    */
   headRadius?: (u: THREE.Vector3, tucked?: boolean) => number;
+  /** Hand-tuned nudges for a sculpted head's hair (and beard) and for what's worn over it (see HeadFit). */
+  fit?: { hair: HeadFit; hat: HeadFit };
   /** For capes over a sculpted body: how far its back and front reach at each height, and how high its shoulders are. */
   torso?: { back: (y: number) => number; front: (y: number) => number; shoulderTop: number };
 };
+
+/**
+ * A nudge for hair, hats and helms on a sculpted head, set by eye in the
+ * fitting room: moved by x/y/z (right, up, forward), grown by `size` and then
+ * by w/h/d along each axis, and tipped forward by `tilt` (radians), all about
+ * the head's middle.
+ */
+export interface HeadFit {
+  x: number;
+  y: number;
+  z: number;
+  size: number;
+  w: number;
+  h: number;
+  d: number;
+  tilt: number;
+}
 
 export interface BodyBones {
   hips: THREE.Bone;
@@ -476,6 +495,18 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   }
 
   // Hair, beard and hats are shells over the head.
+  const fits = R ? F.fit : undefined;
+  const fitTo = (fit: HeadFit | undefined) => {
+    if (!fit) return;
+    const turn = new THREE.Matrix4().makeRotationX(fit.tilt);
+    const grow = new THREE.Vector3(fit.size * fit.w, fit.size * fit.h, fit.size * fit.d);
+    const move = new THREE.Vector3(fit.x, fit.y, fit.z);
+    b.place = (p, n) => {
+      p.sub(headC).multiply(grow).applyMatrix4(turn).add(headC).add(move);
+      n.divide(grow).applyMatrix4(turn).normalize();
+    };
+  };
+  fitTo(fits?.hair);
   const bald = s.hairStyle === 'none' || s.hair === undefined;
   if (!bald) {
     // Hairline: high over the forehead, over the ears, low at the nape.
@@ -554,6 +585,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     );
     onHead(blob(0.03, 0.008, 0.01, 10), fp(0, -0.36, 0.004), s.beard);
   }
+  fitTo(fits?.hat);
   const hat = s.hatColor ?? 0x555555;
   if (s.hat === 'cap') {
     b.add(atHead(shell(1.11, (u) => u.y > 0.32 - u.z * 0.1)), () => hat, () => [[head, 1]]);
@@ -623,6 +655,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     b.doubleSided(false);
   }
 
+  b.place = null;
   b.build(parent, hips, { transparent: opts.transparent });
   const bones = b.bones;
   return {

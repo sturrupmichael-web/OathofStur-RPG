@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { DEFAULT_APPEARANCE, HAIR_STYLES, type Appearance } from '@rpg/shared';
 import { CHARACTER_STYLES, animateCharacter, buildCharacter, playCharacter, styleForLook, townsfolkStyle, withGear, type CharacterRig } from './render/character';
 import { hasAiModel } from './render/aiModels';
+import { loadBodyModels } from './render/bodyModels';
 import { animateCreature, buildCreature, playCreature, setShroud, type CreatureKind, type CreatureRig } from './render/creatures';
 
 /**
@@ -11,6 +12,7 @@ import { animateCreature, buildCreature, playCreature, setShroud, type CreatureK
  *
  * Query: ?set=people|monsters|gear|looks|townsfolk&only=a,b&anim=idle|walk|fight|chop|...&shot=slash&yaw=0.4&zoom=1&shroud
  */
+await loadBodyModels();
 const params = new URLSearchParams(location.search);
 const set = params.get('set') ?? 'people';
 let anim = params.get('anim') ?? 'idle';
@@ -78,6 +80,16 @@ if (set === 'monsters') {
   for (const body of ['male', 'female'] as const) {
     const rig = buildCharacter(withGear(styleForLook({ ...DEFAULT_APPEARANCE, body, hairStyle: 'long' }), GEAR[4]), entries.length, true);
     entries.push({ name: `${body}_cobalt`, root: rig.root, human: rig });
+  }
+  // Robes, aprons and hats over each body.
+  for (const body of ['male', 'female'] as const) {
+    const look = { ...DEFAULT_APPEARANCE, body, hairStyle: 'short' as const };
+    const robed = buildCharacter(withGear(styleForLook(look), { helmet: 'wizard_hat', body: 'wizard_robe', legs: 'wizard_skirt', weapon: 'ember_staff' }), entries.length, true);
+    entries.push({ name: `${body}_robes`, root: robed.root, human: robed });
+    const cook = buildCharacter({ ...styleForLook(look), apron: 0xd9ccaa, hat: 'chef', hatColor: 0xffffff }, entries.length, true);
+    entries.push({ name: `${body}_apron`, root: cook.root, human: cook });
+    const hood = buildCharacter({ ...styleForLook(look), hat: 'hood', hatColor: 0x4a3a2a, cape: 0x4a3a2a }, entries.length, true);
+    entries.push({ name: `${body}_hood`, root: hood.root, human: hood });
   }
 } else if (set === 'townsfolk') {
   for (let i = 0; i < 12; i++) {

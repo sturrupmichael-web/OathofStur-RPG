@@ -1,7 +1,8 @@
-import { BOOT_COLOURS, CLOTH_COLOURS, HAIR_COLOURS, SKIN_TONES, randomAppearance, type Appearance, type HairStyle } from '@rpg/shared';
+import { BOOT_COLOURS, CLOTH_COLOURS, HAIR_COLOURS, SKIN_TONES, randomAppearance, type Appearance, type BodyType, type HairStyle } from '@rpg/shared';
 import * as THREE from 'three';
 import { shared } from './dispose';
-import { BODY, buildBody } from './humanoid';
+import { attachBodyModel, bodyFrame, type Tints } from './bodyModels';
+import { buildBody, type BodyFrame } from './humanoid';
 import { paint, vertexMaterial } from './skin';
 
 /**
@@ -24,6 +25,8 @@ export interface CharacterStyle {
   hairStyle?: HairStyle;
   /** A woman's figure. */
   female?: boolean;
+  /** Wear a sculpted base body (see bodyModels.ts) once it has loaded, instead of the built-in one. */
+  model?: BodyType;
   beard?: number;
   cape?: number;
   hat?: 'cap' | 'chef' | 'hood' | 'wizard';
@@ -109,6 +112,7 @@ export function styleForLook(look: Appearance, base: CharacterStyle = CHARACTER_
   const s: CharacterStyle = {
     ...base,
     female: look.body === 'female',
+    model: look.body,
     skin: SKIN_TONES[look.skin],
     hair,
     hairStyle: look.hairStyle,
@@ -120,6 +124,19 @@ export function styleForLook(look: Appearance, base: CharacterStyle = CHARACTER_
   };
   if (s.female) s.scale = (base.scale ?? 1) * 0.96;
   return s;
+}
+
+/** The colours a sculpted body is dyed to for a look. */
+function sculptTints(s: CharacterStyle): Tints {
+  const bald = s.hairStyle === 'none' || s.hair === undefined;
+  return {
+    skin: s.skin ?? 0xd9a77e,
+    shirt: s.tunic,
+    trousers: s.trousers,
+    boots: s.boots,
+    belt: s.belt ?? shadeHex(s.tunic, 0.7),
+    brows: s.beard ?? (bald ? undefined : s.hair),
+  };
 }
 
 /** Plain townsfolk get a look of their own, the same every visit. */
@@ -543,6 +560,8 @@ export interface CharacterRig {
   /** Everything above the feet; tips over when the character dies. */
   body: THREE.Group;
   hips: THREE.Object3D;
+  /** Where the bones sit, for things hung on the body. */
+  frame: BodyFrame;
   /** The hang of a tunic hem or robe, swaying with the walk. */
   skirt: THREE.Object3D;
   torso: THREE.Object3D;
@@ -625,7 +644,10 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
   root.add(body);
   if (s.scale) body.scale.setScalar(s.scale);
   const ghost = !!s.ghost;
-  const bones = buildBody(s, body, { transparent: ghost ? (s.ghostOpacity ?? 0.55) : undefined });
+  const sculpt = ghost ? null : bodyFrame(s.model);
+  const bones = buildBody(s, body, { transparent: ghost ? (s.ghostOpacity ?? 0.55) : undefined, ...(sculpt && { frame: sculpt, sculpted: true }) });
+  if (sculpt) attachBodyModel(s.model!, bones, body, sculptTints(s), { shirt: !!s.bodyMetal, trousers: !!s.legsMetal });
+  const F = bones.frame;
 
   // Held item in the right hand
   const grip = bones.handR;
@@ -657,7 +679,7 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
     // A bow rides in the left hand, with a quiver of arrows on the back.
     weapon = buildBow(s.weapon.kind === 'longbow' ? 0.56 : 0.4, s.weapon.color);
     bones.handL.add(weapon);
-    bones.torso.add(buildQuiver(s.bulk ?? 1, !!s.cape));
+    bones.torso.add(buildQuiver(s.bulk ?? 1, !!s.cape, F));
   } else if (s.weapon?.kind === 'staff') {
     weapon = buildStaff(s.weapon.color);
     staffTip = weapon.getObjectByName('staff-tip') ?? null;
@@ -692,8 +714,8 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
   if (s.cape) {
     const bulk = s.bulk ?? 1;
     cape = new THREE.Group();
-    const top = BODY.hipsY + BODY.waist + BODY.shoulderY;
-    cape.position.set(0, BODY.shoulderY, 0);
+    const top = F.hipsY + F.waist + F.shoulderY;
+    cape.position.set(0, F.shoulderY, 0);
     bones.torso.add(cape);
     // How far the back of the body reaches at each height (world y), with a little clearance.
     const back: [number, number][] = s.robe !== undefined
@@ -817,7 +839,7 @@ function buildBow(half: number, wood: number): THREE.Group {
 }
 
 /** A leather quiver slung over the right shoulder, a few fletchings showing. */
-function buildQuiver(bulk: number, caped = false): THREE.Group {
+function buildQuiver(bulk: number, caped: boolean, F: BodyFrame): THREE.Group {
   const g = new THREE.Group();
   g.add(part(new THREE.CylinderGeometry(0.045, 0.036, 0.38, 10, 1, true), 0x6b4428));
   g.add(part(new THREE.CylinderGeometry(0.036, 0.036, 0.01, 10).translate(0, -0.19, 0), 0x4e301c));
@@ -830,7 +852,7 @@ function buildQuiver(bulk: number, caped = false): THREE.Group {
     g.add(part(new THREE.BoxGeometry(0.003, 0.06, 0.024).translate(0, 0.25, 0), i % 2 ? 0xd8d2c4 : 0xa83a2a, x, 0, z));
   }
   // Over a cape, it rides on the cloth rather than through it.
-  g.position.set(0.07, BODY.shoulderY - 0.2, -0.1 * bulk - (caped ? 0.035 : 0));
+  g.position.set(0.07, F.shoulderY - 0.2, -0.1 * bulk - (caped ? 0.035 : 0));
   g.rotation.set(-0.12, 0, -0.42);
   return g;
 }
@@ -1865,7 +1887,7 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
 
   // Weight shifts from foot to foot at rest, slowly; side to side when walking.
   const shift = Math.sin(t * 0.55) * idle;
-  rig.hips.position.set(0.012 * c * w + 0.014 * shift, BODY.hipsY - (0.008 + 0.034 * s * s) * w - 0.004 * Math.abs(shift) + 0.03 * r * Math.abs(c) - 0.03 * r, 0);
+  rig.hips.position.set(0.012 * c * w + 0.014 * shift, rig.frame.hipsY - (0.008 + 0.034 * s * s) * w - 0.004 * Math.abs(shift) + 0.03 * r * Math.abs(c) - 0.03 * r, 0);
   rig.hips.rotation.set(0, s * 0.14 * w, 0.05 * c * w + 0.035 * shift);
   rig.kneeL.rotation.x += 0.1 * Math.max(0, shift);
   rig.kneeR.rotation.x += 0.1 * Math.max(0, -shift);

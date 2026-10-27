@@ -35,6 +35,7 @@ import { CloudSave, type CloudStatus } from './net/cloudSave';
 import { LocalServer } from './net/LocalServer';
 import type { ServerConnection } from './net/ServerConnection';
 import { summary } from './net/syncRules';
+import { loadBodyModels } from './render/bodyModels';
 import { missileFlight } from './render/EntityLayer';
 import { Renderer, type PickResult } from './render/Renderer';
 import { ClientState } from './state/ClientState';
@@ -89,6 +90,8 @@ async function start(): Promise<void> {
   // Back from Google with a sign-in, or not; then which character to play.
   account.init();
   const startSave = await cloud.pick(loadLocal(), chooseSave);
+  // The sculpted bodies are inlined, so this is quick; characters wait for it so they never swap bodies mid-game.
+  await loadBodyModels();
 
   // Swap this for a Tiled/LDtk MapSource later; nothing below depends on the format.
   const mapSource: MapSource = new JsonMapSource('vell-reaches', vellReaches as unknown as JsonMapFile);

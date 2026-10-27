@@ -24,6 +24,13 @@ export const BODY = {
   forearm: 0.2,
 };
 
+/**
+ * Where the bones sit: BODY for the built-in body, or a sculpted body's own
+ * layout. `headCentre` is the middle of the head from the head bone, and
+ * `headScale` sizes hair and hats to fit a head of another shape.
+ */
+export type BodyFrame = typeof BODY & { headCentre?: [number, number, number]; headScale?: [number, number, number] };
+
 export interface BodyBones {
   hips: THREE.Bone;
   skirt: THREE.Bone;
@@ -43,6 +50,7 @@ export interface BodyBones {
   kneeR: THREE.Bone;
   ankleL: THREE.Bone;
   ankleR: THREE.Bone;
+  frame: BodyFrame;
 }
 
 const SKIN = 0xd9a77e;
@@ -90,8 +98,12 @@ function headShell(grow: number, keep: (u: THREE.Vector3) => boolean, shape?: (u
   });
 }
 
-export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { transparent?: number } = {}): BodyBones {
+export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { transparent?: number; frame?: BodyFrame; sculpted?: boolean } = {}): BodyBones {
   const b = new SkinBuilder();
+  const F: BodyFrame = opts.frame ?? BODY;
+  // A sculpted body (see bodyModels.ts) brings its own skin, clothes and face; only hair, hats and gear are built here.
+  const own = !opts.sculpted;
+  const hs = new THREE.Vector3(...(F.headScale ?? [1, 1, 1]));
   const skin = s.skin ?? SKIN;
   const bulk = s.bulk ?? 1;
   const belly = s.belly ?? 0;
@@ -99,30 +111,30 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   const bodyLayer: Layer = s.bodyMetal ? 'metal' : 'cloth';
   const legLayer: Layer = s.legsMetal ? 'metal' : 'cloth';
   // A woman's figure: narrower shoulders and waist, fuller hips, a bust, slimmer limbs.
-  const fem = !!s.female;
+  const fem = !!s.female && own;
   const figure = (py: number) => (fem ? lerpTable(FIGURE, py) : 1);
   const bust = (py: number) => (fem ? Math.max(0, 1 - Math.abs(py - 0.825) / 0.06) : 0);
   const slim = fem ? 0.92 : 1;
 
   // Skeleton
-  const hips = b.bone('hips', null, 0, BODY.hipsY);
+  const hips = b.bone('hips', null, 0, F.hipsY);
   const skirt = b.bone('skirt', hips, 0, 0.04);
-  const torso = b.bone('torso', hips, 0, BODY.waist);
-  const neck = b.bone('neck', torso, 0, BODY.neck);
-  const head = b.bone('head', neck, 0, BODY.headBase);
-  const headC = b.pos(head).add(new THREE.Vector3(0, 0.1, 0.004));
+  const torso = b.bone('torso', hips, 0, F.waist);
+  const neck = b.bone('neck', torso, 0, F.neck);
+  const head = b.bone('head', neck, 0, F.headBase);
+  const headC = b.pos(head).add(new THREE.Vector3(...(F.headCentre ?? [0, 0.1, 0.004])));
   const eyeY = facePoint(0, 0.06).y;
   const eyes = b.bone('eyes', head, 0, headC.y - b.pos(head).y + eyeY, 0.07);
   const arms = ([-1, 1] as const).map((side) => {
-    const shoulder = b.bone(side < 0 ? 'shoulderL' : 'shoulderR', torso, side * BODY.shoulderX * Math.sqrt(bulk) * (fem ? 0.88 : 1), BODY.shoulderY);
-    const elbow = b.bone(side < 0 ? 'elbowL' : 'elbowR', shoulder, 0, -BODY.upperArm);
-    const hand = b.bone(side < 0 ? 'handL' : 'handR', elbow, 0, -BODY.forearm);
+    const shoulder = b.bone(side < 0 ? 'shoulderL' : 'shoulderR', torso, side * F.shoulderX * (own ? Math.sqrt(bulk) : 1) * (fem ? 0.88 : 1), F.shoulderY);
+    const elbow = b.bone(side < 0 ? 'elbowL' : 'elbowR', shoulder, 0, -F.upperArm);
+    const hand = b.bone(side < 0 ? 'handL' : 'handR', elbow, 0, -F.forearm);
     return { side, shoulder, elbow, hand };
   });
   const legs = ([-1, 1] as const).map((side) => {
-    const hip = b.bone(side < 0 ? 'hipL' : 'hipR', hips, side * BODY.hipX, BODY.hipJoint);
-    const knee = b.bone(side < 0 ? 'kneeL' : 'kneeR', hip, -side * 0.003, -BODY.thigh, 0.004);
-    const ankle = b.bone(side < 0 ? 'ankleL' : 'ankleR', knee, -side * 0.006, -BODY.shin, -0.008);
+    const hip = b.bone(side < 0 ? 'hipL' : 'hipR', hips, side * F.hipX, F.hipJoint);
+    const knee = b.bone(side < 0 ? 'kneeL' : 'kneeR', hip, own ? -side * 0.003 : 0, -F.thigh, own ? 0.004 : 0);
+    const ankle = b.bone(side < 0 ? 'ankleL' : 'ankleR', knee, own ? -side * 0.006 : 0, -F.shin, own ? -0.008 : 0);
     return { side, hip, knee, ankle };
   });
   const y = (bone: number) => b.pos(bone).y;
@@ -151,7 +163,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
 
   // Hips and seat, in trousers.
   const tr = s.trousers;
-  if (!s.ghost) {
+  if (!s.ghost && own) {
     b.tube(
       [0.745, 0.7, 0.64, 0.58, 0.545, 0.53].map((py, i) => ring(0, py, -0.004, [0.122, 0.124, 0.13, 0.128, 0.11, 0.07][i] * bulk * figure(py), [0.084, 0.086, 0.09, 0.092, 0.08, 0.05][i] * bulk, tr, [[hips, 1]])),
       {
@@ -245,6 +257,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     [0.974, 0.04, 0.035, -0.006],
   ];
   const top = s.trim ?? s.tunic;
+  if (own)
   b.tube(
     chest.map(([py, rx, rz, z]) => {
       const gut = belly * Math.max(0, 1 - Math.abs(py - 0.73) / 0.11);
@@ -279,7 +292,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
       robe.map(([py, rx, rz], i) => ring(0, py, -0.004, rx * bulk * figure(py), rz * bulk, i === robe.length - 1 && s.trim ? s.trim : s.robe!, [[hips, 1]])),
       { capStart: false, capEnd: false, radial: 24, weigh: skirtW(0.4) },
     );
-  } else {
+  } else if (own) {
     const hem: [number, number, number][] = [
       [0.72, 0.131, 0.091],
       [0.64, 0.142, 0.1],
@@ -313,7 +326,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   b.doubleSided(false);
 
   // Belt, buckle and pouch.
-  if (s.belt !== undefined) {
+  if (s.belt !== undefined && own) {
     b.tube(
       [0.655, 0.665, 0.69, 0.7].map((py, i) => ring(0, py, 0, (0.13 + (i % 3 ? 0.006 : 0)) * bulk * figure(py), (0.091 + (i % 3 ? 0.006 : 0)) * bulk, s.belt!, trunkW(py))),
       { radial: 24 },
@@ -324,7 +337,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
 
   // Arms: a sleeve from shoulder to wrist, then the hand.
   const sleeve = s.bones ? skin : s.tunic;
-  for (const { side, shoulder, elbow, hand } of arms) {
+  for (const { side, shoulder, elbow, hand } of own ? arms : []) {
     const x = b.pos(shoulder).x;
     const joints: [number, number][] = [
       [0, torso],
@@ -370,20 +383,30 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   }
 
   // Neck and head.
+  if (own) {
   b.tube(
     [0.93, 0.97, 1.0, 1.03, 1.06].map((py) => ring(0, py, -0.004, 0.037 * (s.bones ? 0.7 : 1), 0.039 * (s.bones ? 0.7 : 1), skin, chain(-py, [[0, torso], [-(y(neck) + 0.01), neck], [-(y(head) + 0.02), head]], 0.04))),
     { radial: 12 },
   );
   const headGeo = warp(new THREE.SphereGeometry(1, 28, 20), (v) => v.copy(headPoint(v)));
   b.add(headGeo.translate(headC.x, headC.y, headC.z), () => skin, (p) => (p.y < headC.y - 0.06 ? blend(neck, head, (p.y - (headC.y - 0.1)) / 0.04) : [[head, 1]]));
+  }
 
+  // Shells and pieces on the head, sized to its shape and moved to its middle.
+  const atHead = (geo: THREE.BufferGeometry) => geo.scale(hs.x, hs.y, hs.z).translate(headC.x, headC.y, headC.z);
   const onHead = (geo: THREE.BufferGeometry, at: THREE.Vector3, color: number, bone = head, layer: Layer = 'cloth') => {
-    b.add(geo.translate(headC.x + at.x, headC.y + at.y, headC.z + at.z), () => color, () => [[bone, 1]], layer);
+    b.add(atHead(geo.translate(at.x, at.y, at.z)), () => color, () => [[bone, 1]], layer);
   };
   const hairColor = s.hair ?? 0x3a2a1a;
+  // Hair hanging down the back follows the head, then the neck, then the shoulders.
+  const hangs: [number, number][] = [
+    [0, head],
+    [y(head) - 0.01, neck],
+    [y(neck), torso],
+  ];
 
   // Face: eyes (on their own bone, to blink), brows, nose, mouth, ears.
-  for (const side of [-1, 1]) {
+  for (const side of own ? [-1, 1] : []) {
     const eye = facePoint(side * 0.38, 0.06);
     if (s.glowEyes !== undefined) {
       if (s.bones) onHead(blob(0.02, 0.019, 0.01, 10), eye.clone().add(new THREE.Vector3(0, 0, -0.002)), 0x1a1410);
@@ -401,7 +424,9 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
       onHead(point, ear.clone().add(new THREE.Vector3(side * 0.005, 0.005, 0)), skin);
     } else if (!s.bones) onHead(blob(0.011, 0.026, 0.018, 10), ear.clone().add(new THREE.Vector3(side * 0.004, 0, 0)), shade(skin, 0.94));
   }
-  if (s.bones) {
+  if (!own) {
+    // The sculpted face is already there.
+  } else if (s.bones) {
     // A grin of teeth, a dark nose hole, cheekbones.
     onHead(blob(0.032, 0.009, 0.008, 10), facePoint(0, -0.52, -0.002), 0xf4efe0);
     onHead(blob(0.007, 0.01, 0.006, 6), facePoint(0, -0.16, -0.003), 0x1a1410);
@@ -420,12 +445,15 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   if (!bald) {
     // Hairline: high over the forehead, over the ears, low at the nape.
     const line = (u: THREE.Vector3) => (u.z > 0 ? 0.08 + 0.42 * Math.pow(u.z, 1.3) : 0.08 + 0.62 * u.z);
-    b.add(headShell(1.08, (u) => u.y > line(u)).translate(headC.x, headC.y, headC.z), (p) => shade(hairColor, 0.9 + 0.1 * clamp01((p.y - headC.y) / 0.08 + 0.5)), () => [[head, 1]]);
+    b.add(atHead(headShell(1.08, (u) => u.y > line(u))), (p) => shade(hairColor, 0.9 + 0.1 * clamp01((p.y - headC.y) / 0.08 + 0.5)), () => [[head, 1]]);
     if (s.hairStyle === 'long') {
       // Hair down the back to the shoulders.
       b.doubleSided();
       b.tube(
-        [1.16, 1.06, 0.98, 0.9].map((py, i) => ring(0, py, headC.z - 0.012 - i * 0.012, 0.08 + i * 0.008, 0.088 + i * 0.004, hairColor, chain(py, [[0, head], [1.0, neck], [0.95, torso]], 0.06))),
+        [0.05, -0.05, -0.13, -0.21].map((dy, i) => {
+          const py = headC.y + dy * hs.y;
+          return ring(0, py, headC.z + (-0.012 - i * 0.012) * hs.z, (0.08 + i * 0.008) * hs.x, (0.088 + i * 0.004) * hs.z, hairColor, chain(py, hangs, 0.06));
+        }),
         { arc: [Math.PI, 0.55], capStart: false, capEnd: false, radial: 10 },
       );
       b.doubleSided(false);
@@ -435,14 +463,14 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
       // Tied at the back of the crown, hanging to between the shoulders.
       onHead(blob(0.022, 0.02, 0.02, 10), new THREE.Vector3(0, 0.035, -0.09), shade(hairColor, 0.8));
       const tail: [number, number, number][] = [
-        [headC.y + 0.04, 0.024, -0.095],
-        [headC.y - 0.01, 0.028, -0.104],
-        [headC.y - 0.07, 0.024, -0.098],
-        [headC.y - 0.13, 0.017, -0.092],
-        [headC.y - 0.18, 0.006, -0.09],
+        [headC.y + 0.04 * hs.y, 0.024, -0.095 * hs.z],
+        [headC.y - 0.01 * hs.y, 0.028, -0.104 * hs.z],
+        [headC.y - 0.07 * hs.y, 0.024, -0.098 * hs.z],
+        [headC.y - 0.13 * hs.y, 0.017, -0.092 * hs.z],
+        [headC.y - 0.18 * hs.y, 0.006, -0.09 * hs.z],
       ];
       b.tube(
-        tail.map(([py, r, dz]) => ring(0, py, headC.z + dz, r, r * 0.9, hairColor, chain(py, [[0, head], [1.0, neck], [0.95, torso]], 0.06))),
+        tail.map(([py, r, dz]) => ring(0, py, headC.z + dz, r, r * 0.9, hairColor, chain(py, hangs, 0.06))),
         { radial: 10 },
       );
     }
@@ -454,15 +482,15 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
         const cone = new THREE.ConeGeometry(0.019, 0.05, 6).translate(0, 0.02, 0);
         cone.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up, dir));
         const at = headPoint(dir, 1.02);
-        b.add(cone.translate(headC.x + at.x, headC.y + at.y, headC.z + at.z), () => hairColor, () => [[head, 1]]);
+        b.add(atHead(cone.translate(at.x, at.y, at.z)), () => hairColor, () => [[head, 1]]);
       }
     }
   }
   if (s.beard !== undefined) {
     b.add(
-      headShell(1.07, (u) => u.y < -0.12 && u.z > -0.15 && !(u.y > -0.62 && u.y < -0.38 && Math.abs(u.x) < 0.3 && u.z > 0.5), (u, p) => {
+      atHead(headShell(1.07, (u) => u.y < -0.12 && u.z > -0.15 && !(u.y > -0.62 && u.y < -0.38 && Math.abs(u.x) < 0.3 && u.z > 0.5), (u, p) => {
         if (u.y < -0.5) p.y -= 0.012 * (-u.y - 0.5) * 4;
-      }).translate(headC.x, headC.y, headC.z),
+      })),
       () => s.beard!,
       () => [[head, 1]],
     );
@@ -470,19 +498,19 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   }
   const hat = s.hatColor ?? 0x555555;
   if (s.hat === 'cap') {
-    b.add(headShell(1.11, (u) => u.y > 0.32 - u.z * 0.1).translate(headC.x, headC.y, headC.z), () => hat, () => [[head, 1]]);
+    b.add(atHead(headShell(1.11, (u) => u.y > 0.32 - u.z * 0.1)), () => hat, () => [[head, 1]]);
     onHead(blob(0.066, 0.006, 0.05, 14), new THREE.Vector3(0, 0.054, 0.085), shade(hat, 0.85));
   }
   if (s.hat === 'chef') {
-    b.add(headShell(1.1, (u) => u.y > 0.3).translate(headC.x, headC.y, headC.z), () => hat, () => [[head, 1]]);
+    b.add(atHead(headShell(1.1, (u) => u.y > 0.3)), () => hat, () => [[head, 1]]);
     b.tube(
-      [0.075, 0.1, 0.13, 0.16, 0.17].map((dy, i) => ring(headC.x, headC.y + dy, headC.z - 0.004, [0.07, 0.083, 0.095, 0.085, 0.03][i], [0.078, 0.09, 0.1, 0.09, 0.03][i], hat, [[head, 1]])),
+      [0.075, 0.1, 0.13, 0.16, 0.17].map((dy, i) => ring(headC.x, headC.y + dy * hs.y, headC.z - 0.004, [0.07, 0.083, 0.095, 0.085, 0.03][i] * hs.x, [0.078, 0.09, 0.1, 0.09, 0.03][i] * hs.z, hat, [[head, 1]])),
       { radial: 16 },
     );
   }
   if (s.hat === 'wizard') {
     // A tall pointed hat with a wide brim, the tip bent back a little.
-    b.add(headShell(1.1, (u) => u.y > 0.22 - u.z * 0.12).translate(headC.x, headC.y, headC.z), () => hat, () => [[head, 1]]);
+    b.add(atHead(headShell(1.1, (u) => u.y > 0.22 - u.z * 0.12)), () => hat, () => [[head, 1]]);
     const cone: [number, number, number][] = [
       [0.045, 0.15, 0],
       [0.055, 0.092, 0],
@@ -493,14 +521,14 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
       [0.3, 0.004, -0.068],
     ];
     b.tube(
-      cone.map(([dy, r, dz], i) => ring(headC.x, headC.y + dy, headC.z - 0.006 + dz, r, r, i === 1 && s.trim !== undefined ? s.trim : hat, [[head, 1]])),
+      cone.map(([dy, r, dz], i) => ring(headC.x, headC.y + dy * hs.y, headC.z + (-0.006 + dz) * hs.z, r * hs.x, r * hs.z, i === 1 && s.trim !== undefined ? s.trim : hat, [[head, 1]])),
       { radial: 18 },
     );
   }
   if (s.helm !== undefined) {
     // An open-faced helm with a nose guard and a rim.
     b.add(
-      headShell(1.12, (u) => u.y > -0.35 && !(u.z > 0.55 && u.y < 0.25 && Math.abs(u.x) < 0.62)).translate(headC.x, headC.y, headC.z),
+      atHead(headShell(1.12, (u) => u.y > -0.35 && !(u.z > 0.55 && u.y < 0.25 && Math.abs(u.x) < 0.62))),
       (p) => (p.y > headC.y + 0.095 ? shade(s.helm!, 1.15) : s.helm!),
       () => [[head, 1]],
       'metal',
@@ -512,7 +540,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     // A hood over the head and down onto the shoulders, open at the face.
     b.doubleSided();
     b.add(
-      headShell(1.16, (u) => !(u.z > 0.42 && u.y < 0.55 && Math.abs(u.x) < 0.75), (u, p) => {
+      atHead(headShell(1.16, (u) => !(u.z > 0.42 && u.y < 0.55 && Math.abs(u.x) < 0.75), (u, p) => {
         if (u.y < -0.3) {
           const k = (-u.y - 0.3) / 0.7;
           p.y -= k * 0.05;
@@ -520,7 +548,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
           p.z = p.z * (1 + k * 0.3) - k * 0.01;
         }
         if (u.y > 0.7 && u.z < -0.2) p.z -= (u.y - 0.7) * 0.06; // a little peak at the back
-      }).translate(headC.x, headC.y, headC.z),
+      })),
       () => hat,
       (p) => (p.y < headC.y - 0.07 ? blend(neck, head, (p.y - (headC.y - 0.13)) / 0.06) : [[head, 1]]),
     );
@@ -548,6 +576,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     kneeR: bones[legs[1].knee],
     ankleL: bones[legs[0].ankle],
     ankleR: bones[legs[1].ankle],
+    frame: F,
   };
 }
 

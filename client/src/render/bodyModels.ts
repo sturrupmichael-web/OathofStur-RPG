@@ -84,30 +84,30 @@ const SOURCES: Record<BodyType, Source> = {
     scale: S,
     frame: {
       hipsY: 0.45 * S,
-      hipX: 0.07 * S,
+      hipX: 0.056 * S,
       hipJoint: -0.03 * S,
-      thigh: 0.192 * S,
-      shin: 0.162 * S,
+      thigh: 0.185 * S,
+      shin: 0.175 * S,
       waist: 0.1 * S,
       neck: 0.24 * S,
-      headBase: 0.04 * S,
-      shoulderX: 0.105 * S,
-      shoulderY: 0.205 * S,
-      upperArm: 0.14 * S,
-      forearm: 0.134 * S,
+      headBase: 0.05 * S,
+      shoulderX: 0.1 * S,
+      shoulderY: 0.2 * S,
+      upperArm: 0.135 * S,
+      forearm: 0.125 * S,
       headCentre: [0, 0.075 * S, -0.005 * S],
     },
-    armOut: 1.2,
-    legOut: 0.157,
+    armOut: Math.PI / 2,
+    legOut: 0,
     crotch: 0.39 * S,
     base: [
-      [0.534, 0.436, 0.363],
-      [0.927, 0.598, 0.379],
-      [0.681, 0.673, 0.66],
-      [0.658, 0.623, 0.568],
-      [0.208, 0.198, 0.175],
+      [0.488, 0.398, 0.375],
+      [0.955, 0.604, 0.422],
+      [0.649, 0.625, 0.626],
+      [0.62, 0.596, 0.596],
+      [0.224, 0.166, 0.17],
       [1, 1, 1],
-      [0.667, 0.35, 0.164],
+      [0.469, 0.157, 0.037],
     ],
   },
 };
@@ -218,8 +218,8 @@ uniform vec3 browBase;`,
         '#include <map_fragment>',
         `#include <map_fragment>
 int region = int(floor(texture2D(regionMap, vMapUv).r * 255.0 / 32.0 + 0.5));
-// Brows take the hair colour, darkened where the texture is darker, never lightened (their edges fade into the skin).
-if (region == 6) diffuseColor.rgb = browBase * (0.5 + 0.5 * clamp(dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)) / dot(browBase, vec3(0.3, 0.59, 0.11)), 0.0, 1.0));
+// Brows take a slightly darker hair colour, darker still where the texture is darker, never lightened (their edges fade into the skin).
+if (region == 6) diffuseColor.rgb = browBase * 0.75 * (0.5 + 0.5 * clamp(dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)) / dot(browBase, vec3(0.3, 0.59, 0.11)), 0.0, 1.0));
 diffuseColor.rgb *= regionTint[region];
 float shineHere = regionShine[region];`,
       )

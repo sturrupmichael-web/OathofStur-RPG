@@ -752,7 +752,7 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
       const u = pos.getX(i) * 2; // -1 .. 1 across
       const t = 0.5 - pos.getY(i); // 0 at the shoulders .. 1 at the hem
       // Narrow over the shoulders, widening down the back.
-      const half = T ? F.shoulderX + 0.03 + 0.045 * Math.sqrt(t) : (0.17 + 0.045 * Math.sqrt(t)) * Math.sqrt(bulk);
+      const half = T ? F.shoulderX + 0.045 + 0.045 * Math.sqrt(t) : (0.17 + 0.045 * Math.sqrt(t)) * Math.sqrt(bulk);
       const x = u * half;
       // The top edge rides up the back of the neck and drapes down over the shoulders.
       const y = -t * LEN + (1 - t) ** 3 * (0.035 - u * u * 0.055);
@@ -760,7 +760,7 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
       // Hugs the round of the back; near the top the sides wrap forward over the shoulders.
       // (Over a sculpted body only the very top edge, so the cloth below clears the rounded shoulders.)
       const wrap = Math.max(0, 1 - t * (T ? 10 : 5));
-      const z = -d * (1 - (T ? 0.3 : 0.45) * u * u) + u * u * wrap * 0.09 * bulk + Math.sin(u * 7 + 0.5) * 0.006 * t;
+      const z = -d * (1 - (T ? 0.15 : 0.45) * u * u) + u * u * wrap * 0.09 * bulk + Math.sin(u * 7 + 0.5) * 0.006 * t;
       pos.setXYZ(i, x, y, z);
     }
     cloth.computeVertexNormals();
@@ -773,8 +773,8 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
       const clasp = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 6), new THREE.MeshLambertMaterial({ color: 0xd4a73a }));
       if (T) {
         // Where the cloth's top edge crosses the collarbone, just proud of it.
-        const u = (F.shoulderX * 0.7) / (F.shoulderX + 0.03);
-        clasp.position.set(side * F.shoulderX * 0.7, 0.035 - u * u * 0.055 - 0.004, -depth(top) * (1 - 0.3 * u * u) + u * u * 0.09 * bulk + 0.01);
+        const u = (F.shoulderX * 0.7) / (F.shoulderX + 0.045);
+        clasp.position.set(side * F.shoulderX * 0.7, 0.035 - u * u * 0.055 - 0.004, -depth(top) * (1 - 0.15 * u * u) + u * u * 0.09 * bulk + 0.01);
       } else clasp.position.set(side * 0.16 * Math.sqrt(bulk), -0.02, -depth(top) * 0.55 + 0.09 * bulk + 0.004);
       cape.add(clasp);
     }

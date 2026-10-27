@@ -34,6 +34,8 @@ interface Source {
   wingAbove?: number;
   /** How far out past a wing's root the wing starts. */
   wingOut?: number;
+  /** Keeps the built-in wings (for a model made with its wings folded). */
+  keepWings?: boolean;
 }
 
 const SOURCES: Partial<Record<CreatureKind, Source>> = {
@@ -43,8 +45,8 @@ const SOURCES: Partial<Record<CreatureKind, Source>> = {
   desert_lizard: { url: desertLizardGlb, yaw: Math.PI / 2, scale: 1, offset: [0, 0, -0.1] },
   scorpion: { url: scorpionGlb, yaw: Math.PI / 2, scale: 0.8, offset: [0, 0, 0.1] },
   cave_creeper: { url: caveCreeperGlb, yaw: 0, scale: 1.1, offset: [0, 0, -0.18] },
-  // Modelled perched; leaned forward so it reads as flying.
-  crimson_swift: { url: crimsonSwiftGlb, pitch: 0.6, yaw: 0, scale: 0.5, offset: [0, 0.75, -0.1] },
+  // Modelled perched with its wings folded: laid level, and it flies on the built-in wings.
+  crimson_swift: { url: crimsonSwiftGlb, pitch: 0.8, yaw: 0, scale: 0.5, offset: [0, 0.8, -0.12], keepWings: true },
   brine_slug: { url: brineSlugGlb, yaw: 0, scale: 0.8, offset: [0, 0, -0.1] },
   // Modelled upright with its wings spread; tipped forward into flight.
   gloom_bat: { url: gloomBatGlb, pitch: Math.PI / 2, yaw: 0, scale: 1.1, offset: [0, 1.1, -0.4], wingAbove: 0, wingOut: 0.12 },
@@ -123,6 +125,11 @@ function bones(rig: CreatureRig): THREE.Object3D[] {
   return out;
 }
 
+function isWithin(o: THREE.Object3D, ancestor: THREE.Object3D): boolean {
+  for (let p: THREE.Object3D | null = o; p; p = p.parent) if (p === ancestor) return true;
+  return false;
+}
+
 function attach(rig: CreatureRig, parts: THREE.Mesh[]): void {
   const p = ready.get(rig.kind)!;
   const mesh = new THREE.SkinnedMesh(p.geometry, p.material);
@@ -130,7 +137,8 @@ function attach(rig: CreatureRig, parts: THREE.Mesh[]): void {
   mesh.frustumCulled = false;
   rig.root.add(mesh);
   mesh.bind(new THREE.Skeleton(bones(rig) as THREE.Bone[], p.inverses.map((m) => m.clone())), new THREE.Matrix4());
-  for (const part of parts) part.visible = false;
+  const src = SOURCES[rig.kind]!;
+  for (const part of parts) if (!(src.keepWings && rig.arms.some((w) => isWithin(part, w)))) part.visible = false;
   if (p.mouth && rig.mouth) rig.mouth.position.copy(p.mouth);
 }
 
@@ -176,7 +184,7 @@ function prepare(kind: CreatureKind, src: Source, scene: THREE.Object3D): Prepar
 
   // Wings are raised on the model but folded on the built-in rig, so they're picked by place, not distance.
   // (Arms are pincers on some creatures, which the nearest-part rule handles.)
-  const wings = src.wingAbove === undefined ? [] : ref.arms.map((w) => index.get(w)!);
+  const wings = src.wingAbove === undefined && !src.keepWings ? [] : ref.arms.map((w) => index.get(w)!);
   const wingRoot = ref.arms.map((w) => w.getWorldPosition(new THREE.Vector3()));
   const torso = index.get(ref.torso)!;
 

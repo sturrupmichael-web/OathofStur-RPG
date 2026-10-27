@@ -1,5 +1,6 @@
 import type { Point } from '../map/types';
 import { BOUNTY_TASKS, type BountyState } from './bounty';
+import { parseAppearance, type Appearance } from './appearance';
 import { ATTACK_STYLES, type AttackStyle } from './combat';
 import { QUESTS, QUEST_IDS, doneStage } from './quests';
 import { CROPS, MAX_WEEDS, type PatchState } from './farming';
@@ -45,6 +46,8 @@ export interface SaveData {
   bounty?: BountyState;
   /** The homestead plot, its rooms and furniture. */
   homestead?: HomesteadState;
+  /** How the character looks. Left out for characters made before looks could be chosen. */
+  look?: Appearance;
   bank: ItemStack[];
   quests: Record<string, number>;
   createdAt: string;
@@ -105,6 +108,7 @@ export function parseSave(raw: unknown): SaveData | null {
   const farm = parseFarm(s.farm);
   const bounty = parseBounty(s.bounty);
   const homestead = parseHomestead(s.homestead);
+  const look = parseAppearance(s.look);
   const quests: Record<string, number> = {};
   const saved = (s.quests ?? {}) as Record<string, unknown>;
   for (const id of QUEST_IDS) {
@@ -129,6 +133,7 @@ export function parseSave(raw: unknown): SaveData | null {
     ...(typeof s.autocast === 'string' && SPELL_BY_ID[s.autocast]?.kind === 'combat' && { autocast: s.autocast }),
     ...(bounty && { bounty }),
     ...(homestead && { homestead }),
+    ...(look && { look }),
     bank,
     quests,
     createdAt: typeof s.createdAt === 'string' ? s.createdAt : now,

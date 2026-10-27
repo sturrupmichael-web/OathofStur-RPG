@@ -5,6 +5,7 @@ export { Rng } from './rng';
 export type { Entity, EntityId, GroundItemEntity, MonsterEntity, ObjectEntity, PlayerEntity } from './sim/entities';
 export * from './sim/items';
 export * from './sim/save';
+export * from './sim/appearance';
 export { EXAMINE, RESOURCE_DATA, requiredLevel } from './sim/gathering';
 export * from './sim/crafting';
 export { WorldGrid } from './sim/grid';

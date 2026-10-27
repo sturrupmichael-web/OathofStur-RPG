@@ -1,3 +1,4 @@
+import { BOOT_COLOURS, CLOTH_COLOURS, HAIR_COLOURS, SKIN_TONES, randomAppearance, type Appearance, type HairStyle } from '@rpg/shared';
 import * as THREE from 'three';
 import { shared } from './dispose';
 import { BODY, buildBody } from './humanoid';
@@ -20,7 +21,9 @@ export interface CharacterStyle {
   pouch?: number;
   skin?: number;
   hair?: number;
-  hairStyle?: 'short' | 'long' | 'bun' | 'none';
+  hairStyle?: HairStyle;
+  /** A woman's figure. */
+  female?: boolean;
   beard?: number;
   cape?: number;
   hat?: 'cap' | 'chef' | 'hood' | 'wizard';
@@ -95,6 +98,39 @@ export function withGear(base: CharacterStyle, gear: Partial<Record<string, stri
     s.weapon = { kind, color: bow ? (BOW_WOOD[gear.weapon.split('_')[0]] ?? 0x8a5a2e) : (metal(gear.weapon) ?? 0x9a9ca4) };
   }
   return s;
+}
+
+/**
+ * A chosen look on top of the player's outfit: body, skin, hair and the
+ * colours of shirt, trousers and boots. Gear then goes on over it.
+ */
+export function styleForLook(look: Appearance, base: CharacterStyle = CHARACTER_STYLES.player): CharacterStyle {
+  const hair = HAIR_COLOURS[look.hair];
+  const s: CharacterStyle = {
+    ...base,
+    female: look.body === 'female',
+    skin: SKIN_TONES[look.skin],
+    hair,
+    hairStyle: look.hairStyle,
+    tunic: CLOTH_COLOURS[look.shirt],
+    trousers: CLOTH_COLOURS[look.trousers],
+    boots: BOOT_COLOURS[look.boots],
+    bootCuff: shadeHex(BOOT_COLOURS[look.boots], 1.5),
+    beard: look.beard ? shadeHex(hair, 0.9) : undefined,
+  };
+  if (s.female) s.scale = (base.scale ?? 1) * 0.96;
+  return s;
+}
+
+/** Plain townsfolk get a look of their own, the same every visit. */
+export function townsfolkStyle(seed: number): CharacterStyle {
+  let t = Math.floor(seed * 2654435761) >>> 0;
+  const rng = { next: () => ((t = (Math.imul(t ^ (t >>> 15), 2246822519) + 0x9e3779b9) >>> 0) / 4294967296) };
+  const look = randomAppearance(rng);
+  const base = CHARACTER_STYLES.town_guide;
+  const dye = () => CLOTH_COLOURS[Math.floor(rng.next() * CLOTH_COLOURS.length)];
+  const hat = rng.next() < 0.25 && look.hairStyle !== 'spiky' ? 'cap' : undefined;
+  return { ...styleForLook(look, base), holding: undefined, cape: undefined, trim: rng.next() < 0.5 ? undefined : dye(), hat, hatColor: dye() };
 }
 
 function weaponKind(itemId: string): WeaponKind {

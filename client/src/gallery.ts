@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { CHARACTER_STYLES, animateCharacter, buildCharacter, playCharacter, withGear, type CharacterRig } from './render/character';
+import { DEFAULT_APPEARANCE, HAIR_STYLES, type Appearance } from '@rpg/shared';
+import { CHARACTER_STYLES, animateCharacter, buildCharacter, playCharacter, styleForLook, townsfolkStyle, withGear, type CharacterRig } from './render/character';
 import { hasAiModel } from './render/aiModels';
 import { animateCreature, buildCreature, playCreature, setShroud, type CreatureKind, type CreatureRig } from './render/creatures';
 
@@ -8,7 +9,7 @@ import { animateCreature, buildCreature, playCreature, setShroud, type CreatureK
  * and creature in a row, lit like the game, for checking models and
  * animations up close. Not part of the build.
  *
- * Query: ?set=people|monsters|gear&only=a,b&anim=idle|walk|fight|chop|...&shot=slash&yaw=0.4&zoom=1&shroud
+ * Query: ?set=people|monsters|gear|looks|townsfolk&only=a,b&anim=idle|walk|fight|chop|...&shot=slash&yaw=0.4&zoom=1&shroud
  */
 const params = new URLSearchParams(location.search);
 const set = params.get('set') ?? 'people';
@@ -65,6 +66,23 @@ if (set === 'monsters') {
         entries.push({ name: `${kind}_classic`, root: old.root, creature: old });
       }
     }
+  }
+} else if (set === 'looks') {
+  // Both bodies in every hair style, then a few in full gear.
+  for (const body of ['male', 'female'] as const)
+    HAIR_STYLES.forEach((hairStyle, i) => {
+      const look: Appearance = { ...DEFAULT_APPEARANCE, body, hairStyle, hair: (i * 3) % 10, skin: (i + (body === 'female' ? 3 : 0)) % 8, shirt: i * 2, beard: body === 'male' && i === 1 };
+      const rig = buildCharacter(styleForLook(look), entries.length, true);
+      entries.push({ name: `${body}_${hairStyle}`, root: rig.root, human: rig });
+    });
+  for (const body of ['male', 'female'] as const) {
+    const rig = buildCharacter(withGear(styleForLook({ ...DEFAULT_APPEARANCE, body, hairStyle: 'long' }), GEAR[4]), entries.length, true);
+    entries.push({ name: `${body}_cobalt`, root: rig.root, human: rig });
+  }
+} else if (set === 'townsfolk') {
+  for (let i = 0; i < 12; i++) {
+    const rig = buildCharacter(townsfolkStyle(i / 12 + 0.013), i);
+    entries.push({ name: `townsfolk_${i}`, root: rig.root, human: rig });
   }
 } else if (set === 'gear') {
   GEAR.forEach((gear, i) => {

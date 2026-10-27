@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { PATCH_KINDS, areaAt, glyphForArea, isBow, obstacleAt, type EntityId, type MapData, type WorldGrid } from '@rpg/shared';
+import { PATCH_KINDS, areaAt, glyphForArea, isBow, obstacleAt, type EntityId, type MapData, type PublicEntity, type WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView, HitEvent } from '../state/ClientState';
-import { CAST_MS, CAST_RELEASE, CHARACTER_STYLES, SHOOT_MS, SHOOT_RELEASE, activityPhase, animateCharacter, buildCharacter, characterBusy, crossingPose, playCharacter, styleForNpc, withGear, type CharacterRig } from './character';
+import { CAST_MS, CAST_RELEASE, CHARACTER_STYLES, SHOOT_MS, SHOOT_RELEASE, activityPhase, animateCharacter, buildCharacter, characterBusy, crossingPose, playCharacter, styleForLook, styleForNpc, townsfolkStyle, withGear, type CharacterRig } from './character';
 import { animateCreature, buildCreature, creatureBusy, isCreature, playCreature, setShroud, shotMs, type CreatureRig } from './creatures';
 import { disposeModel } from './dispose';
 import { Effects } from './effects';
@@ -24,6 +24,11 @@ interface ResourcePool {
  * Draws entities the server has told us about. Resource nodes are instanced
  * (hundreds of trees and rocks); stations and characters are plain meshes.
  */
+/** What a player wears and looks like; a change rebuilds their model. */
+function outfitKey(data: PublicEntity): string {
+  return JSON.stringify([data.gear ?? {}, data.look ?? null]);
+}
+
 export class EntityLayer {
   readonly group = new THREE.Group();
   private readonly pools = new Map<string, ResourcePool>();
@@ -88,8 +93,8 @@ export class EntityLayer {
     state.on('added', (v) => this.add(v));
     state.on('removed', (id) => this.remove(id));
     state.on('changed', (v) => {
-      // A tree felled or grown back swaps models; a player changing gear is rebuilt in it.
-      const gearChanged = v.data.kind === 'player' && this.meshes.get(v.data.id)?.userData.gear !== JSON.stringify(v.data.gear ?? {});
+      // A tree felled or grown back swaps models; a player changing gear or look is rebuilt.
+      const gearChanged = v.data.kind === 'player' && this.meshes.get(v.data.id)?.userData.outfit !== outfitKey(v.data);
       // A patch is rebuilt as its crop grows, a build spot as furniture goes up or comes down.
       if (v.data.kind !== 'resource' && !gearChanged && !v.data.patch && !v.data.spot) return;
       const yaw = this.meshes.get(v.data.id)?.rotation.y;
@@ -209,13 +214,16 @@ export class EntityLayer {
       this.rigs.set(data.id, rig);
       obj = rig.root;
     } else if (data.kind === 'player') {
-      const look = CHARACTER_STYLES[data.id === this.state.playerId ? 'player' : 'other_player'];
+      const look = data.look ? styleForLook(data.look) : CHARACTER_STYLES[data.id === this.state.playerId ? 'player' : 'other_player'];
       const rig = buildCharacter(withGear(look, data.gear), hash2(data.id, 3) * 100, true);
       this.rigs.set(data.id, rig);
       obj = rig.root;
-      obj.userData.gear = JSON.stringify(data.gear ?? {});
+      obj.userData.outfit = outfitKey(data);
     } else {
-      const rig = buildCharacter(styleForNpc(data.defKey ?? '', this.map.defs.npcs[data.defKey ?? '']?.role), hash2(data.id, 3) * 100);
+      const style = styleForNpc(data.defKey ?? '', this.map.defs.npcs[data.defKey ?? '']?.role);
+      // Townsfolk with no look of their own each get one, rather than all dressing alike.
+      const own = style === 'town_guide' && data.defKey !== 'town_guide' ? townsfolkStyle(hash2(data.id, 17)) : style;
+      const rig = buildCharacter(own, hash2(data.id, 3) * 100);
       this.rigs.set(data.id, rig);
       obj = rig.root;
     }

@@ -1,3 +1,4 @@
+import type { Appearance } from './appearance';
 import type { Point } from '../map/types';
 import type { BountyState } from './bounty';
 import type { AttackStyle } from './combat';
@@ -79,6 +80,8 @@ export interface PlayerEntity {
   /** Stage reached in each quest; missing means not started. */
   quests: Record<string, number>;
   ui: OpenUi | null;
+  /** How they look; missing for a character made before looks could be chosen. */
+  look?: Appearance;
   createdAt: string;
   /** Remaining steps, one taken per tick. */
   path: Point[];

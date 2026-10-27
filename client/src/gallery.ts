@@ -57,6 +57,11 @@ if (set === 'monsters') {
     } else {
       const rig = buildCreature(kind as CreatureKind, entries.length);
       entries.push({ name: kind, root: rig.root, creature: rig });
+      // The built-in model beside the AI-made one, to compare.
+      if (kind === 'cinder_drake') {
+        const old = buildCreature(kind, entries.length, true);
+        entries.push({ name: `${kind}_classic`, root: old.root, creature: old });
+      }
     }
   }
 } else if (set === 'gear') {

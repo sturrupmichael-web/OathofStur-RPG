@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { shared } from './dispose';
+import { applyAiModel, loadAiModels } from './aiModels';
 import { paint, vertexMaterial, warp } from './skin';
 
 /**
@@ -812,9 +813,12 @@ export function isCreature(defKey: string): defKey is CreatureKind {
   return defKey in BUILDERS;
 }
 
-export function buildCreature(kind: CreatureKind, seed: number): CreatureRig {
+/** `classic` keeps the built-in model even where there's an AI-made one (see aiModels). */
+export function buildCreature(kind: CreatureKind, seed: number, classic = false): CreatureRig {
+  loadAiModels((k, s) => BUILDERS[k](s), (r) => animateCreature(r, 0.016, 0, false));
   const rig = BUILDERS[kind](seed);
   rig.root.traverse((o) => (o.castShadow = true));
+  if (!classic) applyAiModel(rig);
   return rig;
 }
 

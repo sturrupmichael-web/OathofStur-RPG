@@ -45,7 +45,7 @@ export interface TalkActions {
   ferry?: FerryActions;
 }
 
-export type QuestId = 'first_oath' | 'dukes_feast' | 'hull_and_nails' | 'feathers_for_ivy' | 'emirs_seal' | 'nessas_cauldron';
+export type QuestId = 'first_oath' | 'dukes_feast' | 'hull_and_nails' | 'feathers_for_ivy' | 'emirs_seal' | 'nessas_cauldron' | 'restless_barrow' | 'wolf_winter' | 'pikes_lure';
 
 export interface QuestDef {
   id: QuestId;
@@ -142,7 +142,50 @@ export const QUESTS: Readonly<Record<QuestId, QuestDef>> = {
     rewards: ['1 quest point', '350 coins', '400 Firemaking XP', '300 Hitpoints XP'],
     reward: { items: [['coins', 350]], xp: [['firemaking', 400], ['hitpoints', 300]] },
   },
+  restless_barrow: {
+    id: 'restless_barrow',
+    name: 'The Restless Barrow',
+    giver: 'sister_maud',
+    start: 'Sister Maud keeps the Chapel of the Vigil in Corvane. She looks as if she has not slept. (Recommended: combat level 45.)',
+    steps: [
+      "The barrow-king's guard has risen in the Barrowfield, south across the Saltwind Sea. Sister Maud needs the king's circlet to lay them to rest: defeat barrow wights until one gives it up.",
+      "I have the barrow-king's circlet. I should take it to Sister Maud in the Chapel of the Vigil.",
+    ],
+    rewards: ['1 quest point', '2,000 coins', 'A verdite shield', '2,500 Devotion XP', '1,500 Defence XP'],
+    reward: { items: [['coins', 2000], ['verdite_shield', 1]], xp: [['prayer', 2500], ['defence', 1500]] },
+  },
+  wolf_winter: {
+    id: 'wolf_winter',
+    name: 'Wolf Winter',
+    giver: 'harl',
+    start: 'Harl the smith in Corvane is grumbling about the cold coming down off Frostpeak.',
+    steps: [
+      'Harl wants 6 wolf pelts to line coats for the winter. Frost wolves den in Wolfrun Hollow, east of Frostpeak Mine.',
+      'He wants to see if I can work cobalt: smith a cobalt helm (Smithing 53) and bring it to him.',
+    ],
+    rewards: ['1 quest point', '1,200 coins', 'A cobalt pickaxe', '3,000 Smithing XP', '1,000 Mining XP'],
+    reward: { items: [['coins', 1200], ['cobalt_pickaxe', 1]], xp: [['smithing', 3000], ['mining', 1000]] },
+  },
+  pikes_lure: {
+    id: 'pikes_lure',
+    name: "Pike's Lucky Lure",
+    giver: 'pike',
+    start: 'Pike at Avel Tackle in Port Avel has lost something, and he will tell anyone who stands still long enough.',
+    steps: [
+      "A fen lurker swallowed Pike's lucky lure, line and all. Lurkers lie in Saltmere Fen, up the east road from Port Avel: defeat them until the lure turns up.",
+      'I have the lucky lure. Pike will want it back.',
+    ],
+    rewards: ['1 quest point', '800 coins', '10 cooked pike', '1,500 Fishing XP', '800 Hitpoints XP'],
+    reward: { items: [['coins', 800], ['pike', 10]], xp: [['fishing', 1500], ['hitpoints', 800]] },
+  },
 };
+
+/** Quest items that drop from monsters while the quest waits on them: one chance per kill. */
+export const QUEST_DROPS: readonly { monster: string; quest: QuestId; stage: number; item: string; chance: number; message: string }[] = [
+  { monster: 'desert_bandit', quest: 'emirs_seal', stage: 1, item: 'sunspire_seal', chance: 0.34, message: "Something gold glints among the bandit's things: the Sunspire seal!" },
+  { monster: 'barrow_wight', quest: 'restless_barrow', stage: 1, item: 'barrow_circlet', chance: 0.3, message: 'The wight crumbles, and a tarnished circlet rolls from its helm.' },
+  { monster: 'fen_lurker', quest: 'pikes_lure', stage: 1, item: 'lucky_lure', chance: 0.3, message: 'Something bright catches your eye in the lurker\'s jaws: a brass lure!' },
+];
 
 export const QUEST_IDS = Object.keys(QUESTS) as QuestId[];
 
@@ -461,6 +504,92 @@ function emirTarek(_def: NpcDef, a: TalkActions): DialoguePage[] {
   }
 }
 
+/**
+ * A quest that waits on a monster's drop: the giver offers it (stage 1), the
+ * drop moves it to stage 2, and handing the item over finishes it. A lost
+ * item can be found again, so stage 2 without it goes back to 1.
+ */
+function dropQuest(a: TalkActions, quest: QuestId, item: string, lines: { intro: DialoguePage[]; ask: string; accept: string; decline: string; waiting: string; lost: string; thanks: string[]; reward: string; after: string }): DialoguePage[] {
+  switch (a.stage(quest)) {
+    case 0:
+      return [...lines.intro, offer(a, quest, lines.ask, [npc(lines.accept)], lines.decline)];
+    case 1:
+    case 2:
+      if (a.take(item)) return [...lines.thanks.map((t, i) => (i === 0 ? you(t) : npc(t))), { speaker: 'npc', text: lines.reward, effect: () => a.complete(quest) }];
+      if (a.stage(quest) === 1) return [npc(lines.waiting)];
+      a.setStage(quest, 1);
+      return [npc(lines.lost)];
+    default:
+      return [npc(lines.after)];
+  }
+}
+
+/** Sister Maud: the barrow-king's guard won't stay down. */
+function sisterMaud(def: NpcDef, a: TalkActions): DialoguePage[] {
+  if (a.stage('restless_barrow') >= doneStage(QUESTS.restless_barrow)) return [npc('The Barrowfield sleeps, and so do I, thanks to you.'), ...priest(def)];
+  return dropQuest(a, 'restless_barrow', 'barrow_circlet', {
+    intro: [
+      npc("Forgive me, I've kept the vigil three nights running. The old barrows south of the sea have opened, and the barrow-king's guard walks again."),
+      npc("They keep his circlet among them. Bring it here, to the altar, and they'll have nothing left to guard."),
+    ],
+    ask: 'Will you face them? They are strong, and they do not tire.',
+    accept: "The Barrowfield lies east of Port Avel, across the Saltwind Sea. The ferry from Saltcombe is quickest, or take the long road south through the fen. Defeat the wights until one gives up the circlet. Take food, and pray.",
+    decline: 'Then I will keep watching. Someone must.',
+    waiting: 'The wights guard the circlet in the Barrowfield, east of Port Avel. Defeat them until one gives it up.',
+    lost: 'You had it, and now you don\'t? The wights will have taken it back. Return to the Barrowfield.',
+    thanks: ["The barrow-king's circlet.", 'Lay it on the altar... there. Can you feel it? The field has gone quiet.'],
+    reward: 'The Vigil has little gold, but what we have is yours, and a shield that was given to us long ago. May it serve you better than it served its owner.',
+    after: 'The Barrowfield sleeps.',
+  });
+}
+
+/** Pike: a lurker swallowed his lucky lure. */
+function pikeTalk(def: NpcDef, a: TalkActions): DialoguePage[] {
+  if (a.stage('pikes_lure') >= doneStage(QUESTS.pikes_lure)) return [npc('Caught a pike the length of my arm this morning. Lucky lure, see?'), ...smallTalk(def, a).filter((p) => p.options)];
+  return dropQuest(a, 'pikes_lure', 'lucky_lure', {
+    intro: [
+      npc("Lost it. Twenty years that lure's been in my family, and a fen lurker took it clean off my line. Line, lure, very nearly my hand."),
+      npc("Brass, it is, shaped like a little fish. Never caught nothing without it since."),
+    ],
+    ask: 'You look like you can handle yourself. Get it back for me?',
+    accept: 'The lurkers lie in Saltmere Fen: follow the road east out of town, and where it turns north you\'re in the fen. One of them has it in its belly. Mind their jaws.',
+    decline: 'Then I suppose I fish without luck. Like everybody else.',
+    waiting: 'One of the fen lurkers in Saltmere Fen has my lure. Keep at them till it turns up.',
+    lost: "Dropped it? The lurkers'll swallow anything shiny. Back to the fen with you.",
+    thanks: ['Is this your lure?', "That's her! Still sharp, still shining. I could kiss you. I won't."],
+    reward: "Here: coin, and the best of today's catch, cooked. And I'll tell everyone in Port Avel who got my lure back.",
+    after: 'Every fish in the bay knows that lure. Most of them have met it.',
+  });
+}
+
+/** Harl: pelts for the winter, and a test of cobalt. */
+function harlTalk(def: NpcDef, a: TalkActions): DialoguePage[] {
+  switch (a.stage('wolf_winter')) {
+    case 0:
+      return [
+        npc("Feel that wind? That's Frostpeak telling us winter's early. The wolves come down with it."),
+        offer(a, 'wolf_winter', "I need pelts to line the town's coats, and someone to help me with the forge. Interested?", [npc('Six wolf pelts first. The frost wolves den in Wolfrun Hollow, through the mine and out the east side. They hunt in packs, so watch your back.')], 'Then dress warm.'),
+      ];
+    case 1:
+      if (a.take('wolf_pelt', 6)) {
+        a.setStage('wolf_winter', 2);
+        return [you('Six wolf pelts.'), npc("Thick ones. Corvane won't freeze this year."), npc("Now, cobalt. Most smiths won't touch it; it fights the hammer. Smith me a cobalt helm and I'll know you're the real thing. You'll want Smithing 53 for it.")];
+      }
+      return [npc('Six wolf pelts. Wolfrun Hollow, east of Frostpeak Mine.')];
+    case 2:
+      if (a.take('cobalt_helm')) {
+        return [
+          you('One cobalt helm.'),
+          npc('Hm. Even seams, no cracks. You can work cobalt.'),
+          { speaker: 'npc', text: "Take this pickaxe: cobalt, my own make. You'll want it for what's in that mountain.", effect: () => a.complete('wolf_winter') },
+        ];
+      }
+      return [npc('A cobalt helm, made by your own hand. Cobalt ore smelts with four coal at Smithing 50; the helm needs 53.')];
+    default:
+      return [npc('Warmest coats in the Eastmarch, thanks to you.'), ...smallTalk(def, a).filter((p) => p.options)];
+  }
+}
+
 /** Old Nessa: odd things for an empty cauldron. */
 function oldNessa(_def: NpcDef, a: TalkActions): DialoguePage[] {
   switch (a.stage('nessas_cauldron')) {
@@ -593,6 +722,9 @@ const QUEST_TALK: Record<string, (def: NpcDef, a: TalkActions) => DialoguePage[]
   ivy,
   emir_tarek: emirTarek,
   old_nessa: oldNessa,
+  sister_maud: sisterMaud,
+  harl: harlTalk,
+  pike: pikeTalk,
   hrolf: (_def, a) => hrolfTalk(a),
   corwin: (_def, a) => corwinTalk(a),
   jory: (_def, a) => joryTalk(a),
@@ -602,7 +734,7 @@ const QUEST_TALK: Record<string, (def: NpcDef, a: TalkActions) => DialoguePage[]
 /** The conversation you get when you talk to someone. */
 export function conversation(def: NpcDef, a: TalkActions): DialoguePage[] {
   if (def.key === 'elder_maren') return elderMaren(a);
-  if (def.role === 'Priest') return priest(def);
+  if (def.role === 'Priest' && !QUEST_TALK[def.key]) return priest(def);
   if (LESSONS[def.role]) return teacher(def, a);
   return QUEST_TALK[def.key]?.(def, a) ?? smallTalk(def, a);
 }

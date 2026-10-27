@@ -150,6 +150,74 @@ describe('Town quests', () => {
     expect(p.skills.firemaking).toBe(400);
   });
 
+  /** Fights `monster` one after another until the quest moves past `stage`, then picks up `item` and walks to `giver`. */
+  function hunt(sim: Simulation, p: PlayerEntity, quest: QuestId, monster: string, item: string, giver: string): void {
+    for (let i = 0; i < 40 && p.quests[quest] === 1; i++) {
+      const m = monsters(sim, monster).find((x) => x.respawnAt === undefined && x.dyingUntil === undefined);
+      if (!m) {
+        run(sim, 20);
+        continue;
+      }
+      const at = besides(sim, m);
+      [p.x, p.y] = [at.x, at.y];
+      p.hp = 99;
+      sim.queueIntent(p.id, { type: 'attack', targetId: m.id });
+      run(sim, 300, () => m.respawnAt !== undefined);
+    }
+    expect(p.quests[quest]).toBe(2);
+    const drop = entities(sim).find((e): e is GroundItemEntity => e.kind === 'item' && e.itemId === item)!;
+    [p.x, p.y] = [drop.x, drop.y];
+    sim.queueIntent(p.id, { type: 'interact', targetId: drop.id, action: 'take' });
+    run(sim, 3);
+    expect(countItem(p.inventory, item)).toBe(1);
+    const who = npc(sim, giver);
+    const spot = [[0, 1], [1, 0], [-1, 0], [0, -1], [1, 1], [-1, 1]].map(([dx, dy]) => ({ x: who.x + dx, y: who.y + dy })).find((q) => sim.grid.isWalkable(q.x, q.y))!;
+    [p.x, p.y] = [spot.x, spot.y];
+    p.path = [];
+  }
+  const fighter = { levels: { attack: 90, strength: 90, defence: 90, hitpoints: 99, prayer: 1 }, equipment: { weapon: 'glacite_sword' } };
+
+  it('The Restless Barrow: barrow wights give up the circlet for Sister Maud', () => {
+    const sim = new Simulation({ map, seed: 21 });
+    const p = beside(sim, 'sister_maud', fighter);
+    talk(sim, p, 'sister_maud');
+    expect(p.quests.restless_barrow).toBe(1);
+    hunt(sim, p, 'restless_barrow', 'barrow_wight', 'barrow_circlet', 'sister_maud');
+    talk(sim, p, 'sister_maud');
+    expect(done(p, 'restless_barrow')).toBe(true);
+    expect(countItem(p.inventory, 'verdite_shield')).toBe(1);
+    // Afterwards she still talks about Prayer.
+    expect(talk(sim, p, 'sister_maud').join(' ')).toContain('Bury the bones');
+  });
+
+  it("Pike's Lucky Lure: a fen lurker has it", () => {
+    const sim = new Simulation({ map, seed: 22 });
+    const p = beside(sim, 'pike', fighter);
+    talk(sim, p, 'pike');
+    expect(p.quests.pikes_lure).toBe(1);
+    hunt(sim, p, 'pikes_lure', 'fen_lurker', 'lucky_lure', 'pike');
+    talk(sim, p, 'pike');
+    expect(done(p, 'pikes_lure')).toBe(true);
+    expect(countItem(p.inventory, 'pike')).toBe(10);
+  });
+
+  it('Wolf Winter: six pelts, then a cobalt helm, for Harl', () => {
+    const sim = new Simulation({ map, seed: 23 });
+    const p = beside(sim, 'harl', { items: [['wolf_pelt', 5]] });
+    talk(sim, p, 'harl');
+    talk(sim, p, 'harl');
+    expect(p.quests.wolf_winter).toBe(1);
+    expect(countItem(p.inventory, 'wolf_pelt')).toBe(5);
+    give(p, 'wolf_pelt');
+    talk(sim, p, 'harl');
+    expect(p.quests.wolf_winter).toBe(2);
+    give(p, 'cobalt_helm');
+    talk(sim, p, 'harl');
+    expect(done(p, 'wolf_winter')).toBe(true);
+    expect(countItem(p.inventory, 'cobalt_pickaxe')).toBe(1);
+    expect(p.skills.smithing).toBe(3000);
+  });
+
   it('counts a quest point for each quest done', () => {
     const sim = new Simulation({ map, seed: 1 });
     const p = beside(sim, 'aela', { quests: { first_oath: 6, hull_and_nails: 4 } });

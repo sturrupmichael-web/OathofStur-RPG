@@ -136,6 +136,8 @@
     { "id": "crimson_feathers", "name": "Crimson feathers", "examine": "Bright red feathers from a crimson swift.", "stackable": true, "value": 2 },
     { "id": "lizard_scales", "name": "Lizard scales", "examine": "Hard, glittering scales. Traders in Qadir collect them.", "value": 30 },
     { "id": "sunspire_seal", "name": "Sunspire seal", "examine": "The Emir of Qadir's golden seal. The bandits must have been planning something.", "value": 0 },
+    { "id": "barrow_circlet", "name": "Barrow-king's circlet", "examine": "Green bronze, set with a dull stone. It feels watched.", "value": 0 },
+    { "id": "lucky_lure", "name": "Lucky lure", "examine": "A brass lure shaped like a little fish. Pike's, and lucky, apparently.", "value": 0 },
     { "id": "drake_scale", "name": "Drake scale", "examine": "A scale the size of a hand, still warm. Traders pay well for these.", "value": 400 },
     { "id": "cinder_blade", "name": "Cinder blade", "examine": "A dark blade forged in drakefire. It never quite cools.", "value": 4800, "equip": { "slot": "weapon", "style": "slash", "attack": 24, "strength": 26, "level": 30 } },
     { "id": "duskfang", "name": "Duskfang", "examine": "A dusk stalker's fang, bound to a bone grip. Quick and wicked.", "value": 6200, "equip": { "slot": "weapon", "style": "stab", "attack": 30, "strength": 28, "level": 40, "speed": 3 } },

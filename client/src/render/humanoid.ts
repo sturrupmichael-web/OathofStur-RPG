@@ -132,6 +132,8 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     const n = u.clone().normalize();
     return n.multiplyScalar(grow < 1 ? R(n, true) * grow : R(n) * (1 + (grow - 1) * 0.8));
   };
+  // A sculpted face has its eyes and brows higher up the head, so a wizard's brim sits higher to clear them.
+  const WIZ_LIFT = 0.025;
   const fp = (ux: number, uy: number, lift = 0) => hp(new THREE.Vector3(ux, uy, Math.sqrt(Math.max(0, 1 - ux * ux - uy * uy)))).add(new THREE.Vector3(0, 0, lift));
   const shell = (grow: number, keep: (u: THREE.Vector3) => boolean, shape?: (u: THREE.Vector3, p: THREE.Vector3) => void) => headShell(grow, keep, shape, hp);
   const skin = s.skin ?? SKIN;
@@ -486,7 +488,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     b.add(
       atHead(
         // Under a wizard's hat on a sculpted head, hair shows only below the brim.
-        shell(1.08, (u) => (u.y > line(u) || hangsAt(u)) && !(R && s.hat === 'wizard' && hp(u).y > 0.04 * hs.y), (u, p) => {
+        shell(1.08, (u) => (u.y > line(u) || hangsAt(u)) && !(R && s.hat === 'wizard' && hp(u).y > (0.04 + WIZ_LIFT) * hs.y), (u, p) => {
           if (!hangsAt(u)) return;
           const t = (0.05 - u.y) / 0.97;
           const round = hp(new THREE.Vector3(u.x, 0, u.z), 1.08 + 0.3 * t);
@@ -567,7 +569,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   if (s.hat === 'wizard') {
     // A tall pointed hat with a wide brim, the tip bent back a little.
     // Over a sculpted head, only under the brim: the cone covers the crown.
-    b.add(atHead(shell(1.1, (u) => u.y > 0.22 - u.z * 0.12 && (!R || hp(u).y < 0.04 * hs.y))), () => hat, () => [[head, 1]]);
+    b.add(atHead(shell(1.1, (u) => u.y > (R ? 0.42 : 0.22) - u.z * 0.12 && (!R || hp(u).y < (0.04 + WIZ_LIFT) * hs.y))), () => hat, () => [[head, 1]]);
     const cone: [number, number, number][] = [
       [0.045, 0.15, 0],
       [0.055, 0.092, 0],
@@ -581,7 +583,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
       // (A sculpted head is less round, so the band sits a little wider to clear it.)
       cone.map(([dy, r, dz], i) => {
         const k = R && (i === 1 || i === 2) ? 1.1 : 1;
-        return ring(headC.x, headC.y + dy * hs.y, headC.z + (-0.006 + dz) * hs.z, r * hs.x * k, r * hs.z * k, i === 1 && s.trim !== undefined ? s.trim : hat, [[head, 1]]);
+        return ring(headC.x, headC.y + (dy + (R ? WIZ_LIFT : 0)) * hs.y, headC.z + (-0.006 + dz) * hs.z, r * hs.x * k, r * hs.z * k, i === 1 && s.trim !== undefined ? s.trim : hat, [[head, 1]]);
       }),
       { radial: 18 },
     );

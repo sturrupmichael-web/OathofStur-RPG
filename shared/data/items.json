@@ -54,6 +54,8 @@
     { "id": "yew_longbow_u", "name": "Yew longbow (unstrung)", "examine": "A yew long bow with no string yet.", "value": 640 },
     { "id": "yew_longbow", "name": "Yew longbow", "examine": "A yew long bow. Slower, but it reaches further.", "value": 1280, "equip": { "slot": "weapon", "style": "shoot", "attack": 31, "range": 9, "speed": 4, "level": 40 } },
 
+    { "id": "gloamwood_longbow", "name": "Gloamwood longbow", "examine": "Cut from the heart of the Duskwood. The string hums when no one touches it.", "value": 9000, "equip": { "slot": "weapon", "style": "shoot", "attack": 38, "range": 9, "speed": 4, "level": 50 } },
+
     { "id": "tinderbox", "name": "Tinderbox", "examine": "Flint, steel and a little dry tinder, for lighting fires.", "value": 1 },
     { "id": "ashes", "name": "Ashes", "examine": "A heap of soft grey ash.", "value": 2, "bury": { "xp": 2 } },
     { "id": "logs", "name": "Logs", "examine": "Freshly cut logs, still smelling of sap.", "value": 4, "burn": { "level": 1, "xp": 40 } },
@@ -138,6 +140,7 @@
     { "id": "sunspire_seal", "name": "Sunspire seal", "examine": "The Emir of Qadir's golden seal. The bandits must have been planning something.", "value": 0 },
     { "id": "barrow_circlet", "name": "Barrow-king's circlet", "examine": "Green bronze, set with a dull stone. It feels watched.", "value": 0 },
     { "id": "lucky_lure", "name": "Lucky lure", "examine": "A brass lure shaped like a little fish. Pike's, and lucky, apparently.", "value": 0 },
+    { "id": "tamsins_horn", "name": "Tamsin's horn", "examine": "A ranger's hunting horn, scored with claw marks. Vessa will want to see it.", "value": 0 },
     { "id": "drake_scale", "name": "Drake scale", "examine": "A scale the size of a hand, still warm. Traders pay well for these.", "value": 400 },
     { "id": "cinder_blade", "name": "Cinder blade", "examine": "A dark blade forged in drakefire. It never quite cools.", "value": 4800, "equip": { "slot": "weapon", "style": "slash", "attack": 24, "strength": 26, "level": 30 } },
     { "id": "duskfang", "name": "Duskfang", "examine": "A dusk stalker's fang, bound to a bone grip. Quick and wicked.", "value": 6200, "equip": { "slot": "weapon", "style": "stab", "attack": 30, "strength": 28, "level": 40, "speed": 3 } },
@@ -197,6 +200,8 @@
     { "id": "scorpion_stinger", "name": "Scorpion stinger", "examine": "Hollow and sharp. Mind the tip.", "value": 20 },
     { "id": "bones", "name": "Bones", "examine": "Bones are for burying.", "value": 3, "bury": { "xp": 4.5 } },
     { "id": "big_bones", "name": "Big bones", "examine": "Heavy bones from something large.", "value": 15, "bury": { "xp": 15 } },
+    { "id": "hart_bones", "name": "Hart bones", "examine": "Long, dark bones, cold to the touch. The gods would welcome these.", "value": 350, "bury": { "xp": 85 } },
+    { "id": "hart_antler", "name": "Hart antler", "examine": "A tine from the Gloam Hart's crown. It still glows faintly.", "value": 400 },
     { "id": "drake_bones", "name": "Drake bones", "examine": "Huge, scorched bones. The gods would welcome these.", "value": 300, "bury": { "xp": 72 } },
 
     { "id": "aether_shard", "name": "Aether shard", "examine": "A sliver of pale stone that hums when you hold it to your ear.", "value": 4 },

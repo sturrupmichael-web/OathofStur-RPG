@@ -153,6 +153,10 @@ export interface MonsterEntity {
   dyingUntil?: number;
   /** Set while dead: the tick it comes back. */
   respawnAt?: number;
+  /** Called up by another monster: it never respawns, and fades when the fight is over. */
+  summonedBy?: EntityId;
+  /** How many of its `summons` thresholds it has passed this life. */
+  summoned?: number;
 }
 
 /** Static world objects that occupy a tile: resource nodes, stations, props, NPCs. */

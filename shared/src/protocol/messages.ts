@@ -106,6 +106,8 @@ export interface PublicEntity {
   gear?: Equipment;
   /** Players and monsters: fallen and playing the death animation. */
   dead?: boolean;
+  /** Monsters: wrapped in shadow while the shades it called up still stand. */
+  shrouded?: boolean;
   /** Players: a ward prayer that is on, shown over their head. */
   overhead?: 'ward_of_blades' | 'ward_of_spells' | 'ember_ward';
   /** Players: the tile they ran through this tick, when they moved two. */

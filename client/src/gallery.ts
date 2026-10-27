@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { CHARACTER_STYLES, animateCharacter, buildCharacter, playCharacter, withGear, type CharacterRig } from './render/character';
 import { hasAiModel } from './render/aiModels';
-import { animateCreature, buildCreature, playCreature, type CreatureKind, type CreatureRig } from './render/creatures';
+import { animateCreature, buildCreature, playCreature, setShroud, type CreatureKind, type CreatureRig } from './render/creatures';
 
 /**
  * Development page (npm run dev, then /gallery.html): every character look
  * and creature in a row, lit like the game, for checking models and
  * animations up close. Not part of the build.
  *
- * Query: ?set=people|monsters|gear&only=a,b&anim=idle|walk|fight|chop|...&shot=slash&yaw=0.4&zoom=1
+ * Query: ?set=people|monsters|gear&only=a,b&anim=idle|walk|fight|chop|...&shot=slash&yaw=0.4&zoom=1&shroud
  */
 const params = new URLSearchParams(location.search);
 const set = params.get('set') ?? 'people';
@@ -49,9 +49,10 @@ const GEAR = [
   { weapon: 'duskfang' },
   { weapon: 'shortbow' },
   { weapon: 'yew_longbow', helmet: 'iron_helm' },
+  { weapon: 'gloamwood_longbow' },
 ];
 if (set === 'monsters') {
-  for (const kind of ['goblin', 'skeleton', 'cow', 'desert_lizard', 'scorpion', 'cave_creeper', 'crimson_swift', 'wailing_spirit', 'cinder_drake', 'brine_slug', 'gloom_bat', 'rockmaw', 'glare_lizard', 'fen_lurker', 'frost_wolf', 'barrow_wight', 'dusk_stalker']) {
+  for (const kind of ['goblin', 'skeleton', 'cow', 'desert_lizard', 'scorpion', 'cave_creeper', 'crimson_swift', 'wailing_spirit', 'cinder_drake', 'brine_slug', 'gloom_bat', 'rockmaw', 'glare_lizard', 'fen_lurker', 'frost_wolf', 'barrow_wight', 'dusk_stalker', 'gloam_hart', 'gloam_shade']) {
     if (CHARACTER_STYLES[kind]) {
       const rig = buildCharacter(kind, entries.length);
       entries.push({ name: kind, root: rig.root, human: rig });
@@ -72,7 +73,7 @@ if (set === 'monsters') {
   });
 } else {
   for (const key of Object.keys(CHARACTER_STYLES)) {
-    if (['goblin', 'skeleton', 'wailing_spirit', 'barrow_wight'].includes(key)) continue;
+    if (['goblin', 'skeleton', 'wailing_spirit', 'barrow_wight', 'gloam_shade'].includes(key)) continue;
     const rig = buildCharacter(key, entries.length, key === 'player');
     entries.push({ name: key, root: rig.root, human: rig });
   }
@@ -114,7 +115,7 @@ for (const name of ['idle', 'walk', 'fight', 'aim', 'chop', 'mine', 'smith', 'bu
   };
   bar.appendChild(b);
 }
-for (const shot of ['punch', 'stab', 'slash', 'shoot', 'swing', 'block', 'talk', 'eat', 'drink', 'bury', 'scatter', 'pray', 'bite', 'breath', 'sting', 'butt', 'peck', 'wail']) {
+for (const shot of ['punch', 'stab', 'slash', 'shoot', 'swing', 'block', 'talk', 'eat', 'drink', 'bury', 'scatter', 'pray', 'bite', 'breath', 'sting', 'butt', 'peck', 'wail', 'cast', 'summon']) {
   const b = document.createElement('button');
   b.textContent = `▶ ${shot}`;
   b.onclick = () => play(shot);
@@ -140,7 +141,10 @@ function frame(now: number) {
     e.root.rotation.y = yaw0 + spin;
     const activity = ['idle', 'walk', 'dead'].includes(anim) ? null : anim;
     if (e.human) animateCharacter(e.human, dt, now, moving, 1, activity, anim === 'dead');
-    if (e.creature) animateCreature(e.creature, dt, now, moving, 1, anim === 'fight', anim === 'dead');
+    if (e.creature) {
+      setShroud(e.creature, params.has('shroud'));
+      animateCreature(e.creature, dt, now, moving, 1, anim === 'fight', anim === 'dead');
+    }
   }
   renderer.render(scene, camera);
   requestAnimationFrame(frame);

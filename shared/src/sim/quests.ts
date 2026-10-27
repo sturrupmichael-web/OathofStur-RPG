@@ -45,7 +45,7 @@ export interface TalkActions {
   ferry?: FerryActions;
 }
 
-export type QuestId = 'first_oath' | 'dukes_feast' | 'hull_and_nails' | 'feathers_for_ivy' | 'emirs_seal' | 'nessas_cauldron' | 'restless_barrow' | 'wolf_winter' | 'pikes_lure';
+export type QuestId = 'first_oath' | 'dukes_feast' | 'hull_and_nails' | 'feathers_for_ivy' | 'emirs_seal' | 'nessas_cauldron' | 'restless_barrow' | 'wolf_winter' | 'pikes_lure' | 'the_gloaming';
 
 export interface QuestDef {
   id: QuestId;
@@ -178,12 +178,30 @@ export const QUESTS: Readonly<Record<QuestId, QuestDef>> = {
     rewards: ['1 quest point', '800 coins', '10 cooked pike', '1,500 Fishing XP', '800 Hitpoints XP'],
     reward: { items: [['coins', 800], ['pike', 10]], xp: [['fishing', 1500], ['hitpoints', 800]] },
   },
+  the_gloaming: {
+    id: 'the_gloaming',
+    name: 'The Gloaming',
+    giver: 'vessa',
+    start: "Vessa keeps the rangers' camp where the road from Port Avel meets the Duskwood. She keeps looking at the trees. (Recommended: combat level 70.)",
+    steps: [
+      'Vessa\'s ranger Tamsin went into the Duskwood three days ago and never came back. The dusk stalkers hunt where she went: defeat them until I find a trace of her.',
+      "I found Tamsin's horn, scored with claw marks. I should take it to Vessa at the rangers' camp.",
+      "The Gloam Hart has woken in the Gloaming Glade, deep in the south-east of the Duskwood. Vessa wants it put down. When it calls up its shades, blows pass through it until they fall.",
+      'The Gloam Hart is dead. I should tell Vessa.',
+    ],
+    rewards: ['1 quest point', '3,000 coins', 'A yew longbow', '150 glacite arrows', '3,000 Attack XP', '3,000 Strength XP', '2,000 Ranged XP', '2,000 Woodcutting XP'],
+    reward: {
+      items: [['coins', 3000], ['yew_longbow', 1], ['glacite_arrow', 150]],
+      xp: [['attack', 3000], ['strength', 3000], ['ranged', 2000], ['woodcutting', 2000]],
+    },
+  },
 };
 
 /** Quest items that drop from monsters while the quest waits on them: one chance per kill. */
 export const QUEST_DROPS: readonly { monster: string; quest: QuestId; stage: number; item: string; chance: number; message: string }[] = [
   { monster: 'desert_bandit', quest: 'emirs_seal', stage: 1, item: 'sunspire_seal', chance: 0.34, message: "Something gold glints among the bandit's things: the Sunspire seal!" },
   { monster: 'barrow_wight', quest: 'restless_barrow', stage: 1, item: 'barrow_circlet', chance: 0.3, message: 'The wight crumbles, and a tarnished circlet rolls from its helm.' },
+  { monster: 'dusk_stalker', quest: 'the_gloaming', stage: 1, item: 'tamsins_horn', chance: 0.3, message: 'Tangled in the stalker\'s fur is a leather strap, and on it a ranger\'s horn.' },
   { monster: 'fen_lurker', quest: 'pikes_lure', stage: 1, item: 'lucky_lure', chance: 0.3, message: 'Something bright catches your eye in the lurker\'s jaws: a brass lure!' },
 ];
 
@@ -590,6 +608,43 @@ function harlTalk(def: NpcDef, a: TalkActions): DialoguePage[] {
   }
 }
 
+/** Vessa: a lost ranger, and what took her. */
+function vessaTalk(def: NpcDef, a: TalkActions): DialoguePage[] {
+  switch (a.stage('the_gloaming')) {
+    case 0:
+      return [
+        npc("Stay on the road after dark. The Duskwood's been wrong all season: the birds have gone quiet, and the stalkers come right up to the fire."),
+        npc('Three days ago I sent Tamsin, my best tracker, in to find out why. She should have been back by the next night.'),
+        offer(a, 'the_gloaming', "I can't leave the camp. Will you go in after her?", [npc("Thank you. She'd have gone south-east, where the stalkers are thickest. If they've had her, one of them will be carrying some trace. Her horn, her pack, something. Bring me anything you find.")], 'Then I keep waiting. Keep to the road.'),
+      ];
+    case 1:
+      return [npc('Tamsin went south-east, into the thick of the Duskwood. The stalkers hunt there. Bring me any trace of her you find.')];
+    case 2:
+      if (a.take('tamsins_horn')) {
+        a.setStage('the_gloaming', 3);
+        return [
+          you('I found this on a dusk stalker.'),
+          npc("Her horn. Look at these marks. Those aren't a cat's claws; that's an antler, dragged across it."),
+          npc("Old rangers tell of a hart that sleeps under the Duskwood and wakes when the nights grow long. They called it the Gloam Hart. I thought it was a story to keep apprentices on the road."),
+          npc("It's no story. Its glade lies deep in the south-east of the wood, past the stalkers. It hurls shadow at you from range, and when it's hurt it calls up shades, and nothing touches it until they fall."),
+          npc("Kill it. For Tamsin. Bring food, and a lot of it."),
+        ];
+      }
+      a.setStage('the_gloaming', 1);
+      return [npc("You found something of hers and lost it again? Then back into the wood. The stalkers will turn it up a second time.")];
+    case 3:
+      return [npc('The Gloaming Glade is deep in the south-east of the Duskwood. Break its shades when it calls them, then finish it.')];
+    case 4:
+      return [
+        you('The Gloam Hart is dead.'),
+        npc("I heard it. The whole wood heard it. And listen: the birds are back."),
+        { speaker: 'npc', text: "Tamsin would've wanted you to have her bow, and her arrows with it. You earned more than that, but it's what rangers have.", effect: () => a.complete('the_gloaming') },
+      ];
+    default:
+      return [npc("The Duskwood's quiet again. The right kind of quiet."), ...smallTalk(def, a).filter((p) => p.options)];
+  }
+}
+
 /** Old Nessa: odd things for an empty cauldron. */
 function oldNessa(_def: NpcDef, a: TalkActions): DialoguePage[] {
   switch (a.stage('nessas_cauldron')) {
@@ -725,6 +780,7 @@ const QUEST_TALK: Record<string, (def: NpcDef, a: TalkActions) => DialoguePage[]
   sister_maud: sisterMaud,
   harl: harlTalk,
   pike: pikeTalk,
+  vessa: vessaTalk,
   hrolf: (_def, a) => hrolfTalk(a),
   corwin: (_def, a) => corwinTalk(a),
   jory: (_def, a) => joryTalk(a),

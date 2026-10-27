@@ -1002,8 +1002,14 @@ export class Simulation {
         this.message(player.id, finisher.clings, 'warn');
       }
     }
+    // A monster wrapped in shadow takes no harm until the shades it called up are gone.
+    if (damage > 0 && stats.summons && this.shrouded(monster)) {
+      damage = 0;
+      this.message(player.id, `Your blow passes through the shadow around the ${monster.name.toLowerCase()}. Its shades must fall first.`, 'warn');
+    }
     monster.hp -= damage;
     monster.damageBy.set(player.id, (monster.damageBy.get(player.id) ?? 0) + damage);
+    if (stats.summons) this.summonShades(monster, player);
     this.broadcastHit(player, monster, damage, monster.hp, monster.maxHp, spell);
     if (damage > 0) {
       for (const [skill, share] of skills) this.addXp(player, skill, damage * XP_PER_DAMAGE * share);
@@ -1015,6 +1021,62 @@ export class Simulation {
       monster.nextAttack = Math.max(monster.nextAttack, this.tick + Math.ceil(stats.attackSpeed / 2));
     }
     if (monster.hp <= 0) this.monsterDies(monster);
+  }
+
+  /** Whether any shade `monster` called up still stands. */
+  private shrouded(monster: MonsterEntity): boolean {
+    for (const e of this.entities.values()) if (e.kind === 'monster' && e.summonedBy === monster.id && alive(e)) return true;
+    return false;
+  }
+
+  /**
+   * Each time a summoner's health first drops below one of its thresholds it
+   * calls up its shades around it, and holds on with at least 1 hitpoint
+   * until they are beaten.
+   */
+  private summonShades(monster: MonsterEntity, player: PlayerEntity): void {
+    const summons = MONSTERS[monster.defKey].summons!;
+    const used = monster.summoned ?? 0;
+    if (used >= summons.at.length || monster.hp > monster.maxHp * summons.at[used]) return;
+    monster.summoned = used + 1;
+    monster.hp = Math.max(1, monster.hp);
+    const stats = MONSTERS[summons.monster];
+    const spots: Point[] = [];
+    for (let r = 1; r <= 3 && spots.length < summons.count; r++) {
+      const ring: Point[] = [];
+      for (let dy = -r; dy <= r; dy++)
+        for (let dx = -r; dx <= r; dx++) {
+          const x = monster.x + dx;
+          const y = monster.y + dy;
+          if (Math.max(Math.abs(dx), Math.abs(dy)) === r && this.grid.isWalkable(x, y) && !this.grid.isGate(x, y) && !this.occupied.has(this.grid.index(x, y))) ring.push({ x, y });
+        }
+      while (ring.length && spots.length < summons.count) spots.push(ring.splice(this.rng.int(0, ring.length - 1), 1)[0]);
+    }
+    for (const at of spots) {
+      const shade: MonsterEntity = {
+        id: this.allocateId(),
+        kind: 'monster',
+        defKey: summons.monster,
+        name: this.map.defs.monsters[summons.monster]?.name ?? 'Gloam shade',
+        level: Math.floor((0.75 * (stats.attack + stats.strength + stats.defence)) / 3 + 0.25 * Math.min(99, stats.hitpoints)),
+        x: at.x,
+        y: at.y,
+        hp: stats.hitpoints,
+        maxHp: stats.hitpoints,
+        spawn: { ...at },
+        wander: { cx: monster.wander.cx, cy: monster.wander.cy, radius: monster.wander.radius + 4 },
+        path: [],
+        target: player.id,
+        nextAttack: this.tick + 2,
+        nextWander: this.tick + 10,
+        damageBy: new Map(),
+        summonedBy: monster.id,
+      };
+      this.entities.set(shade.id, shade);
+      this.occupied.add(this.grid.index(at.x, at.y));
+    }
+    this.animate(monster, 'summon');
+    this.message(player.id, `The ${monster.name.toLowerCase()} throws back its head, and the shadows rise to answer it.`, 'warn');
   }
 
   private monsterAttack(monster: MonsterEntity, player: PlayerEntity): void {
@@ -1561,6 +1623,7 @@ export class Simulation {
       m.y = m.spawn.y;
       m.hp = m.maxHp;
       m.damageBy.clear();
+      delete m.summoned;
       m.nextWander = this.tick + this.rng.int(2, 10);
       this.occupied.add(this.grid.index(m.x, m.y));
       return;
@@ -1570,6 +1633,7 @@ export class Simulation {
       delete m.dyingUntil;
       this.dropLoot(m);
       this.occupied.delete(this.grid.index(m.x, m.y));
+      if (m.summonedBy !== undefined) return void this.entities.delete(m.id);
       m.respawnAt = this.tick + stats.respawnTicks;
       return;
     }
@@ -1584,6 +1648,16 @@ export class Simulation {
     m.target = target?.kind === 'player' ? target.id : null;
     // Whoever it gave up on is no longer under attack from it.
     if (was?.kind === 'player' && was.id !== m.target && was.attackedBy === m.id) was.attackedBy = null;
+    // A shade fades once its fight is over or whatever called it up has fallen.
+    if (m.summonedBy !== undefined) {
+      const owner = this.entities.get(m.summonedBy);
+      if (!target || owner?.kind !== 'monster' || !alive(owner)) {
+        if (target?.kind === 'player' && target.attackedBy === m.id) target.attackedBy = null;
+        this.occupied.delete(this.grid.index(m.x, m.y));
+        this.entities.delete(m.id);
+        return;
+      }
+    }
 
     if (target?.kind === 'player') {
       m.path = [];
@@ -2450,6 +2524,10 @@ export class Simulation {
       this.setQuestStage(player, d.quest, d.stage + 1);
       this.message(player.id, d.message, 'quest');
     }
+    if (defKey === 'gloam_hart' && player.quests.the_gloaming === 3) {
+      this.setQuestStage(player, 'the_gloaming', 4);
+      this.message(player.id, 'The Gloam Hart falls, and the shadows of the glade fall back with it. Vessa will want to hear.', 'quest');
+    }
     if (defKey === 'goblin' && player.quests.first_oath === 4) {
       this.setQuestStage(player, 'first_oath', 5);
       this.message(player.id, "That's the goblin beaten. Elder Maren will want to hear about it.", 'quest');
@@ -2824,6 +2902,7 @@ export class Simulation {
         maxHp: e.maxHp,
         ...(e.target !== null && { interacting: e.target }),
         ...(e.dyingUntil !== undefined && { dead: true }),
+        ...(MONSTERS[e.defKey]?.summons && this.shrouded(e) && { shrouded: true }),
       };
     }
     if (e.kind === 'item') return { id: e.id, kind: e.kind, x: e.x, y: e.y, name: e.name, defKey: e.itemId, qty: e.qty };

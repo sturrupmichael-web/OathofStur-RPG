@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { PATCH_KINDS, areaAt, glyphForArea, isBow, obstacleAt, type EntityId, type MapData, type WorldGrid } from '@rpg/shared';
 import type { ClientState, EntityView, HitEvent } from '../state/ClientState';
 import { CAST_MS, CAST_RELEASE, CHARACTER_STYLES, SHOOT_MS, SHOOT_RELEASE, activityPhase, animateCharacter, buildCharacter, characterBusy, crossingPose, playCharacter, styleForNpc, withGear, type CharacterRig } from './character';
-import { animateCreature, buildCreature, creatureBusy, isCreature, playCreature, shotMs, type CreatureRig } from './creatures';
+import { animateCreature, buildCreature, creatureBusy, isCreature, playCreature, setShroud, shotMs, type CreatureRig } from './creatures';
 import { disposeModel } from './dispose';
 import { Effects } from './effects';
 import { buildFurniture } from './furniture';
@@ -366,7 +366,10 @@ export class EntityLayer {
       this.effects.fountain(() => (this.state.entities.get(id)?.data.activity === 'recall' ? obj.position.clone() : (this.chanting.delete(id), null)), 0x8fd4ff, now, 7000, 'ring', 45);
     }
     const creature = this.creatures.get(id);
-    if (creature) animateCreature(creature, dt, now, moving, speed, fighting, dead);
+    if (creature) {
+      setShroud(creature, !!view.data.shrouded);
+      animateCreature(creature, dt, now, moving, speed, fighting, dead);
+    }
   }
 
   /** Plays a one-off animation on anyone: attacks from the server, talking from the conversation box. */

@@ -9,7 +9,7 @@ import { paint, vertexMaterial, warp } from './skin';
  * guards) use the character rig instead; see CHARACTER_STYLES.
  */
 
-export type CreatureKind = 'cow' | 'desert_lizard' | 'scorpion' | 'cave_creeper' | 'crimson_swift' | 'cinder_drake' | 'brine_slug' | 'gloom_bat' | 'rockmaw' | 'glare_lizard' | 'frost_wolf' | 'dusk_stalker' | 'fen_lurker';
+export type CreatureKind = 'cow' | 'desert_lizard' | 'scorpion' | 'cave_creeper' | 'crimson_swift' | 'cinder_drake' | 'brine_slug' | 'gloom_bat' | 'rockmaw' | 'glare_lizard' | 'frost_wolf' | 'dusk_stalker' | 'fen_lurker' | 'gloam_hart';
 
 /** Creatures that fly: always on the wing, and they drop out of the air when they die. */
 const FLYING: ReadonlySet<CreatureKind> = new Set(['crimson_swift', 'gloom_bat']);
@@ -598,6 +598,136 @@ function duskStalker(seed: number): CreatureRig {
   return hunter(r, { fur: coat, dark: 0x141018, eye: 0xc8a8ff, eyeGlow: 0x6a3ac8, cat: true, tailSegs: 5 });
 }
 
+/**
+ * The Gloam Hart: a black stag the size of a cart horse, starlight spots
+ * along its back and a great crown of pale, glowing antlers. Dark mist
+ * gathers round it while its shades stand (see setShroud).
+ */
+function gloamHart(seed: number): CreatureRig {
+  const r = base('gloam_hart', seed);
+  r.body.scale.setScalar(1.75);
+  // Night-blue black with a violet sheen, paler underneath.
+  const hide = (p: THREE.Vector3) => (p.y < -0.1 ? 0x45405a : mix(0x23202f, 0x363048, noise(p, seed * 1.7, 10)));
+  const bone = 0xd8d0f0;
+  const glow = 0x5a46a8;
+  const hoof = 0x0c0a10;
+  r.torso.position.y = 0.66;
+  const barrel = warp(rounded(0.17, 0.2, 0.44, 2.5, 28), (p) => {
+    // Deep chest, slim waist, the haunch a little higher than the withers.
+    const front = p.z / 0.44;
+    if (p.y < 0) p.y *= front > 0 ? 1.15 : 0.8 + 0.2 * (1 + front);
+    p.x *= 1 - 0.12 * Math.max(0, -front) * (p.y < 0 ? 1 : 0);
+  });
+  part(r.torso, barrel, hide);
+  // Starlight spots along the back, as a fawn has, but they shine.
+  for (let k = 0; k < 14; k++) {
+    const side = k % 2 ? 1 : -1;
+    const z = 0.32 - k * 0.05;
+    const x = side * (0.05 + (k % 3) * 0.02);
+    // On the curve of the back, so each spot sits just proud of the hide.
+    const y = 0.2 * Math.sqrt(Math.max(0, 1 - (x / 0.17) ** 2 - (z / 0.44) ** 2)) - 0.004;
+    part(r.torso, new THREE.SphereGeometry(0.016, 8, 6).scale(1, 0.5, 1), 0xe8e0ff, x, y, z, 0xa08cf0);
+  }
+
+  // The neck rises from the chest and carries the head high.
+  const neck = pivot(r.torso, 0, 0.06, 0.34);
+  neck.rotation.x = -0.75;
+  part(neck, ahead(0.36, 0.12, 0.075), hide);
+  r.neck.push(neck);
+  r.head.removeFromParent();
+  neck.add(r.head);
+  r.head.position.set(0, 0, 0.36);
+  r.head.rotation.x = 0.95;
+  r.head.userData.restx = 0.95;
+  neck.userData.restx = -0.75;
+  const skull = warp(rounded(0.075, 0.08, 0.13, 2.4, 20), (p) => {
+    const front = Math.max(0, p.z / 0.13);
+    p.x *= 1 - 0.35 * front;
+    p.y *= 1 - 0.3 * front;
+    p.y -= 0.03 * front;
+  });
+  part(r.head, skull, hide, 0, 0, 0.06);
+  part(r.head, rounded(0.035, 0.03, 0.03, 2, 10), 0x0a080e, 0, -0.035, 0.19, 0, true);
+  const jaw = pivot(r.head, 0, -0.05, 0.03);
+  part(jaw, warp(rounded(0.04, 0.02, 0.1, 2.4, 12), (p) => (p.x *= 1 - 0.3 * Math.max(0, p.z / 0.1))), 0x2a2636, 0, 0, 0.08);
+  r.jaw = jaw;
+  for (const side of [-1, 1]) {
+    part(r.head, new THREE.SphereGeometry(0.018, 10, 8), 0xe8e0ff, side * 0.06, 0.03, 0.08, 0x8a70ff, true);
+    const ear = rounded(0.05, 0.018, 0.028, 2, 10).rotateZ(-side * 0.5);
+    part(r.head, ear, hide, side * 0.085, 0.07, 0.0);
+  }
+  // Antlers: a main beam sweeping up and back, with tines along it, glowing at the tips.
+  for (const side of [-1, 1]) {
+    const beam = pivot(r.head, side * 0.04, 0.08, 0.02);
+    beam.rotation.set(-0.35, 0, -side * 0.55);
+    let at: THREE.Object3D = beam;
+    for (let k = 0; k < 4; k++) {
+      const len = 0.16 - k * 0.02;
+      part(at, horn(0.022 - k * 0.004, len, -0.02), k < 2 ? 0xa89ec0 : bone, 0, 0, 0, k < 2 ? 0x2a2050 : glow);
+      // A tine off each joint, forward and up, the last ones fanning out.
+      const tine = pivot(at, 0, len * 0.7, 0);
+      tine.rotation.set(0.9 - k * 0.1, 0, side * (0.25 + k * 0.15));
+      part(tine, horn(0.012, 0.11 - k * 0.012, 0.02), bone, 0, 0, 0, glow);
+      part(tine, new THREE.SphereGeometry(0.012, 6, 5), 0xf0eaff, 0, 0.11 - k * 0.012, 0.01, 0xb8a8ff);
+      const next = pivot(at, 0, len * 0.95, 0);
+      next.rotation.set(-0.3, 0, -side * 0.2);
+      at = next;
+    }
+    part(at, new THREE.SphereGeometry(0.014, 6, 5), 0xf0eaff, 0, 0.02, 0, 0xb8a8ff);
+    r.arms.push(beam);
+  }
+
+  // Long, slender legs, hind ones bent back at the hock.
+  for (const [x, z, offset] of [[-0.1, 0.3, 0], [0.1, 0.3, Math.PI], [-0.1, -0.32, Math.PI], [0.1, -0.32, 0]] as const) {
+    const front = z > 0;
+    const hip = pivot(r.torso, x, -0.1, z);
+    part(hip, limb(0.3, front ? 0.07 : 0.085, 0.035), hide);
+    const knee = pivot(hip, 0, -0.3);
+    if (!front) knee.rotation.x = 0.3;
+    part(knee, limb(0.24, 0.032, 0.024), 0x1a1822);
+    part(knee, rounded(0.03, 0.03, 0.04, 3, 10), hoof, 0, -0.26, 0.01, 0, true);
+    r.legs.push({ hip, knee, side: Math.sign(x), offset, splay: 0 });
+  }
+  const tail = pivot(r.torso, 0, 0.14, -0.42);
+  part(tail, limb(0.1, 0.035, 0.02, 8), 0x2a2636);
+  tail.rotation.x = 0.5;
+  r.tail.push(tail);
+
+  // Mist that gathers round it while it is shrouded: dark puffs, hidden until then.
+  const mist: THREE.Sprite[] = [];
+  for (let k = 0; k < 22; k++) {
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTexture(), color: k % 3 ? 0x0c0814 : 0x3a2670, transparent: true, opacity: 0, depthWrite: false }));
+    m.visible = false;
+    r.root.add(m);
+    mist.push(m);
+  }
+  r.root.userData.mist = mist;
+  r.root.userData.shroud = 0;
+  return r;
+}
+
+let puff: THREE.Texture | null = null;
+/** A soft round puff, solid in the middle and fading out, for mist. */
+function puffTexture(): THREE.Texture {
+  if (puff) return puff;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0.45)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  puff = new THREE.CanvasTexture(c);
+  return puff;
+}
+
+/** Wraps a summoner in mist (or lets it clear) while its shades stand. */
+export function setShroud(rig: CreatureRig, on: boolean): void {
+  rig.root.userData.shroudOn = on;
+}
+
 /** A swamp ambusher: a wide mossy body like a fallen log, a broad flat jaw and yellow eyes on top. */
 function fenLurker(seed: number): CreatureRig {
   const r = base('fen_lurker', seed);
@@ -807,6 +937,7 @@ const BUILDERS: Record<CreatureKind, (seed: number) => CreatureRig> = {
   frost_wolf: frostWolf,
   dusk_stalker: duskStalker,
   fen_lurker: fenLurker,
+  gloam_hart: gloamHart,
 };
 
 export function isCreature(defKey: string): defKey is CreatureKind {
@@ -824,13 +955,15 @@ export function buildCreature(kind: CreatureKind, seed: number, classic = false)
 
 /** How long each one-off move takes (ms). Anything not listed is an attack lunge. */
 const SHOT_MS: Record<string, number> = { sting: 750, butt: 700, bite: 550, peck: 500, block: 400 };
+/** The hart's moves are big ones too: it rears up to call its shades. */
+const HART_SHOT_MS: Record<string, number> = { butt: 800, cast: 900, summon: 1500, block: 450 };
 /** The drake is big and slow: its moves take longer. */
 const DRAKE_SHOT_MS: Record<string, number> = { bite: 750, breath: 1400, block: 550 };
 /** When, in a breath, the fire is coming out (fractions of the move). */
 export const BREATH_FIRE = { from: 0.3, to: 0.92 };
 
 export function shotMs(rig: CreatureRig, kind: string): number {
-  return (rig.kind === 'cinder_drake' ? DRAKE_SHOT_MS[kind] : SHOT_MS[kind]) ?? 600;
+  return (rig.kind === 'cinder_drake' ? DRAKE_SHOT_MS[kind] : rig.kind === 'gloam_hart' ? HART_SHOT_MS[kind] : SHOT_MS[kind]) ?? 600;
 }
 
 export function playCreature(rig: CreatureRig, kind: string, now: number): void {
@@ -844,7 +977,7 @@ export function creatureBusy(rig: CreatureRig, now: number): boolean {
 /** Gait, idle motion, attacks and death for every creature kind. */
 export function animateCreature(rig: CreatureRig, dt: number, now: number, moving: boolean, speed = 1, fighting = false, dead = false): void {
   rig.walk += ((moving ? 1 : 0) - rig.walk) * Math.min(1, dt * 8);
-  const stride = rig.kind === 'cinder_drake' ? 1.5 : rig.kind === 'cow' || rig.kind === 'brine_slug' ? 1.2 : rig.kind === 'rockmaw' || rig.kind === 'fen_lurker' ? 0.9 : rig.kind === 'frost_wolf' ? 0.55 : rig.kind === 'dusk_stalker' ? 0.75 : 0.6; // seconds per cycle: little legs scurry
+  const stride = rig.kind === 'cinder_drake' ? 1.5 : rig.kind === 'cow' || rig.kind === 'brine_slug' ? 1.2 : rig.kind === 'rockmaw' || rig.kind === 'fen_lurker' ? 0.9 : rig.kind === 'frost_wolf' ? 0.55 : rig.kind === 'dusk_stalker' ? 0.75 : rig.kind === 'gloam_hart' ? 1.25 : 0.6; // seconds per cycle: little legs scurry
   if (rig.walk > 0.01) rig.phase += (dt * Math.PI * 2 * speed) / stride;
   if (rig.kind === 'cinder_drake') return animateDrake(rig, dt, now, fighting, dead);
   const w = rig.walk;
@@ -921,6 +1054,7 @@ export function animateCreature(rig: CreatureRig, dt: number, now: number, movin
     rig.torso.rotation.y = Math.sin(rig.phase) * 0.08 * w;
     if (rig.jaw) rig.jaw.rotation.x = 0.08 + Math.max(0, Math.sin(t * 0.4)) * 0.06 * idle;
   }
+  if (rig.kind === 'gloam_hart') animateHart(rig, dt, t, w, fighting);
   if (rig.kind === 'cave_creeper') rig.torso.position.y = 0.3 + (fighting ? Math.sin(t * 6) * 0.015 : 0);
 
   // One-off moves.
@@ -932,6 +1066,21 @@ export function animateCreature(rig: CreatureRig, dt: number, now: number, movin
       const k = Math.sin(u * Math.PI);
       const kind = rig.oneShot.kind;
       if (kind === 'block') rig.body.position.z = -0.08 * k;
+      else if (kind === 'summon') {
+        // Rear up on the hind legs, forelegs pawing, head thrown back.
+        const up = Math.sin(Math.min(1, u * 1.25) * Math.PI);
+        // Pivot on the hind feet: lift as the front comes up.
+        rig.body.rotation.x = -0.5 * up;
+        rig.body.position.z = -0.3 * up;
+        rig.body.position.y = 0.12 * up;
+        if (rig.neck.length) rig.neck[0].rotation.x = rest(rig.neck[0], 'x') - 0.3 * up;
+        // Forelegs paw the air; hind legs stay planted under it.
+        rig.legs.forEach((leg, i) => (leg.hip.rotation.x = i < 2 ? -0.35 * up + Math.sin(u * 30 + i * 2) * 0.3 * up : 0.5 * up));
+      } else if (kind === 'cast' && rig.kind === 'gloam_hart') {
+        // A toss of the antlers that flings the shadow.
+        rig.neck[0].rotation.x = rest(rig.neck[0], 'x') - 0.3 * k;
+        rig.head.rotation.x = rest(rig.head, 'x') - 0.4 * (u < 0.5 ? k : -k * 0.5);
+      }
       else if (kind === 'sting') {
         // Rear back, then whip the stinger over the head.
         const whip = u < 0.4 ? -u / 0.4 : Math.sin(((u - 0.4) / 0.6) * Math.PI);
@@ -939,7 +1088,8 @@ export function animateCreature(rig: CreatureRig, dt: number, now: number, movin
         rig.torso.rotation.x = 0.15 * whip;
         rig.body.position.z = 0.06 * whip;
       } else if (kind === 'butt') {
-        rig.head.rotation.x = 0.6 * k;
+        rig.head.rotation.x = (rig.kind === 'gloam_hart' ? rest(rig.head, 'x') : 0) + 0.6 * k;
+        if (rig.neck.length) rig.neck[0].rotation.x = rest(rig.neck[0], 'x') + 0.6 * k;
         rig.body.position.z = 0.18 * (u < 0.5 ? -k * 0.4 : k);
       } else if (kind === 'peck') {
         rig.body.position.z = 0.35 * k;
@@ -967,14 +1117,40 @@ export function animateCreature(rig: CreatureRig, dt: number, now: number, movin
       rig.body.position.y -= 0.18 * f;
       rig.head.rotation.x = -0.15 * f;
       if (rig.jaw) rig.jaw.rotation.x = 0.1 * f;
-    } else rig.body.rotation.z = (Math.PI / 2) * f * (rig.kind === 'cow' ? 1 : 1.9);
-    rig.body.position.y += FLYING.has(rig.kind) ? -0.85 * f : rig.kind === 'cow' ? 0.25 * f : rig.kind === 'brine_slug' || rig.kind === 'rockmaw' ? 0 : 0.05 * f;
+    } else rig.body.rotation.z = (Math.PI / 2) * f * (rig.kind === 'cow' || rig.kind === 'gloam_hart' ? 1 : 1.9);
+    rig.body.position.y += FLYING.has(rig.kind) ? -0.85 * f : rig.kind === 'cow' ? 0.25 * f : rig.kind === 'gloam_hart' ? 0.32 * f : rig.kind === 'brine_slug' || rig.kind === 'rockmaw' ? 0 : 0.05 * f;
     rig.legs.forEach((leg) => (leg.hip.rotation.x = 0.4 * f));
     if (FLYING.has(rig.kind)) rig.arms.forEach((wing, k) => (wing.rotation.z = (k === 0 ? -1 : 1) * 0.2 * f));
   } else {
     rig.body.rotation.z = 0;
     if (rig.kind === 'brine_slug') rig.body.scale.setScalar(SLUG_SCALE);
   }
+}
+
+/**
+ * The hart: head held high and turning, ears flicking; the antlers pulse;
+ * and while shrouded, dark mist coils round it.
+ */
+function animateHart(rig: CreatureRig, dt: number, t: number, w: number, fighting: boolean): void {
+  const neck = rig.neck[0];
+  neck.rotation.x = rest(neck, 'x') + Math.sin(rig.phase * 2) * 0.05 * w + (fighting ? 0.2 : 0);
+  rig.head.rotation.x = rest(rig.head, 'x') + (fighting ? -0.15 : 0);
+  rig.head.rotation.y = Math.sin(t * 0.4) * 0.25 * (1 - w) * (fighting ? 0.3 : 1);
+  rig.body.rotation.x = 0;
+  rig.tail.forEach((seg) => (seg.rotation.y = Math.sin(t * 3) * 0.2));
+  const ud = rig.root.userData;
+  ud.shroud += ((ud.shroudOn ? 1 : 0) - ud.shroud) * Math.min(1, dt * 2.5);
+  const mist = ud.mist as THREE.Sprite[];
+  mist.forEach((m, k) => {
+    // Coils of dark mist wind round it, rising and thinning as they go.
+    const a = t * (0.5 + (k % 3) * 0.12) * (k % 2 ? 1 : -1) + k * 1.7;
+    const rise = (t * 0.25 + k * 0.137) % 1;
+    const rr = 0.55 + (k % 4) * 0.12 + rise * 0.2;
+    m.position.set(Math.cos(a) * rr, 0.15 + rise * 1.8, Math.sin(a) * rr * 1.3);
+    m.scale.setScalar((0.55 + (k % 3) * 0.2) * (0.6 + 0.6 * ud.shroud) * (1 + rise * 0.5));
+    m.material.opacity = 0.75 * ud.shroud * Math.sin(rise * Math.PI);
+    m.visible = ud.shroud > 0.02;
+  });
 }
 
 /** Rest angle of a part, remembered the first time it's animated. */

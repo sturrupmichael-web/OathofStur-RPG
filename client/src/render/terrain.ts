@@ -15,6 +15,7 @@ const SURFACE_BY_KEY: Record<string, 'grass' | 'road' | 'dirt' | 'planks' | 'sto
   trampled_mud: 'dirt',
   bone_scatter: 'dirt',
   crop_field: 'dirt',
+  vegetable_garden: 'dirt',
   flower_bed: 'dirt',
   scorched_earth: 'dirt',
   sand: 'dirt',

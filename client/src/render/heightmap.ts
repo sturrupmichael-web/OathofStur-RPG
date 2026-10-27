@@ -198,7 +198,7 @@ export function buildHeightmap(map: MapData, info: TileInfo, areas: Area[], buil
   // 3. Level the city, farm and camp and soften roads: blend toward a heavily blurred copy.
   const blurred = blur(blur(raw, cw, ch, 4), cw, ch, 4);
   const flat = new Float32Array(n);
-  const BUILT = new Set(['building_wall', 'city_wall', 'sandstone_wall', 'stone_floor', 'wooden_floor', 'door', 'fence', 'palisade', 'cobblestone', 'sandstone_paving', 'sewer_hatch', 'crop_field', 'flower_bed', 'trampled_mud', 'bone_scatter', 'agility_obstacle', 'farming_patch']);
+  const BUILT = new Set(['building_wall', 'city_wall', 'sandstone_wall', 'stone_floor', 'wooden_floor', 'door', 'fence', 'palisade', 'cobblestone', 'sandstone_paving', 'sewer_hatch', 'crop_field', 'vegetable_garden', 'flower_bed', 'trampled_mud', 'bone_scatter', 'agility_obstacle', 'farming_patch']);
   const isBuilt = (i: number) => BUILT.has(info.terrainKey[i]);
   const isRoad = (i: number) => info.terrainKey[i] === 'dirt_path' || info.terrainKey[i] === 'sand';
   for (let cy = 0; cy < ch; cy++) {

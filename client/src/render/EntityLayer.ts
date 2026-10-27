@@ -51,7 +51,10 @@ export class EntityLayer {
   ) {
     this.group.add(this.effects.group);
     const counts = new Map<string, number>();
-    for (const p of map.placements) counts.set(p.defKey, (counts.get(p.defKey) ?? 0) + 1);
+    for (const p of map.placements) {
+      const key = resourceModel(p.defKey, p.x, p.y);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
     for (const [key, styles] of Object.entries(RESOURCE_STYLES)) {
       // Any tree can become a stump, so stump pools are sized for a busy forest.
       const capacity = key.endsWith('_stump') ? 64 : (counts.get(key) ?? 0) + 8;
@@ -150,7 +153,7 @@ export class EntityLayer {
 
   private add(view: EntityView): void {
     const { data } = view;
-    const poolKey = data.depleted ? `${data.defKey}_stump` : data.defKey;
+    const poolKey = data.depleted ? `${data.defKey}_stump` : data.defKey && resourceModel(data.defKey, data.x, data.y);
     if (data.kind === 'resource' && poolKey && this.pools.has(poolKey)) {
       const pool = this.pools.get(poolKey)!;
       const slot = pool.free.pop();
@@ -445,4 +448,18 @@ function shortestAngle(from: number, to: number): number {
   if (d > Math.PI) d -= Math.PI * 2;
   if (d < -Math.PI) d += Math.PI * 2;
   return d;
+}
+
+/**
+ * The model a resource is drawn with. Plain trees are a mix of kinds by
+ * tile, with more pines in the cold north.
+ */
+function resourceModel(defKey: string, x: number, y: number): string {
+  if (defKey !== 'tree') return defKey;
+  const h = hash2(x, y, 81);
+  const pine = y < 110 ? 0.4 : 0.1;
+  if (h < pine) return 'tree_pine';
+  if (h < pine + 0.15) return 'tree_birch';
+  if (h < pine + 0.27) return 'tree_beech';
+  return 'tree';
 }

@@ -49,6 +49,10 @@ export function buildScenery(
   const wheat = new THREE.CylinderGeometry(0.01, 0.012, 0.42, 3);
   wheat.translate(0, 0.21, 0);
   const ear = new THREE.CapsuleGeometry(0.022, 0.07, 2, 4);
+  const cabbage = new THREE.IcosahedronGeometry(0.1, 0);
+  const leaf = new THREE.ConeGeometry(0.025, 0.2, 3).translate(0, 0.1, 0);
+  const leek = new THREE.CylinderGeometry(0.022, 0.026, 0.16, 5).translate(0, 0.08, 0);
+  const furrow = new THREE.BoxGeometry(0.92, 0.04, 0.16);
   const bone = new THREE.CylinderGeometry(0.014, 0.014, 0.2, 4).rotateZ(Math.PI / 2);
   const knob = new THREE.SphereGeometry(0.025, 5, 3);
   const skull = new THREE.SphereGeometry(0.06, 7, 5);
@@ -137,6 +141,26 @@ export function buildScenery(
             }
           }
           continue;
+        case 'vegetable_garden': {
+          // Two rows of one crop per tile: cabbages, carrot tops or leeks.
+          const crop = Math.floor(hash2(Math.floor(x / 2), y, 7) * 3);
+          for (const row of [-0.22, 0.22]) {
+            for (let k = 0; k < 3; k++) {
+              const [px, , pz] = at(-0.3 + k * 0.3 + (h(140 + k) - 0.5) * 0.05, row + (h(144 + k) - 0.5) * 0.05);
+              if (crop === 0) batch.add('cabbage', cabbage, plain, { position: [px, 0.07, pz], scale: [1, 0.8, 1], rotationY: h(148 + k) * 6 }, shade(0x7aa84a, 0.9 + h(150 + k) * 0.2), noShadow);
+              else if (crop === 1)
+                for (let n = 0; n < 3; n++) batch.add('carrot-top', leaf, plain, { position: [px + (n - 1) * 0.03, 0, pz], rotation: [(n - 1) * 0.35, 0, (h(152 + n) - 0.5) * 0.4] }, 0x5a9a3a, noShadow);
+              else {
+                batch.add('leek', leek, plain, { position: [px, 0, pz] }, 0xe8ecd8, noShadow);
+                batch.add('leek-leaf', leaf, plain, { position: [px, 0.14, pz], rotation: [0.3, h(156 + k) * 6, 0], scale: [1.4, 1, 1.4] }, 0x4a8a4a, noShadow);
+              }
+            }
+            // A furrow of dark earth along the row.
+            const [fx, , fz] = at(0, row);
+            batch.add('furrow', furrow, plain, { position: [fx, 0.0, fz] }, 0x4a3420, noShadow);
+          }
+          continue;
+        }
         case 'grass':
         case 'long_grass':
           break;

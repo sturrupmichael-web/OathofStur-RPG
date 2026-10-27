@@ -523,7 +523,8 @@ const TILES={
   'i':['Agility obstacle',0],'o':['Oak tree',0],'l':['Willow tree',0],'e':['Yew tree',0],'Q':['Starwood tree',0],
   '5':['Gold rock',0],'6':['Cobalt rock',0],'7':['Verdite rock',0],'8':['Glacite rock',0],'9':['Aether stone',0],
   'U':['Furnace',0],'R':['Range',0],'r':['Spinning wheel',0],'j':['Shallow fishing spot',0],'I':['Deep fishing spot',0],'h':['Farming patch',0],
-  'u':['Glyph shrine',0],'%':['Homestead gate',0],'>':['Cave entrance',0],'y':['Training dummy',0],'@':['Archery target',0]
+  'u':['Glyph shrine',0],'%':['Homestead gate',0],'>':['Cave entrance',0],'y':['Training dummy',0],'@':['Archery target',0],
+  'z':['Vegetable garden',1],'0':['Well',0],'N':['Cart',0],'&':['Barrels',0],'*':['Boulder',0]
 };
 const walk=(x,y)=>inb(x,y)&&TILES[gget(x,y)][1]===1;
 {
@@ -550,7 +551,7 @@ const AREAS=[
   A('Estate Agent',45,162,7,6,2),A('Bow & Arrow',76,162,7,6,2),A('Qadir Smelter',300,194,9,7,2),A("Kharim's Scimitars",312,194,7,6,2),
   A('Qadir Gems',330,194,8,6,2),A('Tanner',344,194,8,6,2),A('Shipwright',160,240,5,5,2),A('Storm Temple',262,58,7,6,2),A('Homestead Gate',68,173,5,4,2),
   A('Hall of the Lantern',28,108,16,12,2),A('Falcrest Bank',70,128,10,7,2),A('Qadir Bank',300,184,9,6,2),
-  A('Chapel of St. Elowen',180,216,9,10,2),A('Brightwater Store',182,231,7,6,2),A('Harbour Tavern',138,238,8,6,2),
+  A('Chapel of St. Elowen',180,216,9,10,2),A('Brightwater Store',182,231,7,6,2),A('Harbour Tavern',138,238,8,6,2),A('Brightwater Guildhall',158,229,12,8,2),A('Wheatfield Windmill',164,146,5,5,2),
   A('Net & Tackle',150,239,6,5,2),A("Witch's Hut",98,202,6,4,2),A("Ranger's Lodge",330,98,7,5,2),A('Ravenscar Manor',34,185,16,11,2),
   // places (tier 1)
   K('Kelmoor Square',52,39,17,15,1,{ly:40.6}),K('Kelmoor Park',71,56,15,14,1,{ly:66}),K('Lumber Yard',85,16,14,10,1,{ly:15}),
@@ -615,6 +616,7 @@ const AREAS=[
     }
     if(!fit)continue;
     const[wx,wy,wwid,whgt]=fit;
+    b.wing=true;
     const inner=(x,y,r0,r1,r2,r3)=>x>r0&&x<r0+r2-1&&y>r1&&y<r1+r3-1;
     const room=(x,y)=>inner(x,y,b.x,b.y,b.w,b.h)||inner(x,y,wx,wy,wwid,whgt);
     for(let y=wy;y<wy+whgt;y++)for(let x=wx;x<wx+wwid;x++){
@@ -622,6 +624,78 @@ const AREAS=[
       if(room(x,y)){if(!inner(x,y,b.x,b.y,b.w,b.h))gset(x,y,b.floor)}
       else gset(x,y,'B');
     }
+  }
+}
+/* Landmarks, square props, kitchen gardens and boulders. No random draws:
+   everything is placed by hand or by hashing its tile. */
+{
+  const hh=(a,b,k)=>{let h=(a*374761393+b*668265263+k*2147483647)|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return(h>>>0)/4294967296};
+  const walkable=c=>c!=null&&TILES[c]&&TILES[c][1]===1&&c!=='+';
+  // A landmark: walls and floor, a door, and a short path out to the road.
+  const hall=(x,y,w,h,floor,wall,door,path)=>{
+    for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++)gset(i,j,i===x||j===y||i===x+w-1||j===y+h-1?wall:floor);
+    gset(x+door[0],y+door[1],'+');
+    for(const[i,j]of path)if('.,T'.includes(gget(i,j))){gset(i,j,'d');ROADSET.add(j*W+i)}
+  };
+  hall(158,229,12,8,'s','B',[5,7],[[163,237],[163,238],[164,238],[165,238],[166,238],[166,239],[166,240],[166,241],[166,242],[166,243],[166,244],[166,245],[167,245]]);  // Brightwater Guildhall
+  hall(164,146,5,5,'s','B',[2,4],[[166,151],[166,152],[166,153],[166,154],[166,155]]);                     // Wheatfield Windmill
+  // Props in squares: only where they leave every way round them open.
+  const prop=(x,y,c)=>{
+    if(!'.,cdnS'.includes(gget(x,y)))return SITEWARN.push([x,y,c+' (not open ground)']);
+    for(let j=y-1;j<=y+1;j++)for(let i=x-1;i<=x+1;i++)if((i!==x||j!==y)&&!walkable(gget(i,j)))return SITEWARN.push([x,y,c+' (crowded)']);
+    gset(x,y,c);
+  };
+  for(const[x,y,c]of[
+    // Kelmoor square
+    [185,113,'0'],[197,113,'N'],[197,119,'&'],[199,111,'&'],
+    // Falcrest fountain square
+    [56,139,'M'],[68,139,'M'],[56,145,'M'],[69,145,'N'],[55,142,'&'],
+    // Brightwater castle yard and the guildhall door
+    [206,232,'0'],[216,231,'N'],[203,217,'&'],
+    // Hallowmere green, Saltcombe quay, Qadir bazaar
+    [101,212,'0'],[106,213,'N'],[152,247,'&'],[147,248,'N'],
+    [313,172,'0'],[305,173,'N'],[325,186,'&'],[330,172,'&'],
+  ])prop(x,y,c);
+  // Kitchen gardens: a fenced vegetable plot behind a plain house, with a gate in the side.
+  const named=new Set(AREAS.map(a=>[a.x,a.y,a.w,a.h].join()));
+  for(const b of HOUSES){
+    if(b.wall!=='B'||named.has([b.x,b.y,b.w,b.h].join())||hh(b.x,b.y,11)<.25)continue;
+    // Skip houses that grew a wing: the back is taken.
+    if(b.wing)continue;
+    const [ddx,ddy]=b.doors[0];
+    const back=ddy===0?[0,1]:ddy===b.h-1?[0,-1]:ddx===0?[1,0]:[-1,0];
+    const vertical=back[0]===0,len=vertical?b.w:b.h;
+    // Fence rectangle: as wide as the house, three or four rows deep beyond the back wall.
+    for(const deep of[4,3]){
+      let fx,fy,fw,fh;
+      if(vertical){fx=b.x;fw=b.w;fh=deep;fy=back[1]>0?b.y+b.h:b.y-deep}
+      else{fy=b.y;fh=b.h;fw=deep;fx=back[0]>0?b.x+b.w:b.x-deep}
+      let ok=true;
+      for(let y=fy-1;y<=fy+fh&&ok;y++)for(let x=fx-1;x<=fx+fw&&ok;x++){
+        const inside=x>=fx&&y>=fy&&x<fx+fw&&y<fy+fh,c=gget(x,y);
+        if(x>=b.x&&x<b.x+b.w&&y>=b.y&&y<b.y+b.h)continue;
+        if(inside?(c!=='.'&&c!==','||ROADSET.has(y*W+x)):!walkable(c))ok=false;
+      }
+      if(!ok)continue;
+      for(let y=fy;y<fy+fh;y++)for(let x=fx;x<fx+fw;x++){
+        const edge=vertical?(x===fx||x===fx+fw-1||y===(back[1]>0?fy+fh-1:fy)):(y===fy||y===fy+fh-1||x===(back[0]>0?fx+fw-1:fx));
+        gset(x,y,edge?'F':'z');
+      }
+      // The gate: a gap in one side fence, next to the house.
+      const side=hh(b.x,b.y,12)<.5;
+      if(vertical)gset(side?fx:fx+fw-1,back[1]>0?fy:fy+fh-1,'z');
+      else gset(back[0]>0?fx:fx+fw-1,side?fy:fy+fh-1,'z');
+      break;
+    }
+  }
+  // Boulders out in the wilds, never touching anything that blocks.
+  const town=AREAS.filter(a=>a.kind==='town'||a.t===2||a.t===1).map(a=>[a.x-2,a.y-2,a.w+4,a.h+4]).concat([KRECT]);
+  for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){
+    const c=gget(x,y);
+    if((c!=='.'&&c!==','&&c!=='S'&&c!=='a')||hh(x,y,21)>.006||ROADSET.has(y*W+x)||town.some(r=>inR(x,y,r))||inSite(x,y))continue;
+    let open=true;
+    for(let j=y-1;j<=y+1&&open;j++)for(let i=x-1;i<=x+1;i++)if((i!==x||j!==y)&&(!walkable(gget(i,j))||ROADSET.has(j*W+i))){open=false;break}
+    if(open)gset(x,y,'*');
   }
 }
 const areaAt=(x,y)=>{for(const a of AREAS)if(inR(x,y,[a.x,a.y,a.w,a.h]))return a.n;return 'The Vell Reaches'};
@@ -750,6 +824,11 @@ function paint(g,c,x,y,px,py,N=gget){
     case '%':box([152,148,140],0,2,2,12,13);box([86,40,148],0,4,4,8,11);dot(8,9,2.6,[176,120,240],0);dot(8,9,1,[240,220,255],0);break;
     case '>':dot(8,10,5.5,[14,12,10],0);box([14,12,10],0,2.5,10,11,6);break;
     case 'y':shade(9,14,3,.3);box([110,76,40],0,7,6,2,9);box([204,172,92],0,3,7,10,2);dot(8,6,3.4,[204,172,92],0);dot(8,6,1.4,[150,60,40],0);break;
+    case 'z':ground([92,72,44],10,5);for(const r of[3,8,13])for(let k=0;k<4;k++)dot(2.5+k*3.7,r,1.4,[84,140,52],j(90+k)*20);break;
+    case '0':shade(9,10,6.5);dot(8,8,6,[132,128,120],0);dot(8,8,3.6,[30,40,60],0);box([110,76,40],0,2,3,1,9);box([110,76,40],0,13,3,1,9);box([110,76,40],0,2,3,12,1);break;
+    case 'N':shade(9,11,6,.3);box([150,108,62],0,2,4,12,7);box([120,84,46],0,2,4,12,1);dot(4,12,2.2,[70,50,30],0);dot(12,12,2.2,[70,50,30],0);break;
+    case '&':shade(9,10,6);dot(5.5,6,3.4,[132,90,50],0);dot(10.5,6,3.4,[120,84,46],0);dot(8,10.5,3.4,[140,96,54],0);break;
+    case '*':shade(9,10,6.5);dot(8,8.5,6,[128,124,116],j(4)*16);dot(6.5,7,3,[150,146,138],0);break;
     case '@':shade(9,10,6.5);dot(8,8,6.3,[240,236,226],0);dot(8,8,4.4,[200,52,40],0);dot(8,8,2.6,[240,236,226],0);dot(8,8,1.2,[240,200,60],0);break;
     case ',':ground(DG,14,5);for(let k=0;k<3;k++)box([74,124,46],j(60+k)*24,Math.floor(hash(x,y,63+k)*15),Math.floor(hash(x,y,66+k)*13),1,3);break;
     case 'd':ground(DIRT,16,5);box([96,72,42],0,Math.floor(hash(x,y,7)*14),Math.floor(hash(x,y,8)*14),2,1);break;
@@ -813,7 +892,8 @@ const COL={'.':GR,',':DG,'d':DIRT,'c':COB,'n':PAVE,'s':STONE,'w':WOOD,'g':[112,1
   'T':[40,94,30],'t':[84,70,52],'Y':[96,150,72],'p':[80,130,56],'1':[120,104,90],'2':[120,116,110],'3':[118,96,90],'4':[80,76,72],'Z':[150,150,144],'G':[136,136,130],
   'A':[60,60,64],'K':[110,80,46],'M':[180,90,80],'O':[180,176,166],'x':[230,224,206],'L':[130,90,50],'E':[116,108,58],'C':[220,110,40],'J':[100,70,40],
   'o':[72,114,36],'l':[96,140,62],'e':[28,70,32],'Q':[60,140,150],'5':[160,140,80],'6':[100,104,150],'7':[90,130,100],'8':[100,160,190],'9':[208,208,220],
-  'U':[92,64,52],'R':[70,70,76],'r':[130,90,50],'j':[150,190,220],'h':[90,64,36],'i':[130,100,60],'u':[110,80,160],'%':[120,70,170],'>':[20,18,16],'y':[190,160,90],'@':[210,80,60]};
+  'U':[92,64,52],'R':[70,70,76],'r':[130,90,50],'j':[150,190,220],'h':[90,64,36],'i':[130,100,60],'u':[110,80,160],'%':[120,70,170],'>':[20,18,16],'y':[190,160,90],'@':[210,80,60],
+  'z':[92,104,48],'0':[120,116,110],'N':[140,100,60],'&':[120,84,46],'*':[128,124,116]};
 const ov=document.createElement('canvas');ov.width=W*OVS;ov.height=H*OVS;
 {const octx=ov.getContext('2d'),img=octx.createImageData(ov.width,ov.height),d=img.data;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){const c=COL[gget(x,y)]||GR,t=(hash(x,y,1)-.5)*12;

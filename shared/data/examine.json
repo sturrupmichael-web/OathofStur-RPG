@@ -2,6 +2,11 @@
   "comment": "Examine text for world objects, by their key. Items keep theirs in items.json.",
   "objects": {
     "tree": "A tall, healthy tree.",
+    "well": "A stone well with a bucket on a rope. The water is cold and clean.",
+    "cart": "A sturdy handcart, loaded with sacks and crates.",
+    "barrels": "Barrels and crates, waiting to be carried somewhere.",
+    "boulder": "A great lump of weathered stone. It's been here longer than anyone.",
+    "vegetable_garden": "Neat rows of cabbages, carrots and leeks.",
     "tree_stump": "Someone's been chopping here. It'll grow back.",
     "dead_tree": "Grey and leafless. The ash killed it long ago, but the wood is still good.",
     "dead_tree_stump": "All that's left of a dead tree.",

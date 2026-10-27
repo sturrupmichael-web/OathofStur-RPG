@@ -96,6 +96,11 @@ const OBJECT_KINDS: Record<string, Exclude<PlacementKind, 'npc' | 'monster'>> = 
   cave_entrance: 'scenery',
   training_dummy: 'scenery',
   archery_target: 'scenery',
+  // Town and country props.
+  well: 'scenery',
+  cart: 'scenery',
+  barrels: 'scenery',
+  boulder: 'scenery',
 };
 
 /** The skill a resource belongs to is clear from its name; levels and yields are not in the map. */

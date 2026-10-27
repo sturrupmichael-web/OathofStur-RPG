@@ -18,6 +18,7 @@ export const GROUND_COLORS: Record<string, number> = {
   wooden_floor: 0xa47c52,
   flower_bed: 0x5e4630,
   crop_field: 0x7a5a36,
+  vegetable_garden: 0x5e4630,
   sand: 0xdcc48e,
   scorched_earth: 0x6c625a,
   bridge: 0x8b6239,

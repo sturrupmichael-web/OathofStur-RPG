@@ -109,6 +109,32 @@ export const RESOURCE_STYLES: Record<string, PartStyle[]> = {
     branch(0x6b4a2b, -0.14, 1.4, -2.4, 0.7),
     ...canopy([0x3f8f3a, 0x4a9a40, 0x37803a, 0x52a347], 1.85, 0.5, 0.95),
   ],
+  // Plain 'tree' nodes are drawn as one of these too, picked per tile, so a
+  // wood is a mix: birch, pine and beech among the broadleaves.
+  tree_birch: [
+    { geometry: trunk(0.09, 2.0), color: 0xe8e4da, position: [0, 1.0, 0], vary: 0.05 },
+    ...[0.45, 0.8, 1.15, 1.5].map((y, k) => ({ geometry: new THREE.CylinderGeometry(0.075, 0.08, 0.05, 7), color: 0x2a2826, position: [0, y, 0] as [number, number, number], rotation: [0, k, 0.08 * (k % 2 ? 1 : -1)] as [number, number, number] })),
+    ...roots(0xcfcac0, 0.09),
+    branch(0xd8d4ca, 0.1, 1.5, 0.9, 0.6, 0.035),
+    branch(0xd8d4ca, -0.1, 1.7, -2.2, 0.5, 0.03),
+    ...canopy([0x8cbf4a, 0x9ccc58, 0x7fb243, 0xa8d462], 2.2, 0.42, 1.2),
+  ],
+  tree_pine: [
+    { geometry: trunk(0.12, 1.2), color: 0x5a3a24, position: [0, 0.6, 0], vary: 0.08 },
+    ...roots(0x4e3220, 0.12),
+    { geometry: new THREE.ConeGeometry(0.62, 0.9, 7), color: 0x2f5a3c, position: [0, 1.0, 0], vary: 0.1 },
+    { geometry: new THREE.ConeGeometry(0.5, 0.85, 7), color: 0x346444, position: [0, 1.5, 0], rotation: [0, 0.4, 0], vary: 0.1 },
+    { geometry: new THREE.ConeGeometry(0.38, 0.8, 7), color: 0x3a6c4a, position: [0, 1.95, 0], rotation: [0, 0.8, 0], vary: 0.1 },
+    { geometry: new THREE.ConeGeometry(0.24, 0.7, 6), color: 0x40744f, position: [0, 2.4, 0], vary: 0.1 },
+    { geometry: new THREE.ConeGeometry(0.04, 0.3, 4), color: 0x40744f, position: [0, 2.85, 0] },
+  ],
+  tree_beech: [
+    { geometry: trunk(0.17, 1.3), color: 0x8a8a80, position: [0, 0.65, 0], vary: 0.06 },
+    ...roots(0x7a7a70, 0.17),
+    branch(0x8a8a80, 0.2, 1.1, 0.6, 0.9, 0.06),
+    branch(0x8a8a80, -0.2, 1.2, 3.0, 0.85, 0.055),
+    ...canopy([0x6a8a2a, 0x8a8a2e, 0x5f7f28, 0x9a7a30], 1.75, 0.6, 0.7),
+  ],
   oak_tree: [
     { geometry: trunk(0.22, 1.3), color: 0x5e3f24, position: [0, 0.65, 0], vary: 0.08 },
     ...roots(0x553820, 0.22),
@@ -225,6 +251,8 @@ function mesh(geo: THREE.BufferGeometry, color: number, x = 0, y = 0, z = 0, opt
 }
 
 const B = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
+/** A colour a little lighter or darker. */
+const shadeOf = (c: number, f: number) => new THREE.Color(c).multiplyScalar(f).getHex();
 const C = (rt: number, rb: number, h: number, seg = 10) => new THREE.CylinderGeometry(rt, rb, h, seg);
 
 /** Glowing parts that flicker (furnace mouth, range fire). Renderer animates them. */
@@ -570,6 +598,104 @@ export function buildStation(defKey: string, near: NeighbourLookup = () => null,
       const rings = [0xf2ead8, 0x2a2a2a, 0x2f6a9a, 0xc0392b, 0xe8c04a];
       rings.forEach((c, n) => g.add(mesh(new THREE.CylinderGeometry(0.42 - n * 0.08, 0.42 - n * 0.08, 0.06 + n * 0.005, 14).rotateX(Math.PI / 2), c, 0, 0.95, -0.02 + n * 0.01)));
       g.add(mesh(C(0.012, 0.012, 0.3, 5).rotateX(Math.PI / 2), 0xe8e0c8, 0.08, 1.0, 0.16));
+      break;
+    }
+    case 'well': {
+      // A round stone well with a little shingled roof and a bucket on a winch.
+      const ring = new THREE.CylinderGeometry(0.42, 0.45, 0.62, 16, 1, true);
+      g.add(mesh(ring, 0x9a948a, 0, 0.31, 0, { map: bricks }));
+      (g.children[0] as THREE.Mesh).material = new THREE.MeshLambertMaterial({ color: 0x9a948a, map: bricks, side: THREE.DoubleSide });
+      g.add(mesh(new THREE.TorusGeometry(0.43, 0.06, 6, 18).rotateX(Math.PI / 2), 0xb0a898, 0, 0.62, 0));
+      g.add(mesh(C(0.38, 0.38, 0.02, 16), 0x22364e, 0, 0.36, 0, { emissive: 0x050a14 }));
+      for (const x of [-0.4, 0.4]) g.add(mesh(B(0.08, 1.1, 0.08), 0x6b4a2b, x, 0.85, 0));
+      g.add(mesh(C(0.04, 0.04, 0.84, 6).rotateZ(Math.PI / 2), 0x7a5230, 0, 1.15, 0));
+      for (const side of [-1, 1]) {
+        const roof = mesh(B(1.0, 0.04, 0.42), 0x7a4a2e, 0, 1.5, side * 0.17, { map: textures.shingles() });
+        roof.rotation.x = side * 0.75;
+        g.add(roof);
+      }
+      g.add(mesh(C(0.006, 0.006, 0.45, 4), 0xd8cfb4, 0.05, 0.92, 0));
+      g.add(mesh(C(0.07, 0.055, 0.12, 8), 0x7a5230, 0.05, 0.66, 0, { map: planks }));
+      g.add(mesh(B(0.04, 0.18, 0.04), 0x6b4a2b, 0.46, 1.08, 0.06));
+      break;
+    }
+    case 'cart': {
+      // A handcart: plank bed on two spoked wheels, shafts resting on the ground, a load of sacks.
+      const tilt = new THREE.Group();
+      tilt.rotation.x = -0.12;
+      tilt.position.y = 0.05;
+      tilt.add(mesh(B(0.62, 0.06, 0.9), 0x8a6238, 0, 0.42, 0, { map: planks }));
+      for (const x of [-0.31, 0.31]) tilt.add(mesh(B(0.04, 0.2, 0.9), 0x7a5230, x, 0.54, 0, { map: planks }));
+      for (const z of [-0.45, 0.45]) tilt.add(mesh(B(0.62, 0.2, 0.04), 0x7a5230, 0, 0.54, z, { map: planks }));
+      for (const x of [-0.2, 0.2]) {
+        const shaft = mesh(B(0.05, 0.05, 0.75), 0x6b4a2b, x, 0.3, 0.75);
+        shaft.rotation.x = 0.45;
+        tilt.add(shaft);
+      }
+      const sacks = [0xc8b48a, 0xb8a47a, 0xd4c49a];
+      for (let n = 0; n < 3; n++) tilt.add(mesh(new THREE.SphereGeometry(0.15, 8, 6), sacks[(n + k) % 3], -0.12 + (n % 2) * 0.22, 0.6, -0.25 + n * 0.22));
+      (tilt.children[tilt.children.length - 1] as THREE.Mesh).scale.set(1, 0.8, 1.2);
+      tilt.add(mesh(B(0.22, 0.2, 0.22), 0xa07a48, 0.14, 0.63, 0.24, { map: planks }));
+      g.add(tilt);
+      for (const x of [-0.38, 0.38]) {
+        g.add(mesh(new THREE.TorusGeometry(0.26, 0.035, 6, 16).rotateY(Math.PI / 2), 0x5a3d22, x, 0.28, -0.05));
+        for (let n = 0; n < 4; n++) {
+          const spoke = mesh(B(0.025, 0.5, 0.025), 0x6b4a2b, x, 0.28, -0.05);
+          spoke.rotation.x = (n / 4) * Math.PI;
+          g.add(spoke);
+        }
+        g.add(mesh(C(0.05, 0.05, 0.06, 8).rotateZ(Math.PI / 2), 0x3a3a3a, x, 0.28, -0.05));
+      }
+      break;
+    }
+    case 'barrels': {
+      // Two or three barrels and a crate, banded with iron.
+      const barrel = (x: number, z: number, y = 0, lying = false) => {
+        const b = new THREE.Group();
+        b.add(mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.48, 12), 0x8a5a32, 0, 0, 0, { map: planks }));
+        b.add(mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.3, 12, 1, true), 0x7a4e2a, 0, 0, 0, { map: planks }));
+        for (const by of [-0.17, 0.17]) b.add(mesh(new THREE.TorusGeometry(0.162, 0.012, 4, 14).rotateX(Math.PI / 2), 0x3a3a3a, 0, by, 0));
+        b.position.set(x, y + (lying ? 0.17 : 0.24), z);
+        if (lying) b.rotation.z = Math.PI / 2;
+        g.add(b);
+      };
+      barrel(-0.2, -0.12);
+      barrel(0.18, -0.18);
+      if (k % 2) barrel(0.0, 0.25, 0, true);
+      else g.add(mesh(B(0.32, 0.3, 0.32), 0xa07a48, 0.05, 0.15, 0.22, { map: planks }));
+      if (k % 3 === 0) g.add(mesh(B(0.26, 0.24, 0.26), 0x9a7040, -0.2, 0.6, -0.12, { map: planks }));
+      break;
+    }
+    case 'boulder': {
+      // Weathered stone in a few shapes: one big rock, a cluster, or a flat slab; mossy in the green.
+      const sandy = near(1, 0) === 'sand' || near(-1, 0) === 'sand';
+      const ash = near(1, 0) === 'scorched_earth' || near(-1, 0) === 'scorched_earth';
+      const tone = sandy ? 0xb89a70 : ash ? 0x5a5550 : 0x8a867e;
+      const rock = textures.rock();
+      const lump = (r: number, x: number, y: number, z: number, sx: number, sy: number, sz: number, c = tone) => {
+        const m = mesh(new THREE.DodecahedronGeometry(r, 1), c, x, y, z, { map: rock });
+        m.scale.set(sx, sy, sz);
+        m.rotation.y = (k % 13) * 0.5;
+        (m.material as THREE.MeshLambertMaterial).flatShading = true;
+        g.add(m);
+        return m;
+      };
+      const shape = k % 4;
+      if (shape === 0) lump(0.42, 0, 0.28, 0, 1.1, 0.8, 0.95);
+      else if (shape === 1) {
+        lump(0.3, -0.12, 0.2, -0.05, 1, 0.85, 1);
+        lump(0.22, 0.22, 0.14, 0.1, 1, 0.8, 1, shadeOf(tone, 0.9));
+        lump(0.14, -0.05, 0.08, 0.3, 1, 0.7, 1, shadeOf(tone, 1.08));
+      } else if (shape === 2) lump(0.45, 0, 0.14, 0, 1.15, 0.38, 0.9);
+      else {
+        lump(0.36, 0, 0.32, 0, 0.8, 1.1, 0.8);
+        lump(0.16, 0.28, 0.1, 0.15, 1, 0.7, 1, shadeOf(tone, 0.9));
+      }
+      if (!sandy && !ash && k % 3 !== 0) {
+        const moss = mesh(new THREE.SphereGeometry(0.3, 8, 4, 0, Math.PI * 2, 0, Math.PI / 3), 0x5d7a3a, 0, shape === 2 ? 0.08 : 0.24, 0);
+        moss.scale.set(1, 0.6, 0.9);
+        g.add(moss);
+      }
       break;
     }
     default:

@@ -21,7 +21,7 @@ const DOOR_W = 0.8;
 /** Real point lights, moved to the nearest light spots each frame. */
 const LIGHT_POOL = 6;
 
-export type BuildingKind = 'bank' | 'store' | 'smithy' | 'chapel' | 'inn' | 'keep' | 'library' | 'house';
+export type BuildingKind = 'bank' | 'store' | 'smithy' | 'chapel' | 'inn' | 'keep' | 'library' | 'guildhall' | 'windmill' | 'house';
 
 /** A rectangle of tiles, walls included, inclusive. */
 export interface Rect {
@@ -107,6 +107,8 @@ const KIND_BY_OBJECT: Record<string, BuildingKind> = {
 
 /** Kinds the map's building names imply, checked in order. */
 const KIND_BY_NAME: [RegExp, BuildingKind][] = [
+  [/windmill/i, 'windmill'],
+  [/guildhall/i, 'guildhall'],
   [/keep/i, 'keep'],
   [/chapel|shrine|temple/i, 'chapel'],
   [/bank/i, 'bank'],
@@ -347,7 +349,7 @@ export function detectBuildings(map: MapData, info: TileInfo): Building[] {
  */
 function storeysFor(kind: BuildingKind, b: Rect): number {
   const area = (b.x1 - b.x0 + 1) * (b.y1 - b.y0 + 1);
-  if (kind === 'keep') return 3;
+  if (kind === 'keep' || kind === 'guildhall' || kind === 'windmill') return 3;
   if (area < 20 || kind === 'smithy') return 1;
   if (kind === 'house') return hash2(b.x0, b.y0, 31) < 0.6 ? 2 : 1;
   return 2;
@@ -432,11 +434,19 @@ const MASONRY: Record<BuildingKind, number> = {
   inn: 0xb39c7a,
   keep: 0x8a8478,
   library: 0xbcae90,
+  guildhall: 0xb8a888,
+  windmill: 0xd8d0c0,
   house: 0xb8a686,
 };
 
 /** Kinds built of stone all the way up; the rest have timber-framed upper floors. */
-const ALL_STONE: Partial<Record<BuildingKind, true>> = { keep: true, chapel: true, bank: true };
+const ALL_STONE: Partial<Record<BuildingKind, true>> = { keep: true, chapel: true, bank: true, windmill: true };
+
+/** Kinds with arched doors and tall round-headed windows. */
+const GRAND: Partial<Record<BuildingKind, true>> = { chapel: true, library: true, guildhall: true, bank: true };
+
+/** Painted or bare door leaves, one per building. */
+const DOOR_COLOURS = [0x6e4526, 0x2f5a3a, 0x7a2f2a, 0x2f4a6a, 0x4a3a2a, 0x8a6a3a, 0x3a3a3a];
 
 /** Painted shutters, one colour per building. */
 const SHUTTERS = [0x2f5a3a, 0x2f4a6a, 0x7a2f2a, 0x5a4a2a, 0x3a5a5a];
@@ -479,6 +489,8 @@ const ROOF_COLORS: Record<BuildingKind, number> = {
   inn: 0xb0623a,
   keep: 0x3e4450,
   library: 0x6a4a7a,
+  guildhall: 0x3f5a78,
+  windmill: 0x6a4a34,
   house: 0x7a5a3a,
 };
 
@@ -530,6 +542,8 @@ export class BuildingLayer {
   private readonly roofs: RoofState[] = [];
   private readonly flames: Flame[] = [];
   private readonly smoke: Smoke[] = [];
+  /** Windmill sails, turned about their axle (local z) each frame. */
+  private readonly sails: THREE.Object3D[] = [];
   /** Where warm lights belong; a few real lights follow the player between them. */
   private readonly lightSpots: { pos: THREE.Vector3; color: number; intensity: number }[] = [];
   private readonly lights: THREE.PointLight[] = [];
@@ -618,6 +632,7 @@ export class BuildingLayer {
         if (n) light.color.setHex(n.spot.color);
       });
     }
+    for (const sail of this.sails) sail.rotation.z -= dt * 0.7;
     for (const f of this.flames) {
       const s = 1 + Math.sin(now * 0.018 + f.phase) * 0.12 + Math.sin(now * 0.041 + f.phase * 2) * 0.08;
       f.mesh.scale.set(1, s, 1);
@@ -667,6 +682,19 @@ export class BuildingLayer {
         color,
       );
     };
+    // A flat piece in the plane of a side (an arch, a fanlight), centred at a, o, y.
+    const flat = (key: string, geo: THREE.BufferGeometry, mat: THREE.Material, color: number, side: Side, a: number, o: number, y: number, scale: [number, number, number] = [1, 1, 1]) => {
+      const [p] = sideBox(side, a, a, o, o, y, y);
+      batch.add(key, geo, mat, { position: p, rotationY: side.axis === 'x' ? 0 : Math.PI / 2, scale }, color);
+    };
+    // Halls get arched doors and tall arched windows; homes have their own
+    // kind of window, plain, leaded or small; every door its own paint.
+    const grand = GRAND[b.kind] ?? false;
+    const winStyle = grand ? 'arched' : b.kind === 'house' ? (['plain', 'lattice', 'small'] as const)[Math.floor(hash2(b.x0, b.y0, 74) * 3)] : 'plain';
+    const leaf = DOOR_COLOURS[Math.floor(hash2(b.x0, b.y0, 75) * DOOR_COLOURS.length)];
+    const archGeo = new THREE.TorusGeometry(1, 0.06, 5, 14, Math.PI);
+    const halfDisc = new THREE.CircleGeometry(1, 14, 0, Math.PI);
+    const glassBoth = lambert(0x2a3550, { emissive: 0x3a2a10, side: THREE.DoubleSide });
 
     for (const side of sidesOf(b)) {
       for (const [a0, a1] of segmentsOf(side)) {
@@ -686,7 +714,13 @@ export class BuildingLayer {
         put('threshold', wood, 0x7a5432, side, d - DOOR_W / 2, d + DOOR_W / 2, -T / 2, T / 2, -0.02, 0.03);
         put('step', lambert(0xffffff, { map: textures.rock() }), 0x8a857c, side, d - 0.48, d + 0.48, T / 2, T / 2 + 0.34, -0.06, 0.07);
         // Open door leaf swung inward against the frame.
-        put('door-leaf', wood, 0x6e4526, side, d + DOOR_W / 2 - 0.08, d + DOOR_W / 2 - 0.02, -T / 2 - 0.72, -T / 2 - 0.02, 0.02, 0.98);
+        if (grand) {
+          // A low stone arch over the lintel with a fanlight in it.
+          const r = DOOR_W / 2 + 0.06;
+          flat('door-arch', archGeo, wood, shade(tone, 0.78), side, d, T / 2 + 0.03, 1.08, [r, r * 0.42, 1.2]);
+          flat('fanlight', halfDisc, glassBoth, 0xffffff, side, d, T / 2 + 0.02, 1.08, [r - 0.05, (r - 0.05) * 0.42, 1]);
+        }
+        put('door-leaf', wood, leaf, side, d + DOOR_W / 2 - 0.08, d + DOOR_W / 2 - 0.02, -T / 2 - 0.72, -T / 2 - 0.02, 0.02, 0.98);
       }
 
       // Windows on every other tile, clear of corners and doors.
@@ -695,12 +729,29 @@ export class BuildingLayer {
         if (t % 2 !== 0 || side.doors.some((d) => Math.abs(d - a) < 1.6)) continue;
         for (const face of [1, -1]) {
           const o = face * (T / 2);
-          put('win-frame', wood, 0x5b3a22, side, a - 0.28, a + 0.28, o - 0.03, o + 0.03, 0.54, 1.06);
-          put('win-pane', glass, 0xffffff, side, a - 0.21, a + 0.21, o - 0.035, o + 0.035, 0.61, 0.99);
-          put('win-mullion', wood, 0x5b3a22, side, a - 0.02, a + 0.02, o - 0.04, o + 0.04, 0.61, 0.99);
-          put('win-sill', wood, 0x6b4a2e, side, a - 0.32, a + 0.32, face > 0 ? o : o - 0.12, face > 0 ? o + 0.12 : o, 0.5, 0.55);
+          const sill = (w: number, y: number) => put('win-sill', wood, 0x6b4a2e, side, a - w, a + w, face > 0 ? o : o - 0.12, face > 0 ? o + 0.12 : o, y - 0.05, y);
+          if (winStyle === 'arched') {
+            // Tall and narrow with a round head, in a dressed stone surround.
+            put('win-frame', wood, shade(tone, 0.78), side, a - 0.22, a + 0.22, o - 0.03, o + 0.03, 0.38, 0.9);
+            flat('win-arch', archGeo, wood, shade(tone, 0.78), side, a, o + face * 0.03, 0.9, [0.19, 0.19, 1]);
+            put('win-pane', glass, 0xffffff, side, a - 0.16, a + 0.16, o - 0.035, o + 0.035, 0.44, 0.9);
+            flat('win-head', halfDisc, glassBoth, 0xffffff, side, a, o + face * 0.036, 0.9, [0.16, 0.16, 1]);
+            put('win-mullion', wood, 0x3a3a3a, side, a - 0.015, a + 0.015, o - 0.04, o + 0.04, 0.44, 1.04);
+            sill(0.25, 0.4);
+            continue;
+          }
+          const [hw, y0, y1] = winStyle === 'small' ? [0.15, 0.66, 0.98] : [0.21, 0.61, 0.99];
+          put('win-frame', wood, 0x5b3a22, side, a - hw - 0.07, a + hw + 0.07, o - 0.03, o + 0.03, y0 - 0.07, y1 + 0.07);
+          put('win-pane', glass, 0xffffff, side, a - hw, a + hw, o - 0.035, o + 0.035, y0, y1);
+          put('win-mullion', wood, 0x5b3a22, side, a - 0.02, a + 0.02, o - 0.04, o + 0.04, y0, y1);
+          if (winStyle === 'lattice') {
+            // Leaded panes: thin bars across and down.
+            for (const f of [1 / 3, 2 / 3]) put('win-lead', wood, 0x3a3a3a, side, a - hw, a + hw, o - 0.04, o + 0.04, y0 + (y1 - y0) * f - 0.008, y0 + (y1 - y0) * f + 0.008);
+            for (const f of [-0.5, 0.5]) put('win-lead', wood, 0x3a3a3a, side, a + hw * f - 0.008, a + hw * f + 0.008, o - 0.04, o + 0.04, y0, y1);
+          } else if (winStyle === 'plain') put('win-mullion', wood, 0x5b3a22, side, a - hw, a + hw, o - 0.04, o + 0.04, (y0 + y1) / 2 - 0.015, (y0 + y1) / 2 + 0.015);
+          sill(hw + 0.11, y0 - 0.06);
         }
-        if (!desert) for (const s of [-1, 1]) put('shutter', wood, shutter, side, a + s * 0.29 - 0.12, a + s * 0.29 + 0.12, T / 2 + 0.01, T / 2 + 0.05, 0.56, 1.04);
+        if (!desert && winStyle !== 'arched') for (const s of [-1, 1]) put('shutter', wood, shutter, side, a + s * 0.29 - 0.12, a + s * 0.29 + 0.12, T / 2 + 0.01, T / 2 + 0.05, 0.56, 1.04);
         // Desert windows get a cloth awning instead.
         else put('awning', wood, AWNINGS[Math.floor(hash2(Math.round(a * 3), b.y0, 48) * AWNINGS.length)], side, a - 0.32, a + 0.32, T / 2, T / 2 + 0.22, 1.1, 1.14);
       }
@@ -815,7 +866,7 @@ export class BuildingLayer {
         for (const ox of [-0.25, 0.05, 0.3]) batch.add('pan', pan, lambert(), { position: [x + 0.5 + ox, 0.92, backInnerZ + inward * 0.05] }, 0x2b2b2b);
       }
     }
-    const bannerColor = b.kind === 'bank' ? 0x2f4f8a : b.kind === 'chapel' ? 0xe8e0c8 : b.kind === 'keep' ? 0x8a2a2a : null;
+    const bannerColor = b.kind === 'bank' ? 0x2f4f8a : b.kind === 'chapel' ? 0xe8e0c8 : b.kind === 'keep' ? 0x8a2a2a : b.kind === 'guildhall' ? 0x1f3a5a : null;
     if (bannerColor !== null) {
       const banner = new THREE.PlaneGeometry(0.5, 0.85);
       for (const x of [fx0 + 1, fx1 - 1]) {
@@ -994,6 +1045,7 @@ export class BuildingLayer {
 
     const here = { ...b, ...part, storeys };
     if (desert) roofs.push(() => this.addFlatRoof(here, top, material, tone, ox0, ox1, oz0, oz1, eaves));
+    else if (b.kind === 'windmill') roofs.push(() => this.addWindmillTop(here, top, material, ox0, ox1, oz0, oz1, eaves));
     else if (b.kind === 'keep') roofs.push(() => this.addKeepTop(here, top, material, ox0, ox1, oz0, oz1, eaves));
     else if (index === 0) roofs.push(() => this.addGableRoof(here, top, material, state, ox0, ox1, oz0, oz1, eaves, mainAlongX, true));
     else {
@@ -1097,6 +1149,46 @@ export class BuildingLayer {
       this.smoke.push({ puffs, origin: world, roof: state });
     }
 
+    // The guildhall's bell turret and flag on the middle of its ridge.
+    if (b.kind === 'guildhall' && hearth) {
+      const post = material({ color: 0xe8dcc0, map: textures.plaster() });
+      const turret = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.2, 1.15), post);
+      turret.position.y = height + 0.4;
+      const open = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 0.7), material({ color: 0x2a2018 }));
+      open.position.y = height + 0.65;
+      const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.22, 0.32, 10), material({ color: 0xc89a3a }));
+      bell.position.y = height + 0.65;
+      const spire = new THREE.Mesh(new THREE.ConeGeometry(0.95, 1.7, 4), material({ color: ROOF_COLORS.guildhall, map: textures.shingles() }));
+      spire.rotation.y = Math.PI / 4;
+      spire.position.y = height + 1.85;
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.9, 5), trimMat);
+      mast.position.y = height + 3.1;
+      const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.32), material({ color: 0x1f3a5a, side: THREE.DoubleSide }));
+      flag.position.set(0.3, height + 3.35, 0);
+      const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.07), material({ color: 0xd4a73a, side: THREE.DoubleSide }));
+      stripe.position.set(0.3, height + 3.35, 0.002);
+      group.add(turret, open, bell, spire, mast, flag, stripe);
+    }
+
+    // A round window high in the gables of some homes and halls.
+    if ((b.kind === 'house' || b.kind === 'inn' || b.kind === 'guildhall') && span > 2.5 && hash2(b.parts[0].x0, b.parts[0].y0, 73) < 0.45) {
+      const r = Math.min(0.26, height * 0.22);
+      const ringGeo = new THREE.TorusGeometry(r, 0.045, 6, 16).rotateY(Math.PI / 2);
+      const paneGeo = new THREE.CircleGeometry(r, 16).rotateY(Math.PI / 2);
+      const paneMat = material({ color: 0x2a3550, emissive: 0x3a2a10, side: THREE.DoubleSide });
+      for (const end of [-1, 1]) {
+        const ring = new THREE.Mesh(ringGeo, trimMat);
+        ring.position.set(end * (len / 2 + 0.02), height * 0.4, 0);
+        const pane = new THREE.Mesh(paneGeo, paneMat);
+        pane.position.set(end * (len / 2 + 0.01), height * 0.4, 0);
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(0.03, r * 2, 0.03), trimMat);
+        bar.position.copy(ring.position);
+        const bar2 = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, r * 2), trimMat);
+        bar2.position.copy(ring.position);
+        group.add(ring, pane, bar, bar2);
+      }
+    }
+
     group.position.set(cx, eaves, cz);
     if (!alongX) group.rotation.y = -Math.PI / 2;
     top.add(group);
@@ -1140,6 +1232,72 @@ export class BuildingLayer {
       finial.position.set((ox0 + ox1) / 2, eaves + 0.35 + r + 0.12, (oz0 + oz1) / 2);
       top.add(drum, dome, finial);
     }
+  }
+
+  /**
+   * A windmill's cap: a shingled pyramid with a finial, and four lattice sails
+   * on an axle over the door, which turn slowly.
+   */
+  private addWindmillTop(
+    b: Building,
+    top: THREE.Group,
+    material: (p: THREE.MeshLambertMaterialParameters) => THREE.MeshLambertMaterial,
+    ox0: number,
+    ox1: number,
+    oz0: number,
+    oz1: number,
+    eaves: number,
+  ): void {
+    const cx = (ox0 + ox1) / 2;
+    const cz = (oz0 + oz1) / 2;
+    const half = Math.max(ox1 - ox0, oz1 - oz0) / 2;
+    const capMat = material({ color: ROOF_COLORS.windmill, map: textures.shingles() });
+    const wood = material({ color: 0x5a3d22 });
+    const cloth = material({ color: 0xe8dcc0, side: THREE.DoubleSide });
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(half * Math.SQRT2 + 0.25, 1.7, 4, 1), capMat);
+    cap.rotation.y = Math.PI / 4;
+    cap.position.set(cx, eaves + 0.85, cz);
+    const finial = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), material({ color: 0xd4a73a }));
+    finial.position.set(cx, eaves + 1.75, cz);
+    top.add(cap, finial);
+
+    // The axle sticks out of the wall the door is in.
+    const door = b.doors[0];
+    const [nx, nz] = door ? outward(b, door.x, door.y) : [0, 1];
+    const mount = new THREE.Group();
+    mount.position.set(cx + nx * (half + 0.05), eaves + 0.35, cz + nz * (half + 0.05));
+    mount.rotation.y = Math.atan2(nx, nz);
+    const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.6, 8).rotateX(Math.PI / 2), wood);
+    axle.position.z = 0.1;
+    const rotor = new THREE.Group();
+    rotor.position.z = 0.42;
+    rotor.rotation.z = hash2(b.x0, b.y0, 71) * Math.PI;
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.14, 10).rotateX(Math.PI / 2), wood);
+    rotor.add(hub);
+    const LEN = 2.3;
+    for (let k = 0; k < 4; k++) {
+      const arm = new THREE.Group();
+      arm.rotation.z = (k * Math.PI) / 2;
+      const spar = new THREE.Mesh(new THREE.BoxGeometry(0.08, LEN, 0.06), wood);
+      spar.position.y = LEN / 2;
+      arm.add(spar);
+      // A lattice frame to one side of the spar with cloth stretched over it.
+      const sail = new THREE.Mesh(new THREE.PlaneGeometry(0.5, LEN - 0.5), cloth);
+      sail.position.set(0.3, LEN / 2 + 0.25, 0.02);
+      arm.add(sail);
+      for (let r = 0; r <= 5; r++) {
+        const rung = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.03, 0.03), wood);
+        rung.position.set(0.3, 0.5 + (r * (LEN - 0.5)) / 5, 0.04);
+        arm.add(rung);
+      }
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.03, LEN - 0.5, 0.03), wood);
+      rail.position.set(0.56, LEN / 2 + 0.25, 0.04);
+      arm.add(rail);
+      rotor.add(arm);
+    }
+    mount.add(axle, rotor);
+    top.add(mount);
+    this.sails.push(rotor);
   }
 
   /** The keep's flat roof: a lead deck, battlements all round and a turret at each corner. */
@@ -1288,6 +1446,7 @@ const RUGS: Partial<Record<BuildingKind, [string, string, string]>> = {
   chapel: ['#6a2a3a', '#e8d8a0', '#3a2a5a'],
   keep: ['#6a1f1f', '#d4a73a', '#1f2f4a'],
   library: ['#3a2f5a', '#c8b88a', '#7a4a2a'],
+  guildhall: ['#1f3a5a', '#d4a73a', '#8a2a2a'],
   house: ['#6a4a2a', '#d0b080', '#8a3a2a'],
 };
 /** Colours for homes' rugs, picked per house. */
@@ -1414,6 +1573,43 @@ const SIGN_SYMBOLS: Record<BuildingKind, (ctx: CanvasRenderingContext2D) => void
       ctx.moveTo(x, 0);
       ctx.bezierCurveTo(x - 8, -12, x + 8, -20, x, -32);
       ctx.stroke();
+    }
+  },
+  guildhall: (ctx) => {
+    // Two hands clasped over a key: the guilds' oath.
+    ctx.strokeStyle = '#e8c04a';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(-14, -8, 10, 0, Math.PI * 2);
+    ctx.moveTo(-4, -8);
+    ctx.lineTo(30, -8);
+    ctx.moveTo(20, -8);
+    ctx.lineTo(20, 4);
+    ctx.moveTo(28, -8);
+    ctx.lineTo(28, 2);
+    ctx.stroke();
+    ctx.fillStyle = '#d9b48a';
+    ctx.beginPath();
+    ctx.ellipse(-10, 18, 18, 9, 0.3, 0, Math.PI * 2);
+    ctx.ellipse(10, 18, 18, 9, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+  },
+  windmill: (ctx) => {
+    ctx.fillStyle = '#e8d8a8';
+    ctx.strokeStyle = '#e8d8a8';
+    ctx.lineWidth = 4;
+    for (let k = 0; k < 4; k++) {
+      ctx.save();
+      ctx.translate(0, -4);
+      ctx.rotate(k * Math.PI / 2 + 0.4);
+      ctx.fillRect(4, -5, 26, 10);
+      ctx.restore();
+    }
+    ctx.fillStyle = '#c8a050';
+    for (const [x, y, a] of [[-12, 26, -0.4], [0, 28, 0], [12, 26, 0.4]]) {
+      ctx.beginPath();
+      ctx.ellipse(x, y, 4, 9, a, 0, Math.PI * 2);
+      ctx.fill();
     }
   },
   house: () => {},

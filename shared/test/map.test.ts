@@ -14,12 +14,12 @@ describe('JsonMapSource', () => {
     expect(map.terrain).toHaveLength(384 * 288);
     expect(map.terrain.every((t) => t >= 0)).toBe(true);
     expect(map.spawn).toEqual({ x: kx(60), y: ky(49) });
-    expect(map.areas).toHaveLength(103);
+    expect(map.areas).toHaveLength(105);
   });
 
   it('turns trees, rocks, stations and props into placements', () => {
     // Fewer than the map's tree tiles: some squares of four became one big tree.
-    expect(count('tree')).toBe(2400);
+    expect(count('tree')).toBe(2399);
     expect(count('dead_tree')).toBe(785);
     expect(count('oak_tree')).toBe(311);
     expect(count('copper_rock')).toBe(22);
@@ -27,6 +27,9 @@ describe('JsonMapSource', () => {
     expect(count('bank_booth')).toBe(31);
     expect(count('anvil')).toBe(4);
     expect(count('hide_tent')).toBe(16);
+    expect(count('well')).toBe(4);
+    expect(count('boulder')).toBeGreaterThan(150);
+    expect(map.defs.scenery.cart.name).toBe('Cart');
     expect(map.defs.resources.coal_rock.skill).toBe('mining');
     expect(map.defs.resources.yew_tree.skill).toBe('woodcutting');
     expect(map.defs.resources.tree.level).toBeUndefined(); // not in the map data

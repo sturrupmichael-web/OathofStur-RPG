@@ -162,7 +162,8 @@ const set=(x,y,c)=>gset(x+ox,y+oy,c);
 const rect=(x,y,w,h,c)=>{for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++)set(i,j,c)};
 const outline=(x,y,w,h,c)=>{for(let i=x;i<x+w;i++){set(i,y,c);set(i,y+h-1,c)}for(let j=y;j<y+h;j++){set(x,j,c);set(x+w-1,j,c)}};
 const disc=(cx,cy,r,c,ry=r)=>{for(let y=Math.floor(cy-ry);y<=cy+ry;y++)for(let x=Math.floor(cx-r);x<=cx+r;x++){const dx=(x-cx)/r,dy=(y-cy)/ry;if(dx*dx+dy*dy<=1)set(x,y,c)}};
-function building(x,y,w,h,floor,doors,wall='B'){rect(x,y,w,h,floor);outline(x,y,w,h,wall);for(const[dx,dy]of doors)set(x+dx,y+dy,'+')}
+const HOUSES=[];
+function building(x,y,w,h,floor,doors,wall='B'){rect(x,y,w,h,floor);outline(x,y,w,h,wall);for(const[dx,dy]of doors)set(x+dx,y+dy,'+');HOUSES.push({x:x+ox,y:y+oy,w,h,floor,wall,doors})}
 function road(pts,w,c='d'){
   for(let k=0;k<pts.length-1;k++){
     const[x0,y0]=pts[k],[x1,y1]=pts[k+1];const n=Math.max(Math.abs(x1-x0),Math.abs(y1-y0))||1;
@@ -494,6 +495,19 @@ for(const[ly,c]of[[55,'j'],[58,'j'],[66,'I'],[69,'I']]){
   if(x<OX+120&&gget(x-1,y)!=='~'){gset(x,y,c);FISH.set(y*W+x,c==='j'?'Minnows (net)':'Perch & pike (rod)')}
 }
 
+// The Saltcombe-Hallowmere road was cut straight through the Harbour Tavern:
+// stand the tavern back up and send the road round its north-east corner.
+{
+  const T=[138,238,8,6];
+  for(let y=T[1];y<T[1]+T[3];y++)for(let x=T[0];x<T[0]+T[2];x++){
+    const edge=x===T[0]||y===T[1]||x===T[0]+T[2]-1||y===T[1]+T[3]-1;
+    gset(x,y,edge?'B':'w');
+  }
+  gset(T[0]+4,T[1]+5,'+');
+  for(const[x0,y0,w,h]of[[146,236,2,9],[136,236,10,2]])
+    for(let y=y0;y<y0+h;y++)for(let x=x0;x<x0+w;x++)if('.,T'.includes(gget(x,y))){gset(x,y,'d');ROADSET.add(y*W+x)}
+}
+
 /* =========================================================
    Tile key and named areas
    ========================================================= */
@@ -563,6 +577,53 @@ const AREAS=[
   A('Sunspire Desert',250,120,134,140,0,{kind:'region',lx:318,ly:135}),A('Saltwind Sea',0,256,W,32,0,{kind:'region',lx:290,ly:276}),
   A('Mirefen Swamp',0,186,128,70,0,{kind:'region',lx:50,ly:232})
 ];
+/* Wings: about half the plain, unnamed timber houses get a wing out the back,
+   making L and T shapes. Picked by hashing the house's corner, so there are no
+   random draws and nothing else in the region moves. */
+{
+  const hh=(a,b,k)=>{let h=(a*374761393+b*668265263+k*2147483647)|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return(h>>>0)/4294967296};
+  const named=new Set(AREAS.map(a=>[a.x,a.y,a.w,a.h].join()));
+  for(const b of HOUSES){
+    if(b.wall!=='B'||named.has([b.x,b.y,b.w,b.h].join())||hh(b.x,b.y,1)<.45)continue;
+    const [ddx,ddy]=b.doors[0];
+    // The back is the wall opposite the door; work in (along, out) coordinates.
+    const back=ddy===0?[0,1]:ddy===b.h-1?[0,-1]:ddx===0?[1,0]:[-1,0];
+    const vertical=back[0]===0,len=vertical?b.w:b.h;
+    if(len<5)continue;
+    // Try the hashed shape first, then smaller and other placements, until one fits.
+    const ww0=3+Math.floor(hh(b.x,b.y,2)*Math.min(3,len-4)),p0=2+(hh(b.x,b.y,3)<.5?1:0),r=hh(b.x,b.y,4);
+    const tries=[];
+    for(const ww of[...new Set([ww0,3])])for(const p of[...new Set([p0,2])])for(const k of[0,1,2]){
+      const which=(Math.floor(r*3)+k)%3,off=which===0?0:which===1?len-ww:(len-ww)>>1;
+      if(ww<=len-2)tries.push([ww,p,off]);
+    }
+    let fit=null;
+    for(const[ww,p,off]of tries){
+      // The wing as a rectangle overlapping the house by two rows.
+      let wx,wy,wwid,whgt;
+      if(vertical){wx=b.x+off;wwid=ww;whgt=p+2;wy=back[1]>0?b.y+b.h-2:b.y-p}
+      else{wy=b.y+off;whgt=ww;wwid=p+2;wx=back[0]>0?b.x+b.w-2:b.x-p}
+      // Room for it: plain grass under the new part, and no wall, water or road touching it.
+      let ok=true;
+      for(let y=wy-1;y<=wy+whgt&&ok;y++)for(let x=wx-1;x<=wx+wwid&&ok;x++){
+        if(x>=b.x&&x<b.x+b.w&&y>=b.y&&y<b.y+b.h)continue;
+        const c=gget(x,y),edge=x<wx||y<wy||x>=wx+wwid||y>=wy+whgt;
+        if(edge?(c==null||!TILES[c]||!TILES[c][1]||c==='+'):(c!=='.'&&c!==','))ok=false;
+        if(!edge&&ROADSET.has(y*W+x))ok=false;
+      }
+      if(ok){fit=[wx,wy,wwid,whgt];break}
+    }
+    if(!fit)continue;
+    const[wx,wy,wwid,whgt]=fit;
+    const inner=(x,y,r0,r1,r2,r3)=>x>r0&&x<r0+r2-1&&y>r1&&y<r1+r3-1;
+    const room=(x,y)=>inner(x,y,b.x,b.y,b.w,b.h)||inner(x,y,wx,wy,wwid,whgt);
+    for(let y=wy;y<wy+whgt;y++)for(let x=wx;x<wx+wwid;x++){
+      if(gget(x,y)==='+')continue;
+      if(room(x,y)){if(!inner(x,y,b.x,b.y,b.w,b.h))gset(x,y,b.floor)}
+      else gset(x,y,'B');
+    }
+  }
+}
 const areaAt=(x,y)=>{for(const a of AREAS)if(inR(x,y,[a.x,a.y,a.w,a.h]))return a.n;return 'The Vell Reaches'};
 
 /* =========================================================

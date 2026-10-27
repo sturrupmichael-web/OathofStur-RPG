@@ -29,6 +29,8 @@ function make(key: string, draw: (ctx: CanvasRenderingContext2D, rnd: (n: number
 
 const grey = (v: number, a = 1) => `rgba(${v | 0},${v | 0},${v | 0},${a})`;
 
+export type RugPattern = 'medallion' | 'stripes' | 'checks' | 'lattice' | 'plain';
+
 export const textures = {
   grass: () =>
     make('grass', (ctx, r) => {
@@ -152,6 +154,30 @@ export const textures = {
       }
     }),
 
+  /** Straw thatch: layered courses of fine stalks, in grey for tinting. */
+  thatch: () =>
+    make('thatch', (ctx, r) => {
+      ctx.fillStyle = grey(150);
+      ctx.fillRect(0, 0, SIZE, SIZE);
+      const h = 21;
+      for (let row = 0; row * h < SIZE + h; row++) {
+        const y = row * h - 4;
+        for (let i = 0; i < 160; i++) {
+          const x = r(1) * SIZE;
+          const len = h * (0.7 + r(1) * 0.5);
+          ctx.strokeStyle = grey(165 + r(1) * 80);
+          ctx.lineWidth = 1 + r(1);
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + (r(1) - 0.5) * 3, y + len);
+          ctx.stroke();
+        }
+        // The shadowed lip of each course.
+        ctx.fillStyle = 'rgba(0,0,0,0.22)';
+        ctx.fillRect(0, y + h - 3, SIZE, 3);
+      }
+    }),
+
   shingles: () =>
     make('shingles', (ctx, r) => {
       ctx.fillStyle = grey(120);
@@ -216,28 +242,76 @@ export const textures = {
       }
     }),
 
-  rug: (base: string, trim: string) =>
-    make(`rug-${base}-${trim}`, (ctx) => {
-      ctx.fillStyle = base;
-      ctx.fillRect(0, 0, SIZE, SIZE);
-      ctx.strokeStyle = trim;
-      ctx.lineWidth = 6;
-      ctx.strokeRect(8, 8, SIZE - 16, SIZE - 16);
-      ctx.lineWidth = 2;
-      ctx.strokeRect(18, 18, SIZE - 36, SIZE - 36);
-      ctx.fillStyle = trim;
-      ctx.beginPath();
-      ctx.moveTo(SIZE / 2, 34);
-      ctx.lineTo(SIZE - 34, SIZE / 2);
-      ctx.lineTo(SIZE / 2, SIZE - 34);
-      ctx.lineTo(34, SIZE / 2);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = base;
-      ctx.beginPath();
-      ctx.arc(SIZE / 2, SIZE / 2, 10, 0, Math.PI * 2);
-      ctx.fill();
-    }),
+  /**
+   * A woven rug: base, trim and accent colours in one of several patterns,
+   * drawn at the rug's own shape (`tall` is its depth over its width).
+   */
+  rug: (base: string, trim: string, accent: string, pattern: RugPattern, tall: number) => {
+    const h = Math.round(SIZE * Math.min(2, Math.max(0.5, tall)));
+    return make(
+      `rug-${base}-${trim}-${accent}-${pattern}-${h}`,
+      (ctx) => {
+        const W = SIZE;
+        ctx.fillStyle = base;
+        ctx.fillRect(0, 0, W, h);
+        const diamond = (cx: number, cy: number, rx: number, ry: number, colour: string) => {
+          ctx.fillStyle = colour;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy - ry);
+          ctx.lineTo(cx + rx, cy);
+          ctx.lineTo(cx, cy + ry);
+          ctx.lineTo(cx - rx, cy);
+          ctx.closePath();
+          ctx.fill();
+        };
+        if (pattern === 'medallion') {
+          diamond(W / 2, h / 2, W / 2 - 34, h / 2 - 34, trim);
+          diamond(W / 2, h / 2, W / 4 - 12, h / 4 - 12, accent);
+          ctx.fillStyle = base;
+          ctx.beginPath();
+          ctx.arc(W / 2, h / 2, 6, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (pattern === 'stripes') {
+          // Bands across the short way, wide and narrow.
+          for (let y = 22, i = 0; y < h - 22; y += 14, i++) {
+            ctx.fillStyle = i % 3 === 2 ? accent : trim;
+            ctx.fillRect(20, y, W - 40, i % 3 === 2 ? 3 : 6);
+          }
+        } else if (pattern === 'checks') {
+          const n = 6;
+          const cw = (W - 40) / n;
+          const ch = (h - 40) / Math.max(2, Math.round(n * (h / W)));
+          for (let y = 20, j = 0; y < h - 21; y += ch, j++)
+            for (let i = 0; i < n; i++)
+              if ((i + j) % 2) {
+                ctx.fillStyle = (i + j) % 4 === 1 ? trim : accent;
+                ctx.fillRect(20 + i * cw, y, cw, ch);
+              }
+        } else if (pattern === 'lattice') {
+          // Rows of small diamonds, like a kilim.
+          for (let y = 30, j = 0; y < h - 24; y += 18, j++)
+            for (let x = 30 + (j % 2) * 11; x < W - 24; x += 22) diamond(x, y, 7, 7, j % 2 ? accent : trim);
+        } else {
+          // Plain field with a scatter of flecks.
+          ctx.fillStyle = accent;
+          for (let i = 0; i < 40; i++) ctx.fillRect(24 + ((i * 37) % (W - 48)), 24 + ((i * 53) % (h - 48)), 3, 3);
+        }
+        // Border, and a fringe at the two short ends.
+        ctx.strokeStyle = trim;
+        ctx.lineWidth = 6;
+        ctx.strokeRect(8, 8, W - 16, h - 16);
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(16, 16, W - 32, h - 32);
+        ctx.fillStyle = '#e8dcc0';
+        for (let x = 4; x < W - 4; x += 5) {
+          ctx.fillRect(x, 0, 2, 5);
+          ctx.fillRect(x, h - 5, 2, 5);
+        }
+      },
+      [SIZE, h],
+    );
+  },
 
   /** Painted shop sign: a symbol and a name. */
   sign: (label: string, symbol: (ctx: CanvasRenderingContext2D) => void) =>

@@ -70,7 +70,7 @@ interface Fountain {
 }
 
 /** What each element looks like in flight. */
-export const ELEMENT_COLOURS: Record<string, number> = { wind: 0xdff2ff, tide: 0x3d8bff, root: 0x8fbf4a, ember: 0xff7a1a };
+export const ELEMENT_COLOURS: Record<string, number> = { wind: 0xdff2ff, tide: 0x3d8bff, root: 0x8fbf4a, ember: 0xff7a1a, gloom: 0x8a5aff };
 
 const FLAME_LIFE = 0.55;
 const FLAMES_PER_SECOND = 110;

@@ -111,7 +111,7 @@ Monster stats and drops live in `shared/data/monsters.json`, gear stats in `item
   you fell for ten minutes, seen only by you.
 - Axes and pickaxes can be wielded, and still work as tools from the weapon slot.
 
-## Quests and the Cinder Drake
+## Quests and bosses
 
 Conversations and quests live in `shared/src/sim/quests.ts`. Talk to anyone (left-click
 for people without a shop or bank, or Talk-to in the right-click menu); bankers and
@@ -127,6 +127,13 @@ conversation on, and number keys pick an option.
   biting, from up to 4 tiles away: fire always lands, for up to 18, and armour does nothing.
   A drakescale shield cuts it to a third. It drops coins, drake scales and food, and
   sometimes a cinder blade (Attack 30) or a drakescale shield (Defence 30).
+- **The Gloam Hart** (level 78) sleeps in the Gloaming Glade, deep in the south-east of
+  the Duskwood, at the end of the rangers' trail from Vessa's camp. It gores, and throws
+  shadow bolts from up to 6 tiles. As its health first drops below two-thirds and again
+  below one-third it rears and calls up two gloam shades (level 41); while any shade
+  stands, blows pass straight through it. Shades never respawn, and fade when their quarry
+  leaves or the hart falls. It drops hart bones, antlers and coins, and sometimes a
+  gloamwood longbow (Ranged 50). Vessa's quest **The Gloaming** leads to it.
 
 ## Sound
 

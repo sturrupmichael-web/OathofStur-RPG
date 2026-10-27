@@ -920,6 +920,17 @@ grownSite(244,326,24,16,'.');outline(244,326,24,16,'F');gset(244,333,'d');rect(2
 grownSite(300,340,22,14,',');
 for(let k=0;k<16;k++){const x=301+(hh6(k,4,62)*20|0),y=341+(hh6(k,5,62)*12|0);gset(x,y,'G')}
 for(const[x,y]of[[302,341],[319,341],[302,352],[319,352]])gset(x,y,'Z');
+// The rangers' camp, where the road from Port Avel meets the Duskwood: hide tents round a fire.
+grownSite(412,328,12,8,'.');
+for(const[x,y]of[[414,329],[420,329],[414,334]])gset(x,y,'E');gset(418,332,'C');gset(422,334,'L');
+// The Gloaming Glade, deep in the Duskwood: a ring of old stones round a clearing where the Gloam Hart sleeps.
+grownSite(478,353,22,16,',');
+for(let j=353;j<369;j++)for(let i=478;i<500;i++){
+  const dx=(i-488.5)/11,dy=(j-360.5)/8,d=Math.sqrt(dx*dx+dy*dy);
+  if(d>1)gset(i,j,hh6(i,j,66)<.5?'T':'e');
+  else if(d>.82&&hh6(i,j,67)<.35)gset(i,j,'T');
+}
+for(let k=0;k<8;k++){const a=k/8*Math.PI*2+.2;gset(Math.round(488.5+Math.cos(a)*7.5),Math.round(360.5+Math.sin(a)*5.2),'Z')}
 // Glyph-free fishing along the new shores.
 const growFish=(r,count,label,c,k0)=>{
   const cand=[];
@@ -940,6 +951,7 @@ for(let x=452;x<455;x++)gset(x,DITCH,'d');
 road([[452,112],[470,112]],1);                                                              // Frostpeak Mine
 road([[449,155],[440,190],[430,240],[425,300],[410,326],[330,334],[268,332],[240,330],[208,331]],2); // south through the fen to Port Avel
 road([[255,332],[255,326]],1);road([[310,334],[310,340]],1);
+road([[423,331],[446,330],[471,332],[476,345],[481,354],[484,358]],1);                     // the rangers' trail into the Duskwood
 
 // 4. Vegetation, by hashing each tile.
 const leafy6=c=>c==='.'||c===','||c==='T'||c==='t'||c==='o'||c==='l'||c==='e';
@@ -979,7 +991,7 @@ AREAS.push(
   A('Chapel of the Vigil',458,156,8,10,2),A('Port Avel Bank',181,325,9,6,2),A('Avel Tackle',210,324,7,6,2),A('Port Avel Store',218,324,8,6,2),
   A('The Drowned Lantern',184,334,10,7,2),
   A('Corvane Market',441,145,16,10,1,{ly:145}),A('Frostpeak Mine',462,100,20,12,1,{ly:99.3}),A('Wolfrun Hollow',487,88,22,20,1,{ly:87.3}),A('Ferry Pier',197,309,6,14,1,{ly:308.3}),
-  A('Avel Farm',244,326,24,16,1,{ly:325.3}),A('The Barrowfield',300,340,22,14,1,{ly:339.3}),
+  A('Avel Farm',244,326,24,16,1,{ly:325.3}),A("Rangers' Camp",412,328,12,8,1,{ly:327.3}),A('The Gloaming Glade',478,353,22,16,1,{ly:352.3}),A('The Barrowfield',300,340,22,14,1,{ly:339.3}),
   A('Corvane',424,130,48,42,0,{kind:'town',ly:128}),A('Port Avel',176,321,64,30,0,{kind:'town',ly:352}),
   A('The Eastmarch',400,124,112,74,0,{kind:'region',lx:480,ly:180}),A('Frostpeak Heights',440,84,72,40,0,{kind:'region',lx:470,ly:118}),
   A('Saltmere Fen',408,198,104,92,0,{kind:'region',lx:470,ly:250}),A('The Duskwood',430,322,82,62,0,{kind:'region',lx:470,ly:360}),
@@ -1004,13 +1016,15 @@ const GROWN_NPCS=[
   {type:'Barrow wight',level:48,n:3,box:[304,343,14,8]},
   {type:'Fen lurker',level:28,n:7,box:[418,212,64,56]},
   {type:'Frost wolf',level:36,n:6,box:[490,91,16,14]},
-  {type:'Dusk stalker',level:65,n:5,box:[440,330,62,46]}
+  {type:'Dusk stalker',level:65,n:5,box:[440,330,62,46],avoid:[476,351,26,20]},
+  {type:'Vessa',role:'Ranger',box:[416,331,4,3]},
+  {type:'Gloam Hart',level:78,n:1,box:[487,359,4,3]}
 ];
 for(const g of GROWN_NPCS){
   g.n=g.n||1;g.ok=()=>true;let placed=0;
   for(let k=0;placed<g.n&&k<500;k++){
     const x=g.box[0]+(hh6(k,g.box[0]*7+g.box[1],91)*g.box[2]|0),y=g.box[1]+(hh6(k,g.box[1]*7+g.box[0],92)*g.box[3]|0);
-    if(!walk(x,y)||occ.has(y*W+x))continue;
+    if(!walk(x,y)||occ.has(y*W+x)||(g.avoid&&inR(x,y,g.avoid)))continue;
     occ.add(y*W+x);NPCS.push({g,x,y,fx:x,fy:y,start:0,next:hh6(x,y,93)*2000,sx:x,sy:y});placed++;
   }
   if(placed<g.n)SITEWARN.push([g.box[0],g.box[1],g.type+' (no room)']);

@@ -39,6 +39,8 @@ export interface CharacterStyle {
   glowEyes?: number;
   /** A ghost: see-through, no legs, drifting. */
   ghost?: boolean;
+  /** How solid a ghost looks (0.55 when left out). */
+  ghostOpacity?: number;
   /** Bare bones: ribs over the chest, no nose or ears. */
   bones?: boolean;
   /** Broader (above 1) or slighter build. */
@@ -61,7 +63,7 @@ const STAFF_ORBS: Record<string, number> = { wind: 0xe8f6ff, tide: 0x3d8bff, roo
 const ROBES: Record<string, [number, number]> = { wizard: [0x2b3f9e, 0xd8dcf0], starweave: [0x4b2a7a, 0xe0c060] };
 
 /** Bow wood by the log it was carved from. */
-const BOW_WOOD: Record<string, number> = { oak: 0xa87a44, willow: 0xc2a265, yew: 0x7a3f22 };
+const BOW_WOOD: Record<string, number> = { oak: 0xa87a44, willow: 0xc2a265, yew: 0x7a3f22, gloamwood: 0x3a2e52 };
 
 /** Colours for each metal tier, used on worn gear. */
 export const METALS: Record<string, number> = { bronze: 0xb8793a, iron: 0x7d7f86, steel: 0xb4bec8, cobalt: 0x3f62b4, verdite: 0x2f5c44, glacite: 0x9cd0e4, duskfang: 0xd8ccb4, cinder: 0x6a2418, drakescale: 0xa8401e };
@@ -391,6 +393,35 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     hatColor: 0x2a3550,
     holding: 'staff',
   },
+  gloam_shade: {
+    tunic: 0x2e1c4a,
+    trousers: 0x2e1c4a,
+    boots: 0x2e1c4a,
+    robe: 0x26163e,
+    skin: 0x3a2a5a,
+    hairStyle: 'none',
+    hat: 'hood',
+    hatColor: 0x1c1030,
+    glowEyes: 0xb8a0ff,
+    ghost: true,
+    ghostOpacity: 0.85,
+    bulk: 1.1,
+  },
+  vessa: {
+    tunic: 0x2f4a2c,
+    trim: 0x6a5232,
+    trousers: 0x3a2e22,
+    boots: 0x241a12,
+    belt: 0x4a3018,
+    pouch: 0x6a4628,
+    skin: 0xc89a78,
+    hair: 0x2a1c14,
+    hairStyle: 'short',
+    hat: 'hood',
+    hatColor: 0x26391f,
+    cape: 0x22331c,
+    weapon: { kind: 'longbow', color: 0x7a3f22 },
+  },
   wailing_spirit: {
     tunic: 0xbfd8e8,
     trousers: 0xbfd8e8,
@@ -446,6 +477,7 @@ const STYLE_BY_ROLE: Record<string, string> = {
   'Master crafter': 'shopkeeper',
   'Gem trader': 'shopkeeper',
   Fletcher: 'ranger',
+  Ranger: 'ranger',
   'Hunter supplier': 'ranger',
   'Range master': 'ranger',
   'Fishing supplier': 'ranger',
@@ -557,7 +589,7 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
   root.add(body);
   if (s.scale) body.scale.setScalar(s.scale);
   const ghost = !!s.ghost;
-  const bones = buildBody(s, body, { transparent: ghost ? 0.55 : undefined });
+  const bones = buildBody(s, body, { transparent: ghost ? (s.ghostOpacity ?? 0.55) : undefined });
 
   // Held item in the right hand
   const grip = bones.handR;

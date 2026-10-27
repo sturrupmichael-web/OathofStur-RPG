@@ -55,6 +55,8 @@ export interface MonsterStats {
   magic?: number;
   /** A spell thrown now and then instead of the usual attack, and from up to `range` tiles. */
   casts?: { element: string; chance: number; maxHit: number; range: number };
+  /** Calls up `count` of another monster as its health first falls below each fraction in `at`; while they stand, blows pass through it. */
+  summons?: { monster: string; count: number; at: number[] };
   /** A Bounty creature: the Bounty level to fight it, and what it takes to beat it. */
   bounty?: BountyNeeds;
   examine: string;

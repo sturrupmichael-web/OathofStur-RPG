@@ -1,5 +1,5 @@
 {
-  "comment": "Combat stats for every monster on the map, keyed like the map's monster defs. Levels follow the same combat-level formula as players. maxHit is in hitpoints. attackSpeed is ticks between attacks (0.6 s each). Aggressive monsters attack players within aggroRange tiles whose combat level is at most twice theirs. Each drop is rolled on its own: chance 1 means always; qty is a fixed number or [min, max]. attack is the animation they use. A boss attacks anyone, whatever their level. bounty marks a Bounty creature: level is the Bounty level needed to fight it; requires is an item that must be worn, or its attacks always land and hit up to three times as hard; finisher is an item needed to land the killing blow (used up when consume is true). warning, finish and clings are what the player is told. breath is a fire attack it may use instead of a bite, from up to range tiles away: it always lands, for 0 to maxHit, and a fireward shield cuts it to a third, as does a fireward potion, and the Ember Ward prayer halves it. Most things drop bones, for Prayer. magic is a monster's Magic level (its Defence when left out), which defends against spells. casts is a spell it throws now and then instead of its usual attack, from up to range tiles away: it rolls Magic against the player's magic defence, and the Ward of Spells prayer stops it.",
+  "comment": "Combat stats for every monster on the map, keyed like the map's monster defs. Levels follow the same combat-level formula as players. maxHit is in hitpoints. attackSpeed is ticks between attacks (0.6 s each). Aggressive monsters attack players within aggroRange tiles whose combat level is at most twice theirs. Each drop is rolled on its own: chance 1 means always; qty is a fixed number or [min, max]. attack is the animation they use. A boss attacks anyone, whatever their level. bounty marks a Bounty creature: level is the Bounty level needed to fight it; requires is an item that must be worn, or its attacks always land and hit up to three times as hard; finisher is an item needed to land the killing blow (used up when consume is true). warning, finish and clings are what the player is told. breath is a fire attack it may use instead of a bite, from up to range tiles away: it always lands, for 0 to maxHit, and a fireward shield cuts it to a third, as does a fireward potion, and the Ember Ward prayer halves it. Most things drop bones, for Prayer. magic is a monster's Magic level (its Defence when left out), which defends against spells. casts is a spell it throws now and then instead of its usual attack, from up to range tiles away: it rolls Magic against the player's magic defence, and the Ward of Spells prayer stops it. summons calls up count of another monster each time its health first falls below one of the fractions in at; while any of them still stands, blows pass through it. Summoned monsters drop nothing and fade when they lose their target.",
   "monsters": {
     "crimson_swift": {
       "hitpoints": 3, "attack": 1, "strength": 1, "defence": 1, "maxHit": 1, "attackSpeed": 4,
@@ -305,6 +305,31 @@
         { "item": "verdite_platelegs", "qty": 1, "chance": 0.015 },
         { "item": "duskfang", "qty": 1, "chance": 0.01 }
       ]
+    },
+    "gloam_hart": {
+      "hitpoints": 160, "attack": 75, "strength": 70, "defence": 70, "maxHit": 15, "attackSpeed": 5,
+      "aggressive": true, "aggroRange": 5, "respawnTicks": 200, "attackAnim": "butt", "boss": true,
+      "magic": 80, "casts": { "element": "gloom", "chance": 0.25, "maxHit": 16, "range": 6 },
+      "summons": { "monster": "gloam_shade", "count": 2, "at": [0.66, 0.33] },
+      "examine": "A stag as tall as a cart horse, black as a moonless night. Pale light runs along its antlers.",
+      "drops": [
+        { "item": "hart_bones", "qty": 1, "chance": 1 },
+        { "item": "coins", "qty": [600, 1600], "chance": 1 },
+        { "item": "hart_antler", "qty": [1, 2], "chance": 1 },
+        { "item": "yew_logs", "qty": [10, 20], "chance": 0.5 },
+        { "item": "grimy_emberbloom", "qty": [2, 4], "chance": 0.4 },
+        { "item": "dusk_glyph", "qty": [5, 15], "chance": 0.3 },
+        { "item": "glacite_bar", "qty": [1, 3], "chance": 0.15 },
+        { "item": "gloamwood_longbow", "qty": 1, "chance": 0.1 },
+        { "item": "duskfang", "qty": 1, "chance": 0.04 }
+      ]
+    },
+    "gloam_shade": {
+      "hitpoints": 30, "attack": 50, "strength": 45, "defence": 40, "maxHit": 7, "attackSpeed": 4,
+      "aggressive": true, "aggroRange": 8, "respawnTicks": 0, "attackAnim": "wail",
+      "magic": 50,
+      "examine": "A scrap of the hart's own shadow, given a shape and a grudge.",
+      "drops": []
     }
   }
 }

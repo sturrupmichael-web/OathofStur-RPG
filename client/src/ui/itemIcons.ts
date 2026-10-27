@@ -259,6 +259,7 @@ const ICONS: Record<string, string> = {
   yew_shortbow: bow('#8a4626', '#3a1a0c', false, true),
   yew_longbow_u: bow('#8a4626', '#3a1a0c', true, false),
   yew_longbow: bow('#8a4626', '#3a1a0c', true, true),
+  gloamwood_longbow: bow('#4a3a6a', '#1a1028', true, true),
   bronze_arrow: arrows('#c88a4a'),
   bronze_arrowheads: arrowheads('#c88a4a'),
   iron_arrow: arrows('#9a9ca4'),
@@ -278,6 +279,8 @@ const ICONS: Record<string, string> = {
   sunspire_seal: `<circle cx="18" cy="18" r="12" fill="#e8b830" stroke="#7a5a10" stroke-width="1.4"/><circle cx="18" cy="18" r="8.5" fill="none" stroke="#9a7418" stroke-width="1"/><path d="M18 11 L19.6 16.2 L25 16.2 L20.7 19.4 L22.3 24.6 L18 21.4 L13.7 24.6 L15.3 19.4 L11 16.2 L16.4 16.2 Z" fill="#fff0a8" stroke="#9a7418" stroke-width="0.6"/>`,
   barrow_circlet: `<ellipse cx="18" cy="21" rx="13" ry="6" fill="none" stroke="#3a4a2a" stroke-width="4"/><ellipse cx="18" cy="21" rx="13" ry="6" fill="none" stroke="#7a8a4a" stroke-width="2.2"/>
     <path d="M7 19 L9 11 L13 17 L18 8 L23 17 L27 11 L29 19" fill="none" stroke="#7a8a4a" stroke-width="2" stroke-linejoin="round"/><circle cx="18" cy="15" r="2.6" fill="#5a6a7a" stroke="#2a2a2a" stroke-width="0.8"/>`,
+  tamsins_horn: `<path d="M5 26 Q8 14 20 10 Q27 8 31 5 L32 13 Q26 13 22 17 Q15 23 11 30 Z" fill="#c8a870" stroke="#4a3418" stroke-width="1.2"/><path d="M11 29 L5 26" stroke="#2a1a0a" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M14 15 Q22 19 24 30" fill="none" stroke="#6a4626" stroke-width="1.8"/><path d="M16 19 L21 14 M19 21 L24 16 M22 23 L26 19" stroke="#5a3a1a" stroke-width="1"/>`,
   lucky_lure: `<path d="M8 18 Q14 10 24 13 L30 9 L29 18 L30 27 L24 23 Q14 26 8 18 Z" fill="#d8a83a" stroke="#6a4a10" stroke-width="1.2"/><circle cx="12" cy="17" r="1.6" fill="#2a1a0a"/>
     <path d="M17 14 Q19 18 17 22 M21 14 Q23 18 21 22" stroke="#f0d070" stroke-width="1" fill="none"/><path d="M8 18 L4 18 Q2 22 5 25" fill="none" stroke="#8a8c92" stroke-width="1.4"/>`,
   tinderbox: `<rect x="7" y="13" width="22" height="14" rx="2" fill="#7a5230" stroke="#2a1a0c" stroke-width="1.2"/><rect x="7" y="13" width="22" height="4" fill="#5a3a20"/><path d="M12 9 L22 9 L23 12 L11 12 Z" fill="#8a8c92" stroke="#222" stroke-width="0.8"/><circle cx="25" cy="7" r="1.2" fill="#ffb030"/><circle cx="28" cy="10" r="0.9" fill="#ffd060"/>`,
@@ -388,6 +391,9 @@ const ICONS: Record<string, string> = {
   vial_of_water: vial('#9fc8e8', 0.75),
   bones: bones(1, '#ece4cc'),
   big_bones: bones(1.18, '#e0d6b8'),
+  hart_bones: bones(1.18, '#8a84a0') + '<g fill="#c8b8ff" opacity=".85"><circle cx="11" cy="23" r="1.2"/><circle cx="24" cy="12" r="1.2"/></g>',
+  hart_antler: `<path d="M8 32 Q11 22 13 14 Q15 8 14 3" fill="none" stroke="#5a4e7a" stroke-width="4.4" stroke-linecap="round"/><path d="M8 32 Q11 22 13 14 Q15 8 14 3" fill="none" stroke="#d8d0f0" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M11 22 Q18 20 22 13 M13 14 Q20 11 23 5 M12 27 Q20 27 27 22" fill="none" stroke="#d8d0f0" stroke-width="2" stroke-linecap="round"/><g fill="#f0eaff"><circle cx="22" cy="13" r="1.6"/><circle cx="23" cy="5" r="1.6"/><circle cx="27" cy="22" r="1.6"/><circle cx="14" cy="3" r="1.6"/></g>`,
   drake_bones: bones(1.18, '#5a4a40') + '<g fill="#f08a32" opacity=".8"><circle cx="11" cy="23" r="1.4"/><circle cx="24" cy="12" r="1.2"/></g>',
   cow_horn: `<path d="M8 30 Q6 16 16 9 Q24 4 30 6 Q22 9 19 15 Q15 22 14 31 Z" fill="#e8dcbc" stroke="#5a4a2a" stroke-width="1.2"/><path d="M9 28 L14 29 M9 24 L15 25 M11 19 L17 20" stroke="#b8a882" stroke-width="1"/><path d="M27 6 Q29 6 30 6" stroke="#3a3020" stroke-width="2"/>`,
   spirit_dust: `<path d="M5 29 Q9 18 18 16 Q27 18 31 29 Z" fill="#dfe6f0" stroke="#7a8496" stroke-width="1.1"/><g fill="#ffffff"><circle cx="14" cy="22" r="1.2"/><circle cx="22" cy="24" r="1"/><circle cx="18" cy="11" r="1.1" opacity=".7"/><circle cx="24" cy="8" r=".8" opacity=".5"/><circle cx="12" cy="9" r=".9" opacity=".5"/></g>`,

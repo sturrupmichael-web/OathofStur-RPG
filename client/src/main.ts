@@ -1,9 +1,11 @@
 import {
   ITEMS,
   JsonMapSource,
+  MAX_LEVEL,
   OBSTACLE_KINDS,
   QUESTS,
   RESOURCE_DATA,
+  SKILLS,
   SELL_RATE,
   SPELL_BY_ID,
   type SpellDef,
@@ -20,6 +22,7 @@ import {
   type PublicEntity,
   type SelfState,
   countItem,
+  xpForLevel,
 } from '@rpg/shared';
 import vellReaches from '@rpg/shared/data/maps/vell-reaches.json';
 import { Sound, type SoundName } from './audio/Sound';
@@ -542,6 +545,7 @@ async function start(): Promise<void> {
   const saveStatus = document.getElementById('save-status')!;
   let savingEnabled = true;
   let exportNext = false;
+  let maxNext = false;
   const requestSave = () => {
     if (savingEnabled) server.send({ type: 'requestSave' });
   };
@@ -555,6 +559,16 @@ async function start(): Promise<void> {
     if (exportNext) {
       exportNext = false;
       downloadSave(save);
+    }
+    if (maxNext) {
+      // Dev shortcut: every skill to the top level, then restart on full health and prayer.
+      maxNext = false;
+      for (const { id } of SKILLS) save.skills[id] = Math.max(save.skills[id] ?? 0, xpForLevel(MAX_LEVEL));
+      delete save.hp;
+      delete save.prayer;
+      savingEnabled = false;
+      storeLocal(save);
+      location.reload();
     }
   });
   setInterval(requestSave, 30_000);
@@ -581,6 +595,13 @@ async function start(): Promise<void> {
     savingEnabled = false;
     storeLocal(save);
     location.reload();
+  });
+  // Testing shortcut, only shown with #dev in the address.
+  const devMax = document.getElementById('dev-max') as HTMLButtonElement;
+  devMax.hidden = location.hash !== '#dev';
+  devMax.addEventListener('click', () => {
+    maxNext = true;
+    requestSave();
   });
   const reset = document.getElementById('save-reset') as HTMLButtonElement;
   let resetArmed: ReturnType<typeof setTimeout> | null = null;

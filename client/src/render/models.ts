@@ -1,6 +1,18 @@
 import * as THREE from 'three';
 import { textures } from './textures';
 
+/** Metal colour of dropped gear and bars, from the item's first word. */
+const GROUND_METALS: Record<string, number> = {
+  bronze: 0xc88a4a,
+  iron: 0x9a9ca4,
+  steel: 0xc9d3dd,
+  cobalt: 0x4a6fc4,
+  verdite: 0x3a6e50,
+  glacite: 0xa8dcef,
+  duskfang: 0xd8ccb4,
+};
+const groundMetal = (itemId: string): number | undefined => GROUND_METALS[itemId.split('_')[0]];
+
 /**
  * Procedural placeholder models. Everything is built from primitives so the
  * game ships with zero external art.
@@ -734,7 +746,7 @@ export function buildGroundItem(itemId: string): THREE.Group {
     g.add(mesh(new THREE.BoxGeometry(0.12, 0.05, 0.08), 0x6a4a2a, 0, 0.025, 0));
   } else if (itemId.endsWith('_arrow') || itemId === 'arrow_shaft') {
     // A few arrows scattered where they fell.
-    const head = { bronze_arrow: 0xb8793a, iron_arrow: 0x7d7f86, steel_arrow: 0xb4bec8 }[itemId];
+    const head = itemId === 'arrow_shaft' ? undefined : groundMetal(itemId);
     for (const [x, z, r] of [[0, 0, 0.3], [0.04, 0.07, -0.4], [-0.05, -0.06, 0.9]] as const) {
       const arrow = new THREE.Group();
       arrow.add(mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.42, 4).rotateZ(Math.PI / 2), 0xb08a5a, 0, 0, 0));
@@ -751,28 +763,28 @@ export function buildGroundItem(itemId: string): THREE.Group {
     g.add(mesh(new THREE.TubeGeometry(curve, 12, 0.012, 5), wood, 0, 0, 0));
     if (!itemId.endsWith('_u')) g.add(mesh(new THREE.CylinderGeometry(0.003, 0.003, half * 2, 3).rotateZ(Math.PI / 2), 0xe8e2cc, 0, 0.02, 0.05));
   } else if (itemId.endsWith('axe')) {
-    const head = itemId === 'iron_axe' ? 0x7d7f86 : itemId === 'steel_axe' ? 0xa9b3bd : 0xb8793a;
+    const head = groundMetal(itemId) ?? 0xb8793a;
     g.add(mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.5, 6).rotateZ(Math.PI / 2), 0x7a5230, 0, 0.03, 0));
     g.add(mesh(new THREE.BoxGeometry(0.1, 0.03, 0.15), head, 0.2, 0.04, 0.06));
   } else if (itemId.endsWith('_ore') || itemId === 'coal') {
-    const fleck = { copper_ore: 0xd07a3a, tin_ore: 0xd4d8e0, iron_ore: 0x9a5238 }[itemId] ?? 0x1c1c1c;
+    const fleck = { copper_ore: 0xd07a3a, tin_ore: 0xd4d8e0, iron_ore: 0x9a5238, gold_ore: 0xe8c040, cobalt_ore: 0x3a5ec8, verdite_ore: 0x2e8a58, glacite_ore: 0xa8e0f4 }[itemId] ?? 0x1c1c1c;
     g.add(mesh(new THREE.DodecahedronGeometry(0.1, 0), itemId === 'coal' ? 0x222222 : 0x7d776e, 0, 0.08, 0));
     g.add(mesh(new THREE.OctahedronGeometry(0.04, 0), fleck, 0.05, 0.14, 0.03));
   } else if (itemId.endsWith('_bar')) {
-    const color = itemId === 'bronze_bar' ? 0xc88a4a : itemId === 'iron_bar' ? 0x8a8c92 : 0xc9d3dd;
+    const color = itemId === 'gold_bar' ? 0xe8c040 : (groundMetal(itemId) ?? 0xc9d3dd);
     g.add(mesh(new THREE.BoxGeometry(0.26, 0.07, 0.1), color, 0, 0.035, 0));
   } else if (/minnows|perch|pike|fish/.test(itemId)) {
     const color = itemId === 'burnt_fish' ? 0x2a2420 : itemId.startsWith('raw') ? 0x8fa9b8 : 0xc99a52;
     g.add(mesh(new THREE.SphereGeometry(0.07, 8, 6).scale(2.2, 0.6, 1), color, 0, 0.04, 0));
     g.add(mesh(new THREE.ConeGeometry(0.05, 0.08, 4).rotateZ(Math.PI / 2), color, -0.18, 0.04, 0));
-  } else if (itemId.endsWith('dagger') || itemId.endsWith('sword')) {
-    const color = itemId.startsWith('bronze') ? 0xc88a4a : itemId.startsWith('iron') ? 0x9a9ca4 : 0xc9d3dd;
+  } else if (itemId.endsWith('dagger') || itemId.endsWith('sword') || itemId === 'duskfang') {
+    const color = groundMetal(itemId) ?? 0xc9d3dd;
     const len = itemId.endsWith('sword') ? 0.42 : 0.22;
     g.add(mesh(new THREE.BoxGeometry(len, 0.012, 0.04), color, len / 2, 0.02, 0));
     g.add(mesh(new THREE.BoxGeometry(0.03, 0.02, 0.12), 0x6b5a3a, 0, 0.02, 0));
     g.add(mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.1, 6).rotateZ(Math.PI / 2), 0x5a3a20, -0.06, 0.02, 0));
   } else if (/_(helm|chainbody|platelegs|shield)$/.test(itemId)) {
-    const color = itemId.startsWith('bronze') ? 0xc88a4a : itemId.startsWith('iron') ? 0x9a9ca4 : 0xc9d3dd;
+    const color = groundMetal(itemId) ?? 0xc9d3dd;
     if (itemId.endsWith('helm')) g.add(mesh(new THREE.SphereGeometry(0.12, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), color, 0, 0, 0));
     else if (itemId.endsWith('chainbody')) g.add(mesh(new THREE.BoxGeometry(0.34, 0.05, 0.3), color, 0, 0.025, 0));
     else if (itemId.endsWith('platelegs')) {
@@ -782,6 +794,9 @@ export function buildGroundItem(itemId: string): THREE.Group {
   } else if (itemId === 'raw_beef' || itemId === 'beef' || itemId === 'burnt_meat') {
     const color = itemId === 'raw_beef' ? 0xc8424a : itemId === 'beef' ? 0x8a4a24 : 0x2a2018;
     g.add(mesh(new THREE.SphereGeometry(0.1, 8, 6).scale(1.3, 0.55, 1), color, 0, 0.05, 0));
+  } else if (itemId === 'wolf_pelt') {
+    g.add(mesh(new THREE.BoxGeometry(0.42, 0.02, 0.28), 0x9aa0a6, 0, 0.012, 0));
+    g.add(mesh(new THREE.BoxGeometry(0.3, 0.024, 0.08), 0xd8dce0, 0.02, 0.014, 0.02));
   } else if (itemId === 'cowhide') {
     g.add(mesh(new THREE.BoxGeometry(0.4, 0.015, 0.3), 0xf0ece2, 0, 0.01, 0));
     g.add(mesh(new THREE.BoxGeometry(0.12, 0.018, 0.1), 0x2a2420, 0.06, 0.012, 0.04));

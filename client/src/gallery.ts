@@ -42,11 +42,15 @@ const GEAR = [
   { weapon: 'iron_dagger', shield: 'iron_shield', helmet: 'iron_helm' },
   { weapon: 'steel_sword', shield: 'steel_shield', helmet: 'steel_helm', body: 'steel_chainbody', legs: 'steel_platelegs' },
   { weapon: 'cinder_blade', shield: 'drakescale_shield' },
+  { weapon: 'cobalt_sword', shield: 'cobalt_shield', helmet: 'cobalt_helm', body: 'cobalt_chainbody', legs: 'cobalt_platelegs' },
+  { weapon: 'verdite_sword', shield: 'verdite_shield', helmet: 'verdite_helm', body: 'verdite_chainbody', legs: 'verdite_platelegs' },
+  { weapon: 'glacite_sword', shield: 'glacite_shield', helmet: 'glacite_helm', body: 'glacite_chainbody', legs: 'glacite_platelegs' },
+  { weapon: 'duskfang' },
   { weapon: 'shortbow' },
   { weapon: 'yew_longbow', helmet: 'iron_helm' },
 ];
 if (set === 'monsters') {
-  for (const kind of ['goblin', 'skeleton', 'cow', 'desert_lizard', 'scorpion', 'cave_creeper', 'crimson_swift', 'wailing_spirit', 'cinder_drake', 'brine_slug', 'gloom_bat', 'rockmaw', 'glare_lizard']) {
+  for (const kind of ['goblin', 'skeleton', 'cow', 'desert_lizard', 'scorpion', 'cave_creeper', 'crimson_swift', 'wailing_spirit', 'cinder_drake', 'brine_slug', 'gloom_bat', 'rockmaw', 'glare_lizard', 'fen_lurker', 'frost_wolf', 'barrow_wight', 'dusk_stalker']) {
     if (CHARACTER_STYLES[kind]) {
       const rig = buildCharacter(kind, entries.length);
       entries.push({ name: kind, root: rig.root, human: rig });
@@ -62,7 +66,7 @@ if (set === 'monsters') {
   });
 } else {
   for (const key of Object.keys(CHARACTER_STYLES)) {
-    if (['goblin', 'skeleton', 'wailing_spirit'].includes(key)) continue;
+    if (['goblin', 'skeleton', 'wailing_spirit', 'barrow_wight'].includes(key)) continue;
     const rig = buildCharacter(key, entries.length, key === 'player');
     entries.push({ name: key, root: rig.root, human: rig });
   }

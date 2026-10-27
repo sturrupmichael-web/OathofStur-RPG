@@ -21,6 +21,10 @@
     { "monster": "cave_creeper", "name": "cave creepers", "minCombat": 20, "count": [15, 30], "weight": 7 },
     { "monster": "desert_bandit", "name": "desert bandits", "minCombat": 22, "count": [15, 30], "weight": 6 },
     { "monster": "rockmaw", "name": "rockmaws", "minCombat": 24, "count": [15, 30], "weight": 8 },
-    { "monster": "glare_lizard", "name": "glare lizards", "minCombat": 30, "count": [15, 30], "weight": 8 }
+    { "monster": "glare_lizard", "name": "glare lizards", "minCombat": 30, "count": [15, 30], "weight": 8 },
+    { "monster": "fen_lurker", "name": "fen lurkers", "minCombat": 22, "count": [15, 30], "weight": 7 },
+    { "monster": "frost_wolf", "name": "frost wolves", "minCombat": 28, "count": [15, 30], "weight": 8 },
+    { "monster": "barrow_wight", "name": "barrow wights", "minCombat": 38, "count": [15, 30], "weight": 7 },
+    { "monster": "dusk_stalker", "name": "dusk stalkers", "minCombat": 48, "count": [12, 25], "weight": 6 }
   ]
 }

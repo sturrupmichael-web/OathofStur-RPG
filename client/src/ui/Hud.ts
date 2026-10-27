@@ -62,6 +62,11 @@ export interface PrayerHandlers {
   toggle: (prayer: PrayerId) => void;
 }
 
+/** What the run button asks the game to do. */
+export interface RunHandlers {
+  toggle: () => void;
+}
+
 /** DOM side of the interface: side panel, chat, tooltip and context menu. */
 export class Hud {
   private readonly chatLog = el('chat-log');
@@ -82,6 +87,7 @@ export class Hud {
   equipmentHandlers: EquipmentHandlers = { unequip: () => {}, setStyle: () => {}, examine: () => {} };
   dialogueHandlers: DialogueHandlers = { choose: () => {} };
   prayerHandlers: PrayerHandlers = { toggle: () => {} };
+  runHandlers: RunHandlers = { toggle: () => {} };
   private prayerKey = '';
   private readonly dialogue = el('dialogue');
   private dialogueOptions: string[] | null = null;
@@ -93,6 +99,7 @@ export class Hud {
   constructor() {
     this.buildTabs();
     this.buildInventory();
+    el('run-orb').addEventListener('click', () => this.runHandlers.toggle());
     this.buildEquipment();
     document.addEventListener(
       'pointerdown',
@@ -350,6 +357,13 @@ export class Hud {
     this.levelUpTimer = setTimeout(() => (this.levelUpBox.hidden = true), 5000);
   }
 
+  /** Marks the slot whose item is being used on something, or none. */
+  setUsing(slot: number | null): void {
+    el('inventory-grid')
+      .querySelectorAll<HTMLElement>('.inv-slot')
+      .forEach((s, i) => s.classList.toggle('using', i === slot));
+  }
+
   renderInventory(inv: Inventory): void {
     this.inventory = inv;
     el('inventory-grid')
@@ -493,6 +507,11 @@ export class Hud {
     el('hp-fill').style.width = `${(self.hp / self.maxHp) * 100}%`;
     el('hp-bar').classList.toggle('low', self.hp <= self.maxHp / 4);
     this.renderPrayer(self);
+    const orb = el('run-orb');
+    el('run-text').textContent = String(self.energy);
+    orb.style.setProperty('--energy', `${self.energy}%`);
+    orb.setAttribute('aria-pressed', String(self.run));
+    orb.title = `Run energy ${self.energy}%. Click to ${self.run ? 'walk' : 'run'}.`;
     // The state comes every tick something changes; rebuild the skills only when XP or boosts move.
     const key = JSON.stringify([self.skills, self.boosts]);
     if (key === this.skillsKey) return;

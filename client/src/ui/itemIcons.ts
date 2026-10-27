@@ -164,7 +164,66 @@ function mixColour(hex: string): string {
   return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
+/** Each glyph's mark, carved on a pale stone and coloured like its shrine. */
+const GLYPH_MARKS: Record<string, [string, string]> = {
+  wind: ['#9ad0e0', 'M11 15 Q18 11 25 15 M11 19 Q18 15 25 19 M13 23 Q18 20 23 23'],
+  thought: ['#c08ad8', 'M18 10 L18 26 M12 14 L24 22 M24 14 L12 22'],
+  tide: ['#3a7ad0', 'M10 20 Q14 14 18 20 Q22 26 26 20'],
+  root: ['#8a6a3a', 'M18 10 L18 20 M18 20 L12 26 M18 20 L24 26 M18 16 L14 13'],
+  ember: ['#e05a20', 'M18 9 Q24 15 21 22 Q19 26 18 27 Q13 23 15 17 Q17 20 18 18 Q16 13 18 9 Z'],
+  vigour: ['#d8c030', 'M18 26 Q10 20 12 14 Q15 11 18 15 Q21 11 24 14 Q26 20 18 26 Z'],
+  bloom: ['#4aa83a', 'M18 26 L18 16 M18 16 Q12 14 13 9 Q18 10 18 16 Q18 10 23 9 Q24 14 18 16'],
+  star: ['#a8b0d8', 'M18 9 L20 16 L27 18 L20 20 L18 27 L16 20 L9 18 L16 16 Z'],
+  storm: ['#6a80e8', 'M20 8 L13 19 L18 19 L15 28 L24 16 L19 16 Z'],
+  dusk: ['#5a3a8a', 'M22 10 Q12 12 13 19 Q14 26 23 26 Q16 23 16 18 Q16 13 22 10 Z'],
+  oath: ['#c8a040', 'M12 12 L24 12 L24 24 L12 24 Z M12 12 L24 24 M24 12 L12 24'],
+  crimson: ['#b02030', 'M18 9 Q26 18 18 27 Q10 18 18 9 Z M18 14 L18 22'],
+};
+const glyph = ([colour, mark]: [string, string]) => `
+  <ellipse cx="18" cy="19" rx="12" ry="11.5" fill="#d8d0c0" stroke="#5a5448" stroke-width="1.2"/>
+  <ellipse cx="17" cy="17" rx="9" ry="8" fill="#e8e2d4" opacity=".6"/>
+  <path d="${mark}" fill="none" stroke="${colour}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`;
+
+/** A paper packet of seeds, showing what grows from them. */
+const seedPacket = (picture: string) => `
+  <path d="M9 7 L27 7 L27 31 L9 31 Z" fill="#e8dcbc" stroke="#6a5a3a" stroke-width="1.2"/>
+  <path d="M9 7 L27 7 L25 10 L11 10 Z" fill="#c8b48a" stroke="#6a5a3a" stroke-width="1"/>
+  <g transform="translate(18 20) scale(.55) translate(-18 -18)">${picture}</g>`;
+/** A pinch of herb seeds. */
+const herbSeeds = (colour: string) => `
+  <g fill="${colour}" stroke="#3a2a14" stroke-width=".8">
+    <ellipse cx="14" cy="20" rx="3" ry="2.2"/><ellipse cx="21" cy="18" rx="3" ry="2.2" transform="rotate(30 21 18)"/>
+    <ellipse cx="18" cy="25" rx="3" ry="2.2" transform="rotate(-20 18 25)"/><ellipse cx="23" cy="25" rx="2.6" ry="2"/><ellipse cx="12" cy="26" rx="2.6" ry="2"/>
+  </g>`;
+
+const PRODUCE: Record<string, string> = {
+  potato: `<path d="M8 20 Q8 11 18 11 Q29 11 29 19 Q29 28 18 28 Q8 28 8 20 Z" fill="#b08a54" stroke="#5a3a1a" stroke-width="1.2"/><g fill="#7a5a2a"><circle cx="14" cy="17" r="1"/><circle cx="22" cy="22" r="1"/><circle cx="20" cy="15" r=".8"/></g>`,
+  onion: `<path d="M18 9 Q30 18 25 27 Q18 32 11 27 Q6 18 18 9 Z" fill="#d8b070" stroke="#6a4a1a" stroke-width="1.2"/><path d="M18 9 Q16 4 18 2 Q20 4 18 9" stroke="#6a8a3a" stroke-width="1.6" fill="#8aa84a"/><path d="M14 14 Q12 21 15 28 M22 14 Q24 21 21 28" stroke="#b08a4a" stroke-width=".9" fill="none"/>`,
+  cabbage: `<circle cx="18" cy="19" r="11" fill="#8ac85a" stroke="#3a6a2a" stroke-width="1.2"/><path d="M18 8 Q12 18 18 30 M9 14 Q16 18 13 28 M27 14 Q20 18 23 28" stroke="#5a9a3a" stroke-width="1.1" fill="none"/>`,
+  tomato: `<circle cx="18" cy="20" r="10" fill="#d8302a" stroke="#6a1a10" stroke-width="1.2"/><path d="M12 11 L18 13 L24 11 L20 14 L22 17 L18 15 L14 17 L16 14 Z" fill="#4a8a3a" stroke="#2a4a1a" stroke-width=".8"/><ellipse cx="14" cy="18" rx="2" ry="3" fill="#ff8070" opacity=".6"/>`,
+  sweetcorn: `<path d="M18 4 Q25 10 24 21 Q22 30 18 32 Q14 30 12 21 Q11 10 18 4 Z" fill="#f0d040" stroke="#7a6010" stroke-width="1.1"/><path d="M15 9 L15 28 M18 6 L18 31 M21 9 L21 28 M13 14 L23 14 M12 19 L24 19 M13 24 L23 24" stroke="#c8a020" stroke-width=".7"/><path d="M18 32 Q8 26 9 12 Q13 22 18 32 Z M18 32 Q28 26 27 12 Q23 22 18 32 Z" fill="#8ab84a" stroke="#3a6a2a" stroke-width="1"/>`,
+  strawberry: `<path d="M18 31 Q8 22 9 14 Q12 10 18 11 Q24 10 27 14 Q28 22 18 31 Z" fill="#e02a3a" stroke="#6a0a1a" stroke-width="1.2"/><path d="M12 10 L18 12 L24 10 L21 7 L18 9 L15 7 Z" fill="#4a8a3a" stroke="#2a4a1a" stroke-width=".8"/><g fill="#ffe08a"><circle cx="14" cy="16" r=".8"/><circle cx="19" cy="15" r=".8"/><circle cx="23" cy="17" r=".8"/><circle cx="16" cy="21" r=".8"/><circle cx="21" cy="22" r=".8"/><circle cx="18" cy="26" r=".8"/></g>`,
+  watermelon: `<ellipse cx="18" cy="19" rx="14" ry="11" fill="#3a8a2a" stroke="#1a4a10" stroke-width="1.2"/><path d="M8 13 Q12 19 9 26 M14 9 Q17 19 14 29 M22 9 Q19 19 22 29 M28 13 Q24 19 27 26" stroke="#2a6a1a" stroke-width="2" fill="none"/>`,
+};
+
+const SKILL_ICONS: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(GLYPH_MARKS).map(([id, m]) => [`${id}_glyph`, glyph(m)])),
+  ...PRODUCE,
+  ...Object.fromEntries(Object.entries(PRODUCE).map(([id, picture]) => [`${id}_seed`, seedPacket(picture)])),
+  ...Object.fromEntries(Object.entries(HERB_COLOURS).map(([id, [leaf]]) => [`${id}_seed`, herbSeeds(shade(leaf))])),
+  baked_potato: `<path d="M8 20 Q8 11 18 11 Q29 11 29 19 Q29 28 18 28 Q8 28 8 20 Z" fill="#8a5a2a" stroke="#3a2210" stroke-width="1.2"/><path d="M12 17 Q18 23 25 17 Q22 14 18 15 Q14 14 12 17 Z" fill="#f4e8b8" stroke="#c8a860" stroke-width=".8"/><rect x="16" y="15" width="4" height="3" rx="1" fill="#ffe060"/>`,
+  cooked_sweetcorn: `<path d="M18 4 Q25 10 24 21 Q22 30 18 32 Q14 30 12 21 Q11 10 18 4 Z" fill="#e8a830" stroke="#7a5010" stroke-width="1.1"/><path d="M15 9 L15 28 M18 6 L18 31 M21 9 L21 28 M13 14 L23 14 M12 19 L24 19 M13 24 L23 24" stroke="#b88010" stroke-width=".7"/><path d="M14 12 Q16 10 18 12" stroke="#fff4b0" stroke-width="1.4" fill="none"/>`,
+  aether_shard: `<path d="M18 3 L26 14 L21 33 L12 28 L10 13 Z" fill="#cfe8ff" stroke="#3a5a7a" stroke-width="1.2"/><path d="M18 3 L18 20 L21 33 M10 13 L18 20 L26 14" stroke="#8ab0d8" stroke-width=".9" fill="none"/><path d="M14 10 L16 18" stroke="#fff" stroke-width="1.4" opacity=".8"/>`,
+  rake: `<path d="M27 4 L10 25" stroke="#8a6a42" stroke-width="2.4" stroke-linecap="round"/><path d="M4 21 L15 31" stroke="#6c6e74" stroke-width="2.4" stroke-linecap="round"/><path d="M5 22 L3 25 M8 25 L6 28 M11 28 L9 31 M14 31 L12 34" stroke="#6c6e74" stroke-width="1.6" stroke-linecap="round"/>`,
+  spade: `<path d="M28 4 L14 20" stroke="#8a6a42" stroke-width="2.4" stroke-linecap="round"/><path d="M25 3 L31 8" stroke="#5a3a20" stroke-width="2.4" stroke-linecap="round"/><path d="M14 17 L19 22 L11 31 Q6 32 5 31 Q4 26 6 25 Z" fill="#9a9ca4" stroke="#3a3c42" stroke-width="1.2"/>`,
+  seed_dibber: `<path d="M24 6 L10 28" stroke="#9a7448" stroke-width="3" stroke-linecap="round"/><path d="M10 28 L7 33" stroke="#6a4a28" stroke-width="2" stroke-linecap="round"/><path d="M22 6 Q27 3 29 8 Q26 10 24 9 Z" fill="#7a5230" stroke="#3a2210" stroke-width="1"/>`,
+  bucket: `<path d="M8 12 L28 12 L25 31 L11 31 Z" fill="#9a7048" stroke="#3d2c14" stroke-width="1.2"/><path d="M9 18 L27 18 M10 25 L26 25" stroke="#6c6e74" stroke-width="1.6"/><ellipse cx="18" cy="12" rx="10" ry="2.5" fill="#3a2a1a" stroke="#3d2c14" stroke-width="1"/><path d="M8 12 Q18 0 28 12" stroke="#6c6e74" stroke-width="1.4" fill="none"/>`,
+  compost: `<path d="M8 12 L28 12 L25 31 L11 31 Z" fill="#9a7048" stroke="#3d2c14" stroke-width="1.2"/><path d="M9 18 L27 18 M10 25 L26 25" stroke="#6c6e74" stroke-width="1.6"/><path d="M8 12 Q12 7 16 10 Q19 6 23 9 Q27 8 28 12 Z" fill="#4a3424" stroke="#2a1a10" stroke-width="1"/><path d="M8 12 Q18 0 28 12" stroke="#6c6e74" stroke-width="1.4" fill="none"/>`,
+  plant_cure: vial('#6ad84a', 0.8),
+};
+
 const ICONS: Record<string, string> = {
+  ...SKILL_ICONS,
   shortbow_u: bow('#a8743e', '#5a3a1e', false, false),
   shortbow: bow('#a8743e', '#5a3a1e', false, true),
   longbow_u: bow('#a8743e', '#5a3a1e', true, false),

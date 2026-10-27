@@ -85,11 +85,13 @@ const OBJECT_KINDS: Record<string, Exclude<PlacementKind, 'npc' | 'monster'>> = 
   gravestone: 'scenery',
   cactus: 'scenery',
   palm_tree: 'scenery',
-  // Waiting for the phase that adds their skill, so they are props for now.
-  aether_stone: 'scenery',
+  aether_stone: 'resource',
+  // Agility, Glyphcraft and Farming give these their own actions.
+  agility_obstacle: 'scenery',
   glyph_shrine: 'scenery',
-  spinning_wheel: 'scenery',
   farming_patch: 'scenery',
+  // Waiting for the phase that adds their skill, so they are props for now.
+  spinning_wheel: 'scenery',
   homestead_gate: 'scenery',
   cave_entrance: 'scenery',
   training_dummy: 'scenery',
@@ -101,6 +103,7 @@ function resourceSkill(key: string): string {
   if (key.endsWith('tree')) return 'woodcutting';
   if (key.endsWith('rock')) return 'mining';
   if (key.endsWith('fishing_spot')) return 'fishing';
+  if (key === 'aether_stone') return 'mining';
   return 'unknown';
 }
 

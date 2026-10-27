@@ -233,8 +233,8 @@ export const FLICKER = 'flicker';
 /** The object on the tile at an offset, or its terrain if it has none, for props that span tiles. */
 export type NeighbourLookup = (dx: number, dy: number) => string | null;
 
-/** Stations and props face +Z (toward the open tile in front of them). */
-export function buildStation(defKey: string, near: NeighbourLookup = () => null, seed = 0): THREE.Group {
+/** Stations and props face +Z (toward the open tile in front of them). `tint` colours a glyph shrine's glow. */
+export function buildStation(defKey: string, near: NeighbourLookup = () => null, seed = 0, tint = 0x9ad8ff): THREE.Group {
   const k = Math.floor(seed * 1e6);
   const g = new THREE.Group();
   const bricks = textures.bricks();
@@ -499,7 +499,7 @@ export function buildStation(defKey: string, near: NeighbourLookup = () => null,
       break;
     }
     case 'aether_stone': {
-      // A seam of pale stone waiting for the Glyphcraft phase.
+      // A seam of pale stone, crystals of aether showing through.
       g.add(mesh(new THREE.DodecahedronGeometry(0.34, 0), 0x6f6a62, 0, 0.22, 0, { map: textures.rock() }));
       for (const [x, y, z] of [[0.1, 0.42, 0.04], [-0.14, 0.34, -0.1], [0.04, 0.3, 0.26]] as const) {
         g.add(mesh(new THREE.OctahedronGeometry(0.1, 0), 0xcfe8ff, x, y, z, { emissive: 0x2a4a7a }));
@@ -511,8 +511,8 @@ export function buildStation(defKey: string, near: NeighbourLookup = () => null,
         mesh(new THREE.CylinderGeometry(0.44, 0.5, 0.14, 12), 0x8a8478, 0, 0.07, 0, { map: bricks }),
         mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.62, 10), 0xd8d0c0, 0, 0.45, 0, { map: bricks }),
         mesh(new THREE.CylinderGeometry(0.4, 0.36, 0.1, 12), 0xe8e0d0, 0, 0.8, 0),
-        mesh(new THREE.TorusGeometry(0.22, 0.03, 6, 18).rotateX(Math.PI / 2), 0x9ad8ff, 0, 0.92, 0, { emissive: 0x2a6a9a }),
-        mesh(new THREE.OctahedronGeometry(0.14, 0), 0xcfe8ff, 0, 1.1, 0, { emissive: 0x3a7aba }),
+        mesh(new THREE.TorusGeometry(0.22, 0.03, 6, 18).rotateX(Math.PI / 2), tint, 0, 0.92, 0, { emissive: new THREE.Color(tint).multiplyScalar(0.35).getHex() }),
+        mesh(new THREE.OctahedronGeometry(0.14, 0), new THREE.Color(tint).lerp(new THREE.Color(0xffffff), 0.5).getHex(), 0, 1.1, 0, { emissive: new THREE.Color(tint).multiplyScalar(0.5).getHex() }),
       );
       break;
     }

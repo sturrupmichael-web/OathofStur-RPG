@@ -1,0 +1,56 @@
+{
+  "comment": "Agility courses. Obstacles are crossed in the direction you arrive from the one before (the last leads back to the first), from the tile before them to the tile after. ticks is how long a crossing takes. Obstacles that can be failed are failed with chance failChance at the course level, falling evenly to 0 at failChance's last value levels above it; a fall hurts for `fall` hitpoints and leaves you beside the obstacle. Crossing every obstacle in order gives the lap bonus. Run energy: running moves two tiles a tick and uses runDrain per tick run; it comes back by restoreBase + restorePerLevel x Agility level each tick you don't run.",
+  "runDrain": 0.7,
+  "restoreBase": 0.25,
+  "restorePerLevel": 0.006,
+  "failChance": [0.25, 15],
+  "obstacles": {
+    "log": { "name": "Log balance", "verb": "Walk-across", "ticks": 4, "canFail": true },
+    "hurdle": { "name": "Hurdle", "verb": "Jump-over", "ticks": 2 },
+    "net": { "name": "Climbing net", "verb": "Climb-over", "ticks": 4 },
+    "rope": { "name": "Rope swing", "verb": "Swing-on", "ticks": 3, "canFail": true },
+    "stones": { "name": "Stepping stumps", "verb": "Hop-across", "ticks": 3, "canFail": true },
+    "pipe": { "name": "Pipe", "verb": "Squeeze-through", "ticks": 5 },
+    "bars": { "name": "Monkey bars", "verb": "Swing-across", "ticks": 4, "canFail": true },
+    "wall": { "name": "Low wall", "verb": "Climb-over", "ticks": 3 }
+  },
+  "courses": {
+    "brightwater": {
+      "name": "Brightwater Agility Course",
+      "level": 1,
+      "lapXp": 40,
+      "fall": [1, 2],
+      "obstacles": [
+        { "x": 143, "y": 216, "type": "log", "xp": 6 },
+        { "x": 147, "y": 216, "type": "hurdle", "xp": 5 },
+        { "x": 151, "y": 216, "type": "hurdle", "xp": 5 },
+        { "x": 155, "y": 216, "type": "stones", "xp": 7 },
+        { "x": 159, "y": 216, "type": "net", "xp": 7 },
+        { "x": 162, "y": 219, "type": "log", "xp": 6 },
+        { "x": 162, "y": 223, "type": "pipe", "xp": 8 },
+        { "x": 158, "y": 226, "type": "bars", "xp": 8 },
+        { "x": 153, "y": 226, "type": "hurdle", "xp": 5 },
+        { "x": 148, "y": 226, "type": "wall", "xp": 7 },
+        { "x": 143, "y": 226, "type": "stones", "xp": 7 },
+        { "x": 141, "y": 222, "type": "rope", "xp": 9 }
+      ]
+    },
+    "ashen": {
+      "name": "Ashen Agility Course",
+      "level": 30,
+      "lapXp": 160,
+      "fall": [2, 5],
+      "obstacles": [
+        { "x": 208, "y": 49, "type": "rope", "xp": 24 },
+        { "x": 212, "y": 49, "type": "log", "xp": 22 },
+        { "x": 216, "y": 49, "type": "wall", "xp": 18 },
+        { "x": 220, "y": 49, "type": "bars", "xp": 26 },
+        { "x": 222, "y": 53, "type": "net", "xp": 22 },
+        { "x": 220, "y": 56, "type": "stones", "xp": 24 },
+        { "x": 215, "y": 56, "type": "pipe", "xp": 20 },
+        { "x": 210, "y": 56, "type": "log", "xp": 22 },
+        { "x": 207, "y": 53, "type": "hurdle", "xp": 18 }
+      ]
+    }
+  }
+}

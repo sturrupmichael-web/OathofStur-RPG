@@ -24,6 +24,20 @@ export type SoundName =
   | 'offer'
   | 'prayer_on'
   | 'prayer_off'
+  | 'balance'
+  | 'jump'
+  | 'climb'
+  | 'rope_swing'
+  | 'crawl'
+  | 'fall'
+  | 'inscribe'
+  | 'inscribe_done'
+  | 'rake'
+  | 'dig'
+  | 'plant'
+  | 'pick'
+  | 'spread'
+  | 'pour'
   | 'shoot'
   | 'swing'
   | 'punch'
@@ -247,6 +261,59 @@ const RECIPES: Record<SoundName, (v: Voice) => void> = {
   offer: (v) => {
     v.tone('sine', 880, 878, 0.18, 0, 0.003, 1.0);
     v.tone('sine', 2210, 2200, 0.06, 0, 0.003, 0.6);
+  },
+  // Agility: the log creaks underfoot.
+  balance: (v) => {
+    v.tone('triangle', 120, 95, 0.25, 0.05, 0.05, 0.5, 6);
+    v.tone('triangle', 140, 110, 0.18, 0.9, 0.05, 1.3, 6);
+  },
+  // A push off and a landing.
+  jump: (v) => {
+    v.hiss('bandpass', 900, 1800, 0.25, 0, 0.02, 0.18, 1.5);
+    v.hiss('lowpass', 500, 200, 0.45, 0.55, 0.005, 0.7);
+  },
+  // Rope and wood: a few creaky grabs.
+  climb: (v) => {
+    for (const s of [0, 0.45, 0.9, 1.35]) v.hiss('bandpass', 1400, 900, 0.22, s, 0.01, s + 0.12, 3);
+  },
+  // The rope's whoosh through the air.
+  rope_swing: (v) => v.hiss('bandpass', 400, 1600, 0.4, 0.1, 0.4, 1.2, 1.2),
+  // Shuffling through a pipe: muffled scrapes.
+  crawl: (v) => {
+    for (const s of [0, 0.5, 1.0, 1.5, 2.0]) v.hiss('lowpass', 700, 400, 0.3, s, 0.03, s + 0.2);
+  },
+  // Falling off: a yelp of air, then a thump in the mud.
+  fall: (v) => {
+    v.hiss('bandpass', 1800, 600, 0.25, 0, 0.02, 0.25, 2);
+    v.tone('sine', 110, 50, 0.8, 0.25, 0.003, 0.5);
+    v.hiss('lowpass', 600, 150, 0.6, 0.25, 0.003, 0.55);
+  },
+  // Inscribing: a soft shimmer as the shards catch the shrine's light.
+  inscribe: (v) => {
+    v.tone('sine', 1320, 1360, 0.08, 0, 0.05, 0.5);
+    v.tone('sine', 1980, 2040, 0.05, 0.05, 0.05, 0.45);
+  },
+  // The glyphs take: a bright little arpeggio.
+  inscribe_done: (v) => v.tune('sine', [[784, 0, 0.3], [988, 0.08, 0.3], [1319, 0.16, 0.5]], 0.12),
+  // Rake tines dragged through soil.
+  rake: (v) => v.hiss('bandpass', 1800, 1200, 0.3, 0, 0.05, 0.35, 1.5),
+  // A spade bites into earth.
+  dig: (v) => {
+    v.tone('square', 900, 600, 0.06, 0, 0.002, 0.04);
+    v.hiss('lowpass', 1200, 400, 0.45, 0, 0.005, 0.22);
+  },
+  // A dibber poking a hole.
+  plant: (v) => v.hiss('lowpass', 800, 400, 0.3, 0, 0.005, 0.1),
+  // A stalk snapped off.
+  pick: (v) => {
+    v.hiss('highpass', 4000, 3000, 0.25, 0, 0.002, 0.05);
+    v.hiss('bandpass', 2400, 2000, 0.15, 0.04, 0.02, 0.16, 2);
+  },
+  // Compost tipped out of a bucket.
+  spread: (v) => v.hiss('lowpass', 900, 300, 0.45, 0.45, 0.1, 0.9),
+  // A trickle from a vial.
+  pour: (v) => {
+    for (const s of [0.2, 0.3, 0.42, 0.55, 0.7]) v.tone('sine', 900 + Math.random() * 500, 1400, 0.06, s, 0.005, s + 0.05);
   },
   prayer_on: (v) => v.tune('sine', [[659, 0, 0.12], [988, 0.08, 0.3]], 0.16),
   prayer_off: (v) => v.tune('sine', [[784, 0, 0.1], [523, 0.07, 0.22]], 0.12),

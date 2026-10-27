@@ -26,6 +26,9 @@
     { "id": "cooking", "name": "Cooking" },
     { "id": "smithing", "name": "Smithing" },
     { "id": "fletching", "name": "Fletching" },
-    { "id": "herblore", "name": "Herblore" }
+    { "id": "herblore", "name": "Herblore" },
+    { "id": "agility", "name": "Agility" },
+    { "id": "glyphcraft", "name": "Glyphcraft" },
+    { "id": "farming", "name": "Farming" }
   ]
 }

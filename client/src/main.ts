@@ -1,12 +1,14 @@
 import {
   ITEMS,
   JsonMapSource,
+  OBSTACLE_KINDS,
   QUESTS,
   RESOURCE_DATA,
   SELL_RATE,
   WorldGrid,
   areaAt,
   isBanker,
+  obstacleAt,
   packStations,
   shopForNpc,
   type EntityId,
@@ -33,6 +35,18 @@ import { clearLocal, downloadSave, loadLocal, readSaveFile, storeLocal } from '.
 import './styles.css';
 
 const WORLD_SEED = 20261025;
+
+/** The sound of setting off over each kind of agility obstacle. */
+const CROSS_SOUNDS: Record<string, SoundName> = {
+  log: 'balance',
+  hurdle: 'jump',
+  net: 'climb',
+  rope: 'rope_swing',
+  stones: 'jump',
+  pipe: 'crawl',
+  bars: 'climb',
+  wall: 'climb',
+};
 
 async function start(): Promise<void> {
   // Swap this for a Tiled/LDtk MapSource later; nothing below depends on the format.
@@ -119,6 +133,8 @@ async function start(): Promise<void> {
     bury: 'bury',
     scatter: 'scatter',
     pray: 'pray',
+    spread: 'spread',
+    pour: 'pour',
   };
   state.on('animation', ({ entityId, kind }) => {
     const e = state.entities.get(entityId)?.data;
@@ -137,6 +153,22 @@ async function start(): Promise<void> {
   renderer.entities.onImpact = (id, activity) => sound.play(activity as SoundName, near(id) * (id === state.playerId ? 0.8 : 0.5));
   // A fire catching nearby.
   state.on('added', (v) => v.data.kind === 'station' && v.data.defKey === 'fire' && sound.play('ignite', near(v.data.id)));
+  // Agility: a sound for each obstacle as someone sets off over it, and a thump if they fall.
+  state.on('tick', () => {
+    for (const view of state.entities.values()) {
+      const c = view.data.crossing;
+      const key = c ? `${c.from.x},${c.from.y},${c.obstacle}` : undefined;
+      if (key && view.crossSound !== key) sound.play(CROSS_SOUNDS[c!.obstacle], near(view.data.id));
+      view.crossSound = key;
+      if (c?.fall && !view.fellSound && state.crossProgress(view, performance.now()) > 0) {
+        view.fellSound = true;
+        setTimeout(() => sound.play('fall', near(view.data.id)), c.ms * 0.7);
+      }
+      if (!c) view.fellSound = false;
+    }
+  });
+  // A shrine's chime as the glyphs take.
+  state.on('gameMessage', ({ text }) => text.startsWith('The shrine marks your shards') && sound.play('inscribe_done'));
   state.on('levelUp', () => sound.play('levelup'));
   state.on('questComplete', () => sound.play('quest_complete'));
   state.on('gameMessage', ({ text, kind }) => {
@@ -178,6 +210,15 @@ async function start(): Promise<void> {
   };
 
   const GATHER_LABELS = { chop: 'Chop down', mine: 'Mine', net: 'Net', rod: 'Bait' } as const;
+  /** What clicking a farming patch does, from how it looks to you. */
+  const patchAction = (e: PublicEntity): string => {
+    const p = e.patch!;
+    if (p.dead) return 'Clear';
+    if (p.crop && p.stage === p.stages) return e.name === 'Herb patch' ? 'Pick' : 'Harvest';
+    if (p.diseased) return 'Cure';
+    if (!p.crop && p.weeds > 0) return 'Rake';
+    return 'Inspect';
+  };
   const STATION_LABELS: Record<string, string> = { furnace: 'Smelt', anvil: 'Smith', range: 'Cook', fire: 'Cook', campfire: 'Cook', bank_booth: 'Bank', altar: 'Pray' };
   /** What each person offers, from the role the map gives them. */
   const NPC_ACTIONS: Record<string, string> = Object.fromEntries(
@@ -197,6 +238,10 @@ async function start(): Promise<void> {
     const data = e.kind === 'resource' && e.defKey ? RESOURCE_DATA[e.defKey] : undefined;
     if (data && !e.depleted) return { label: GATHER_LABELS[data.verb], run: use('gather') };
     if (e.kind === 'station' && e.defKey && STATION_LABELS[e.defKey]) return { label: STATION_LABELS[e.defKey], run: use('use') };
+    const obstacle = e.defKey === 'agility_obstacle' ? obstacleAt(e.x, e.y) : undefined;
+    if (obstacle) return { label: OBSTACLE_KINDS[obstacle.type].verb, run: () => server.send({ type: 'interact', targetId: e.id, action: 'cross' }) };
+    if (e.defKey === 'glyph_shrine') return { label: 'Inscribe', run: () => server.send({ type: 'interact', targetId: e.id, action: 'inscribe' }) };
+    if (e.patch) return { label: patchAction(e), run: () => server.send({ type: 'interact', targetId: e.id, action: 'farm' }) };
     const npcAction = e.kind === 'npc' && e.defKey ? NPC_ACTIONS[e.defKey] : undefined;
     if (npcAction) return { label: npcAction, run: use('use') };
     if (e.kind === 'npc') return { label: 'Talk-to', run: use('talk') };
@@ -213,8 +258,28 @@ async function start(): Promise<void> {
     return null;
   };
 
+  /**
+   * "Use" on an item picks it up on the cursor: the next thing clicked in the
+   * world has it used on it (seeds on a patch, shards on a shrine).
+   */
+  let using: { slot: number; itemId: string; name: string } | null = null;
+  const stopUsing = () => {
+    using = null;
+    hud.setUsing(null);
+  };
+  /** The entity a use would land on: anything but yourself and the ground. */
+  const useTarget = (pick: PickResult): PublicEntity | undefined => {
+    const id = entityAt(pick);
+    const e = id !== null ? state.entities.get(id)?.data : undefined;
+    return e && e.id !== state.playerId ? e : undefined;
+  };
+
   /** Human-readable description of whatever is under the cursor. */
   const describe = (pick: PickResult): { action: string; target: string } => {
+    if (using) {
+      const e = useTarget(pick);
+      return { action: `Use ${using.name} ->`, target: e ? nameOf(e) : '' };
+    }
     if (pick.buildingName !== undefined) return { action: 'Walk into', target: pick.buildingName || 'Hut' };
     const id = entityAt(pick);
     if (id !== null) {
@@ -243,6 +308,16 @@ async function start(): Promise<void> {
       if (hud.consumeMenuDismiss()) return;
       const pick = renderer.pick(x, y);
       if (!pick) return;
+      if (using) {
+        const target = useTarget(pick);
+        const slot = using.slot;
+        stopUsing();
+        if (target) {
+          renderer.showClick(pick.tile);
+          server.send({ type: 'useOn', slot, targetId: target.id });
+        }
+        return;
+      }
       const id = entityAt(pick);
       const primary = id !== null ? primaryAction(state.entities.get(id)?.data) : null;
       if (primary) {
@@ -260,6 +335,13 @@ async function start(): Promise<void> {
       const e = id !== null ? state.entities.get(id)?.data : undefined;
       const primary = primaryAction(e);
       const options = [];
+      const useOn = using && e && e.id !== state.playerId ? { slot: using.slot, label: `Use ${using.name} ->` } : null;
+      if (useOn) options.push({ label: useOn.label, target, action: () => (stopUsing(), server.send({ type: 'useOn', slot: useOn.slot, targetId: e!.id })) });
+      if (using) {
+        options.push({ label: 'Cancel', target: undefined, action: stopUsing });
+        hud.showMenu(x, y, options);
+        return;
+      }
       if (primary) options.push({ label: primary.label, target, action: primary.run });
       if (e?.kind === 'station' && e.defKey === 'altar') {
         options.push({ label: 'Offer-bones', target, action: () => server.send({ type: 'interact', targetId: e.id, action: 'offer' }) });
@@ -287,6 +369,7 @@ async function start(): Promise<void> {
   hud.inventoryHandlers = {
     open: (slot, x, y) => {
       const stack = state.self?.inventory[slot];
+      if (using) return stopUsing();
       if (!stack) return;
       const name = ITEMS[stack.itemId]?.name ?? stack.itemId;
       const examine = { label: 'Examine', target: name, action: () => server.send({ type: 'examineItem', slot }) };
@@ -324,11 +407,23 @@ async function start(): Promise<void> {
         if (item?.bury) use.unshift({ label: stack.itemId === 'ashes' ? 'Scatter' : 'Bury', target: name, action: () => server.send({ type: 'bury', slot }) });
         if (item?.clean) use.unshift({ label: 'Clean', target: name, action: () => server.send({ type: 'clean', slot }) });
         if (item?.drink) use.unshift({ label: 'Drink', target: name, action: () => server.send({ type: 'drink', slot }) });
-        hud.showMenu(x, y, [...use, { label: 'Drop', target: name, action: () => server.send({ type: 'invDrop', slot }) }, examine]);
+        const pickUp = { label: 'Use', target: name, action: () => ((using = { slot, itemId: stack.itemId, name }), hud.setUsing(slot)) };
+        hud.showMenu(x, y, [...use, pickUp, { label: 'Drop', target: name, action: () => server.send({ type: 'invDrop', slot }) }, examine]);
       }
     },
     move: (from, to) => server.send({ type: 'invMove', from, to }),
   };
+
+  hud.runHandlers = {
+    toggle: () => {
+      sound.play('click');
+      server.send({ type: 'setRun', on: !state.self?.run });
+    },
+  };
+  // Picking something else up, or the item leaving the pack, drops the use.
+  state.on('self', (self) => {
+    if (using && self.inventory[using.slot]?.itemId !== using.itemId) stopUsing();
+  });
 
   hud.prayerHandlers = {
     toggle: (prayer) => server.send({ type: 'togglePrayer', prayer }),
@@ -439,7 +534,8 @@ async function start(): Promise<void> {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
     keys.add(e.key.toLowerCase());
     if (e.key === 'Escape') {
-      if (worldMap.isOpen) worldMap.hide();
+      if (using) stopUsing();
+      else if (worldMap.isOpen) worldMap.hide();
       else if (!hud.menuOpen && state.self?.ui) server.send({ type: 'closeInterface' });
       hud.hideMenu();
     }

@@ -1,3 +1,4 @@
+import { areaAt } from '../map/JsonMapSource';
 import type { MapData, Point } from '../map/types';
 import {
   PROTOCOL_VERSION,
@@ -5,12 +6,14 @@ import {
   type ClientMessage,
   type AnimationKind,
   type GameMessageKind,
+  type InteractAction,
   type PublicEntity,
   type SelfState,
   type ServerMessage,
   type UiView,
 } from '../protocol/messages';
 import { Rng } from '../rng';
+import { COURSES, OBSTACLE_KINDS, RUN_DRAIN, energyRestore, failChance, obstacleAt } from './agility';
 import {
   ATTACK_STYLES,
   EAT_DELAY,
@@ -27,8 +30,10 @@ import {
   rollQty,
 } from './combat';
 import { RECIPES, RECIPE_BY_ID, SELL_RATE, SHOPS, STATION_TITLES, burnChance, isBanker, packStations, shopBuys, shopForNpc, type PackStation, type StationKind } from './crafting';
-import type { Entity, EntityId, GroundItemEntity, MonsterEntity, ObjectEntity, PlayerEntity } from './entities';
+import type { Entity, EntityId, FarmTask, GroundItemEntity, MonsterEntity, ObjectEntity, PlayerEntity } from './entities';
+import { CROPS, FARMING, PATCH_KINDS, cropForSeed, growPatch, isGrown, offlineTicks, overgrown, patchView, type PatchKind, type PatchState } from './farming';
 import { ATTEMPT_TICKS, EXAMINE, RESOURCE_DATA, gatherChance, requiredLevel } from './gathering';
+import { INSCRIBE_TICKS, SHARD, glyphForArea, glyphsPerShard } from './glyphcraft';
 import { WorldGrid } from './grid';
 import {
   ITEMS,
@@ -97,6 +102,19 @@ export const ALTAR_MULTIPLIER = 2;
 const BOOST_FADE_TICKS = 100;
 /** Herblore is taught by Old Nessa: none of it until her cauldron is bubbling. */
 const HERBLORE_QUEST: QuestId = 'nessas_cauldron';
+/** Intents ignored while crossing an obstacle. */
+const CROSSING_LOCKS: readonly ClientMessage['type'][] = ['walk', 'interact', 'useOn', 'attack', 'useItem', 'clean', 'light', 'eat', 'drink', 'bury', 'equip', 'unequip'];
+/** Joined patch tiles that make allotments rather than herb patches. */
+const ALLOTMENT_SIZE = 6;
+/** Ticks before the first go at each farming task. */
+const FARM_TASK_TICKS: Record<FarmTask, number> = {
+  rake: FARMING.rakeTicks,
+  plant: FARMING.plantTicks,
+  compost: 2,
+  cure: 2,
+  harvest: FARMING.harvestTicks,
+  clear: FARMING.clearTicks,
+};
 /** How long a lit fire burns (ticks), at least and at most. */
 export const FIRE_TICKS = [60, 110] as const;
 
@@ -143,6 +161,7 @@ export class Simulation {
     this.grid = new WorldGrid(map);
     this.rng = new Rng(seed);
     this.spawnStaticObjects();
+    this.nameObjects();
   }
 
   // -------------------------------------------------------------------------
@@ -189,7 +208,13 @@ export class Simulation {
       boosts: {},
       nextBoostFade: 0,
       nextBury: 0,
+      energy: save?.energy ?? 100,
+      run: save?.run ?? false,
+      farm: Object.fromEntries(Object.entries(save?.farm ?? {}).map(([k, v]) => [k, { ...v }])),
     };
+    // Crops kept growing while the player was away.
+    const away = save ? offlineTicks(save.updatedAt, now) : 0;
+    if (away) for (const patch of Object.values(player.farm)) growPatch(patch, away, this.rng);
     this.entities.set(player.id, player);
     const session: Session = { outbox: [], lastSent: new Map(), lastSelf: '' };
     this.sessions.set(player.id, session);
@@ -229,6 +254,9 @@ export class Simulation {
       hp: p.hp,
       attackStyle: p.attackStyle,
       prayer: Math.ceil(p.prayer),
+      energy: Math.floor(p.energy),
+      ...(p.run && { run: true }),
+      ...(Object.keys(p.farm).length && { farm: Object.fromEntries(Object.entries(p.farm).map(([k, v]) => [k, { ...v }])) }),
       bank: p.bank.map((s) => ({ ...s })),
       quests: { ...p.quests },
       createdAt: p.createdAt || now,
@@ -273,9 +301,15 @@ export class Simulation {
       else if (e.action?.kind === 'light') this.lightStep(e);
       else if (e.action?.kind === 'clean') this.cleanStep(e);
       else if (e.action?.kind === 'offer') this.offerStep(e);
+      else if (e.action?.kind === 'cross') this.crossStep(e);
+      else if (e.action?.kind === 'inscribe') this.inscribeStep(e);
+      else if (e.action?.kind === 'farm') this.farmStep(e);
     }
     for (const e of [...this.entities.values()]) {
-      if (e.kind === 'player') this.recover(e);
+      if (e.kind === 'player') {
+        this.recover(e);
+        for (const patch of Object.values(e.farm)) growPatch(patch, 1, this.rng);
+      }
       if (e.kind === 'resource' && e.depletedUntil !== undefined && this.tick >= e.depletedUntil) delete e.depletedUntil;
       if (e.kind === 'item' && this.tick >= e.despawnAt) this.entities.delete(e.id);
       if (e.kind === 'station' && e.burnsUntil !== undefined && this.tick >= e.burnsUntil) this.burnOut(e);
@@ -305,6 +339,8 @@ export class Simulation {
     const player = this.entities.get(playerId);
     if (!player || player.kind !== 'player') return;
     if (player.deadUntil !== undefined) return;
+    // Halfway over an obstacle there's no turning back.
+    if (player.action?.kind === 'cross' && player.action.started && CROSSING_LOCKS.includes(msg.type)) return;
     switch (msg.type) {
       case 'walk':
         if (!Number.isInteger(msg.x) || !Number.isInteger(msg.y) || !this.grid.inBounds(msg.x, msg.y)) {
@@ -316,6 +352,13 @@ export class Simulation {
         return;
       case 'interact':
         this.interact(player, msg.targetId, msg.action);
+        return;
+      case 'useOn':
+        this.useOn(player, msg.slot, msg.targetId);
+        return;
+      case 'setRun':
+        if (msg.on && player.energy < RUN_DRAIN) return this.message(player.id, "You're too tired to run.", 'warn');
+        player.run = !!msg.on;
         return;
       case 'examine':
         this.examine(player, msg.targetId);
@@ -411,7 +454,7 @@ export class Simulation {
     player.ui = null;
   }
 
-  private interact(player: PlayerEntity, targetId: EntityId, action: 'gather' | 'take' | 'use' | 'talk' | 'offer'): void {
+  private interact(player: PlayerEntity, targetId: EntityId, action: InteractAction): void {
     const target = this.entities.get(targetId);
     this.stopActions(player);
     if (action === 'take' && target?.kind === 'item') {
@@ -434,6 +477,23 @@ export class Simulation {
       this.walkTo(player, target);
       return;
     }
+    if (action === 'cross' && target?.kind === 'scenery' && target.defKey === 'agility_obstacle') {
+      const obstacle = obstacleAt(target.x, target.y);
+      if (!obstacle) return;
+      player.action = { kind: 'cross', targetId: target.id, endsAt: 0 };
+      this.walkTo(player, obstacle.from, [obstacle.from]);
+      return;
+    }
+    if (action === 'inscribe' && target?.kind === 'scenery' && target.defKey === 'glyph_shrine') {
+      player.action = { kind: 'inscribe', targetId: target.id, nextAttempt: 0 };
+      this.walkTo(player, target);
+      return;
+    }
+    if (action === 'farm' && target?.kind === 'scenery' && target.patch) {
+      player.action = { kind: 'farm', targetId: target.id, nextAttempt: 0 };
+      this.walkTo(player, target);
+      return;
+    }
     if (action === 'use' && target && (target.kind === 'station' || target.kind === 'npc') && this.usable(target)) {
       player.action = { kind: 'use', targetId: target.id };
       this.walkTo(player, target);
@@ -450,7 +510,8 @@ export class Simulation {
     else if (target.kind === 'item') text = ITEMS[target.itemId].examine;
     else if (target.kind === 'monster') text = MONSTERS[target.defKey]?.examine ?? `It's a ${target.name.toLowerCase()}.`;
     else {
-      const key = target.depletedUntil !== undefined ? `${target.defKey}_stump` : target.defKey;
+      const obstacle = target.defKey === 'agility_obstacle' ? obstacleAt(target.x, target.y) : undefined;
+      const key = obstacle ? `obstacle_${obstacle.type}` : target.depletedUntil !== undefined ? `${target.defKey}_stump` : target.defKey;
       // People without their own line are described by what they do.
       const role = target.kind === 'npc' ? this.map.defs.npcs[target.defKey]?.role : undefined;
       text = EXAMINE[key] ?? EXAMINE[target.defKey] ?? (role ? `${target.name}, ${aOrSome(role.toLowerCase())} of the Reaches.` : `It's ${aOrSome(target.name.toLowerCase())}.`);
@@ -580,9 +641,25 @@ export class Simulation {
   // Systems
   // -------------------------------------------------------------------------
 
+  /** A step a tick walking; two running, while the energy lasts. */
   private movePlayer(player: PlayerEntity): void {
+    delete player.via;
+    if (!this.stepPlayer(player)) return;
+    if (!player.run || !player.path.length) return;
+    const via = { x: player.x, y: player.y };
+    if (!this.stepPlayer(player)) return;
+    player.via = via;
+    player.energy = Math.max(0, player.energy - RUN_DRAIN);
+    if (player.energy < RUN_DRAIN) {
+      player.run = false;
+      this.message(player.id, "You're out of run energy.", 'warn');
+    }
+  }
+
+  /** Takes the next step on the player's path; false when there is none or it's blocked. */
+  private stepPlayer(player: PlayerEntity): boolean {
     const next = player.path.shift();
-    if (!next) return;
+    if (!next) return false;
     const canStep = this.gateRule(player);
     const dx = next.x - player.x;
     const dy = next.y - player.y;
@@ -594,7 +671,7 @@ export class Simulation {
     if (!valid) {
       player.path = [];
       player.destination = null;
-      return;
+      return false;
     }
     player.x = next.x;
     player.y = next.y;
@@ -602,6 +679,7 @@ export class Simulation {
       player.destination = null;
       if (player.gateNotice) this.reportGate(player);
     }
+    return true;
   }
 
   private pickUp(player: PlayerEntity): void {
@@ -989,6 +1067,7 @@ export class Simulation {
       player.hp++;
       player.nextRegen = this.tick + regen;
     }
+    if (!player.via && player.energy < 100) player.energy = Math.min(100, player.energy + energyRestore(levelForXp(player.skills.agility)));
     if (player.prayers.length) this.drainPrayer(player);
     if (Object.keys(player.boosts).length && this.tick >= player.nextBoostFade) this.fadeBoosts(player);
     if (player.firewardUntil !== undefined) {
@@ -1295,6 +1374,304 @@ export class Simulation {
       if ((e.kind === 'player' && e.deadUntil === undefined) || (e.kind === 'monster' && e.respawnAt === undefined)) taken.add(this.grid.index(e.x, e.y));
     }
     return taken;
+  }
+
+  // -------------------------------------------------------------------------
+  // Agility, Glyphcraft and Farming
+  // -------------------------------------------------------------------------
+
+  /** Uses an item from the pack on something in the world, once there. */
+  private useOn(player: PlayerEntity, slot: number, targetId: EntityId): void {
+    const stack = this.slot(player, slot);
+    const target = this.entities.get(targetId);
+    if (!stack || !target) return;
+    this.stopActions(player);
+    if (target.kind === 'scenery' && target.patch) {
+      player.action = { kind: 'farm', targetId, itemId: stack.itemId, nextAttempt: 0 };
+      this.walkTo(player, target);
+      return;
+    }
+    if (target.kind === 'scenery' && target.defKey === 'glyph_shrine' && stack.itemId === SHARD) {
+      player.action = { kind: 'inscribe', targetId, nextAttempt: 0 };
+      this.walkTo(player, target);
+      return;
+    }
+    this.message(player.id, 'Nothing interesting happens.');
+  }
+
+  /**
+   * Once at an obstacle's start, crosses it over a few ticks. A fall happens
+   * part way over: it hurts, and you land beside the obstacle with no XP.
+   * Crossing a course's obstacles in order earns the lap bonus.
+   */
+  private crossStep(player: PlayerEntity): void {
+    const action = player.action;
+    if (action?.kind !== 'cross') return;
+    const target = this.entities.get(action.targetId);
+    const obstacle = target ? obstacleAt(target.x, target.y) : undefined;
+    if (!target || !obstacle) return void (player.action = null);
+    const course = COURSES[obstacle.course];
+    const kind = OBSTACLE_KINDS[obstacle.type];
+    if (!action.started) {
+      if (player.x !== obstacle.from.x || player.y !== obstacle.from.y) return void (player.action = null);
+      const level = levelForXp(player.skills.agility);
+      if (level < course.level) {
+        this.message(player.id, `You need an Agility level of ${course.level} to attempt the ${course.name}.`, 'warn');
+        return void (player.action = null);
+      }
+      action.started = true;
+      action.endsAt = this.tick + kind.ticks;
+      action.fall = !!kind.canFail && this.rng.chance(failChance(level, course.level));
+      action.landing = action.fall ? this.fallSpot(obstacle) : obstacle.to;
+      player.attackedBy = null;
+      return;
+    }
+    if (this.tick < action.endsAt) return;
+    player.action = null;
+    player.x = action.landing!.x;
+    player.y = action.landing!.y;
+    if (action.fall) {
+      const damage = Math.min(player.hp, this.rng.int(...course.fall));
+      player.hp -= damage;
+      this.broadcastHit(target, player, damage, player.hp, levelForXp(player.skills.hitpoints));
+      this.message(player.id, `You lose your footing and fall off the ${kind.name.toLowerCase()}.`, 'warn');
+      delete player.lap;
+      if (player.hp <= 0) this.playerDies(player);
+      return;
+    }
+    this.addXp(player, 'agility', obstacle.xp);
+    // The first obstacle starts a lap; each next one in order carries it on.
+    if (obstacle.index === 0) player.lap = { course: course.id, next: 1 };
+    else if (player.lap?.course === course.id && player.lap.next === obstacle.index) player.lap.next++;
+    else delete player.lap;
+    if (player.lap?.next === course.obstacles.length) {
+      delete player.lap;
+      this.addXp(player, 'agility', course.lapXp);
+      this.message(player.id, `You complete a lap of the ${course.name}.`);
+    }
+  }
+
+  /** Where a fall leaves you: off to one side of the obstacle, or back where you started. */
+  private fallSpot(obstacle: NonNullable<ReturnType<typeof obstacleAt>>): Point {
+    const sides = [
+      { x: obstacle.x + obstacle.dir.y, y: obstacle.y + obstacle.dir.x },
+      { x: obstacle.x - obstacle.dir.y, y: obstacle.y - obstacle.dir.x },
+    ];
+    return sides.find((p) => this.grid.isWalkable(p.x, p.y)) ?? obstacle.from;
+  }
+
+  /** At a shrine, every aether shard in the pack becomes its glyphs at once, after a moment. */
+  private inscribeStep(player: PlayerEntity): void {
+    const action = player.action;
+    if (action?.kind !== 'inscribe' || this.tick < action.nextAttempt) return;
+    const shrine = this.entities.get(action.targetId);
+    const glyph = shrine ? glyphForArea(areaAt(this.map, shrine.x, shrine.y)?.name) : undefined;
+    if (!shrine || !glyph || !this.adjacent(player, shrine)) return void (player.action = null);
+    const level = levelForXp(player.skills.glyphcraft);
+    const shards = countItem(player.inventory, SHARD);
+    const glyphName = ITEMS[glyph.item].name.toLowerCase();
+    if (!action.started) {
+      if (level < glyph.level) {
+        this.message(player.id, `You need a Glyphcraft level of ${glyph.level} to inscribe ${glyphName}s.`, 'warn');
+        return void (player.action = null);
+      }
+      if (!shards) {
+        this.message(player.id, "You don't have any aether shards to inscribe. Mine them from aether stone by the Wizards' Spire.", 'warn');
+        return void (player.action = null);
+      }
+      action.started = true;
+      action.nextAttempt = this.tick + INSCRIBE_TICKS;
+      this.message(player.id, 'You hold the aether shards up to the shrine.');
+      return;
+    }
+    player.action = null;
+    if (!shards) return;
+    removeItem(player.inventory, SHARD, shards);
+    const made = shards * glyphsPerShard(glyph, level);
+    addItem(player.inventory, glyph.item, made);
+    this.addXp(player, 'glyphcraft', shards * glyph.xp);
+    this.message(player.id, `The shrine marks your shards. You inscribe ${made} ${glyphName}${made > 1 ? 's' : ''}.`);
+  }
+
+  /** A player's own state of a patch; untouched patches are overgrown. */
+  private patchOf(player: PlayerEntity, patch: ObjectEntity): PatchState {
+    return (player.farm[`${patch.x},${patch.y}`] ??= overgrown());
+  }
+
+  /**
+   * Tending a patch. On arrival the task is chosen from the item used on it
+   * (seeds, compost, plant cure) or from the patch itself (weeds to rake, a
+   * crop to harvest, dead plants to clear); then it is done over a few ticks.
+   */
+  private farmStep(player: PlayerEntity): void {
+    const action = player.action;
+    if (action?.kind !== 'farm' || this.tick < action.nextAttempt) return;
+    const target = this.entities.get(action.targetId);
+    if (!target || target.kind !== 'scenery' || !target.patch || !this.adjacent(player, target)) return void (player.action = null);
+    const state = this.patchOf(player, target);
+    if (!action.task) {
+      const task = action.itemId ? this.farmTaskForItem(player, target, state, action.itemId) : this.farmTaskForPatch(player, target, state);
+      if (!task) return void (player.action = null);
+      action.task = task;
+      action.nextAttempt = this.tick + FARM_TASK_TICKS[task];
+      if (task === 'compost' || task === 'cure') this.animate(player, task === 'compost' ? 'spread' : 'pour');
+      const crop = state.crop ? CROPS[state.crop] : undefined;
+      const start: Partial<Record<FarmTask, string>> = {
+        rake: 'You start raking the patch.',
+        harvest: target.patch === 'herb' ? 'You begin to pick the herbs.' : `You begin to dig up the ${plural(crop ? ITEMS[crop.produce].name : 'crop')}.`,
+        clear: 'You start digging up the dead plants.',
+      };
+      if (start[task]) this.message(player.id, start[task]!);
+      return;
+    }
+    this.doFarmTask(player, target, state, action);
+  }
+
+  private farmTaskForItem(player: PlayerEntity, patch: ObjectEntity, state: PatchState, itemId: string): FarmTask | null {
+    const kind = PATCH_KINDS[patch.patch!];
+    const crop = cropForSeed(itemId);
+    const warn = (text: string) => (this.message(player.id, text, 'warn'), null);
+    if (crop) {
+      if (state.crop) return warn('Something is already growing here.');
+      if (state.weeds > 0) return warn('This patch needs weeding first. A rake will clear it.');
+      if (crop.patch !== patch.patch) return warn(`${ITEMS[crop.seed].name}s grow in ${aOrSome(PATCH_KINDS[crop.patch].name.toLowerCase())}, not here.`);
+      if (levelForXp(player.skills.farming) < crop.level) return warn(`You need a Farming level of ${crop.level} to plant ${ITEMS[crop.seed].name.toLowerCase()}s.`);
+      if (!hasItem(player.inventory, 'seed_dibber')) return warn('You need a seed dibber to plant seeds.');
+      if (countItem(player.inventory, itemId) < kind.seeds) return warn(`You need ${kind.seeds} ${ITEMS[itemId].name.toLowerCase()}s to plant ${aOrSome(kind.name.toLowerCase())}.`);
+      return 'plant';
+    }
+    if (itemId === 'compost') {
+      if (state.crop) return warn('Compost goes on before you plant.');
+      if (state.compost) return warn('This patch has already been composted.');
+      return 'compost';
+    }
+    if (itemId === 'plant_cure') return state.diseased ? 'cure' : warn("These plants don't need curing.");
+    if (itemId === 'rake' || itemId === 'spade') return this.farmTaskForPatch(player, patch, state);
+    this.message(player.id, 'Nothing interesting happens.');
+    return null;
+  }
+
+  private farmTaskForPatch(player: PlayerEntity, patch: ObjectEntity, state: PatchState): FarmTask | null {
+    const kind = PATCH_KINDS[patch.patch!];
+    const crop = state.crop ? CROPS[state.crop] : undefined;
+    const warn = (text: string) => (this.message(player.id, text, 'warn'), null);
+    const tell = (text: string) => (this.message(player.id, text), null);
+    if (crop && state.dead) return hasItem(player.inventory, 'spade') ? 'clear' : warn('The plants here have died. You need a spade to dig them up.');
+    if (crop && isGrown(state)) {
+      if (kind.tool && !hasItem(player.inventory, kind.tool)) return warn(`You need ${aOrSome(ITEMS[kind.tool].name.toLowerCase())} to harvest this patch.`);
+      return 'harvest';
+    }
+    if (crop && state.diseased) return hasItem(player.inventory, 'plant_cure') ? 'cure' : warn('The plants in this patch are diseased. A plant cure will save them, if you hurry.');
+    if (crop) {
+      const name = patch.patch === 'herb' ? `${crop.id} is` : `${plural(ITEMS[crop.produce].name)} are`;
+      return tell(`The ${name} growing nicely (stage ${state.stage ?? 0} of ${crop.stages}).${state.compost ? ' The soil is rich with compost.' : ''}`);
+    }
+    if (state.weeds > 0) return hasItem(player.inventory, 'rake') ? 'rake' : warn('This patch is overgrown with weeds. You need a rake to clear it.');
+    return tell(`The patch is clear and ready for planting. Use ${kind.seeds > 1 ? 'seeds' : 'a seed'} on it.${state.compost ? ' The soil is rich with compost.' : ''}`);
+  }
+
+  private doFarmTask(player: PlayerEntity, patch: ObjectEntity, state: PatchState, action: Extract<PlayerEntity['action'], { kind: 'farm' }>): void {
+    const done = () => void (player.action = null);
+    const key = `${patch.x},${patch.y}`;
+    switch (action.task) {
+      case 'rake':
+        if (state.crop || state.weeds <= 0) return done();
+        state.weeds--;
+        state.timer = 0;
+        this.addXp(player, 'farming', FARMING.rakeXp);
+        if (state.weeds > 0) return void (action.nextAttempt = this.tick + FARMING.rakeTicks);
+        this.message(player.id, 'The patch is clear for planting.');
+        return done();
+      case 'plant': {
+        const crop = cropForSeed(action.itemId ?? '');
+        const kind = PATCH_KINDS[patch.patch!];
+        if (!crop || state.crop || state.weeds > 0 || countItem(player.inventory, crop.seed) < kind.seeds) return done();
+        removeItem(player.inventory, crop.seed, kind.seeds);
+        player.farm[key] = { weeds: 0, timer: 0, crop: crop.id, stage: 0, ...(state.compost && { compost: true }) };
+        this.addXp(player, 'farming', crop.plantXp);
+        const seeds = kind.seeds > 1 ? `${kind.seeds} ${ITEMS[crop.seed].name.toLowerCase()}s` : aOrSome(ITEMS[crop.seed].name.toLowerCase());
+        this.message(player.id, `You plant ${seeds} in the ${kind.name.toLowerCase()}.`);
+        return done();
+      }
+      case 'compost':
+        if (state.crop || state.compost || !hasItem(player.inventory, 'compost')) return done();
+        removeItem(player.inventory, 'compost', 1);
+        addItem(player.inventory, 'bucket');
+        state.compost = true;
+        this.message(player.id, 'You spread the compost over the patch.');
+        return done();
+      case 'cure':
+        if (!state.diseased || !hasItem(player.inventory, 'plant_cure')) return done();
+        removeItem(player.inventory, 'plant_cure', 1);
+        addItem(player.inventory, 'vial');
+        delete state.diseased;
+        this.message(player.id, 'You pour the plant cure over the patch. The plants perk up.');
+        return done();
+      case 'clear':
+        player.farm[key] = { weeds: 0, timer: 0 };
+        this.message(player.id, 'You dig up the dead plants. The patch is clear again.');
+        return done();
+      case 'harvest': {
+        const crop = state.crop ? CROPS[state.crop] : undefined;
+        if (!crop || !isGrown(state)) return done();
+        state.left ??= this.rng.int(...crop.yield);
+        if (!addItem(player.inventory, crop.produce)) {
+          this.message(player.id, "You don't have enough inventory space to hold any more.", 'warn');
+          return done();
+        }
+        this.addXp(player, 'farming', crop.harvestXp);
+        state.left--;
+        if (state.left > 0) return void (action.nextAttempt = this.tick + FARMING.harvestTicks);
+        player.farm[key] = { weeds: 0, timer: 0 };
+        this.message(player.id, 'The patch is empty now.');
+        return done();
+      }
+      default:
+        return done();
+    }
+  }
+
+  /**
+   * Names the objects whose name depends on where they are: each obstacle
+   * after its kind, each shrine after its glyph, and each patch after its
+   * kind (big groups of patch tiles are allotments, small ones herb patches).
+   */
+  private nameObjects(): void {
+    const patches = new Map<string, ObjectEntity>();
+    for (const e of this.entities.values()) {
+      if (e.kind !== 'scenery') continue;
+      if (e.defKey === 'agility_obstacle') {
+        const obstacle = obstacleAt(e.x, e.y);
+        if (obstacle) e.name = OBSTACLE_KINDS[obstacle.type].name;
+      } else if (e.defKey === 'glyph_shrine') {
+        const glyph = glyphForArea(areaAt(this.map, e.x, e.y)?.name);
+        if (glyph) e.name = `${ITEMS[glyph.item].name.replace(/ glyph$/, '')} shrine`;
+      } else if (e.defKey === 'farming_patch') patches.set(`${e.x},${e.y}`, e);
+    }
+    const seen = new Set<string>();
+    for (const [start, first] of patches) {
+      if (seen.has(start)) continue;
+      const group: ObjectEntity[] = [];
+      const queue = [first];
+      seen.add(start);
+      while (queue.length) {
+        const p = queue.pop()!;
+        group.push(p);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const k = `${p.x + dx},${p.y + dy}`;
+          const next = patches.get(k);
+          if (next && !seen.has(k)) {
+            seen.add(k);
+            queue.push(next);
+          }
+        }
+      }
+      const kind: PatchKind = group.length >= ALLOTMENT_SIZE ? 'allotment' : 'herb';
+      for (const p of group) {
+        p.patch = kind;
+        p.name = PATCH_KINDS[kind].name;
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -1612,6 +1989,16 @@ export class Simulation {
       const altar = this.entities.get(a.targetId);
       return altar ? { target: altar, activity: 'offer' } : null;
     }
+    if (a?.kind === 'inscribe' && a.started) {
+      const shrine = this.entities.get(a.targetId);
+      return shrine ? { target: shrine, activity: 'inscribe' } : null;
+    }
+    if (a?.kind === 'farm' && a.task && a.task !== 'compost' && a.task !== 'cure') {
+      const patch = this.entities.get(a.targetId);
+      if (!patch || patch.kind !== 'scenery') return null;
+      const activity = a.task === 'harvest' ? (patch.patch === 'herb' ? 'pick' : 'dig') : a.task === 'clear' ? 'dig' : a.task;
+      return { target: patch, activity };
+    }
     return null;
   }
 
@@ -1776,16 +2163,18 @@ export class Simulation {
       if (e.id !== player.id && Math.max(Math.abs(e.x - player.x), Math.abs(e.y - player.y)) > VIEW_RADIUS) continue;
       if (e.kind === 'monster' && e.respawnAt !== undefined) continue;
       if (e.kind === 'item' && !this.canSeeItem(e, player.id)) continue;
-      out.push(this.toPublic(e));
+      out.push(this.toPublic(e, player));
     }
     return out;
   }
 
-  private toPublic(e: Entity): PublicEntity {
+  /** How `e` looks to `viewer`: a farming patch shows the viewer's own crop. */
+  private toPublic(e: Entity, viewer: PlayerEntity): PublicEntity {
     if (e.kind === 'player') {
       const work = this.activityOf(e);
       const fighting = e.action?.kind === 'attack' ? e.action.targetId : e.attackedBy;
       const overhead = (['ward_of_blades', 'ember_ward'] as const).find((p) => e.prayers.includes(p));
+      const crossing = e.action?.kind === 'cross' && e.action.started ? this.crossingView(e.action) : undefined;
       return {
         id: e.id,
         kind: e.kind,
@@ -1800,6 +2189,8 @@ export class Simulation {
         ...(e.deadUntil !== undefined && { dead: true }),
         ...(work && { workingOn: nearestTile(work.target, e), activity: work.activity }),
         ...(overhead && { overhead }),
+        ...(e.via && { via: { ...e.via } }),
+        ...(crossing && { crossing }),
       };
     }
     if (e.kind === 'monster') {
@@ -1827,6 +2218,21 @@ export class Simulation {
       defKey: e.defKey,
       ...(e.size && { size: e.size }),
       ...(e.depletedUntil !== undefined && { depleted: true }),
+      ...(e.patch && { patch: patchView(viewer.farm[`${e.x},${e.y}`] ?? overgrown()) }),
+    };
+  }
+
+  private crossingView(action: Extract<PlayerEntity['action'], { kind: 'cross' }>): PublicEntity['crossing'] {
+    const target = this.entities.get(action.targetId);
+    const obstacle = target ? obstacleAt(target.x, target.y) : undefined;
+    if (!obstacle) return undefined;
+    const kind = OBSTACLE_KINDS[obstacle.type];
+    return {
+      obstacle: obstacle.type,
+      from: { ...obstacle.from },
+      to: action.fall ? { x: obstacle.x, y: obstacle.y } : { ...obstacle.to },
+      ms: kind.ticks * TICK_MS,
+      ...(action.fall && { fall: true }),
     };
   }
 
@@ -1873,6 +2279,8 @@ export class Simulation {
       prayers: [...player.prayers],
       boosts: { ...player.boosts },
       ...(player.firewardUntil !== undefined && { fireward: Math.ceil((player.firewardUntil - this.tick) / 100) }),
+      energy: Math.floor(player.energy),
+      run: player.run,
     };
     const json = JSON.stringify(state);
     if (json === session.lastSelf) return;
@@ -1967,4 +2375,13 @@ function nearestTile(target: { x: number; y: number; size?: number }, from: Poin
     x: Math.max(target.x, Math.min(target.x + last, from.x)),
     y: Math.max(target.y, Math.min(target.y + last, from.y)),
   };
+}
+
+/** "Potato" to "Potatoes", "Sunleaf" to "Sunleaves"... near enough for crops. */
+function plural(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('corn')) return lower;
+  if (/(o|ch|sh)$/.test(lower)) return `${lower}es`;
+  if (lower.endsWith('y')) return `${lower.slice(0, -1)}ies`;
+  return lower.endsWith('s') ? lower : `${lower}s`;
 }

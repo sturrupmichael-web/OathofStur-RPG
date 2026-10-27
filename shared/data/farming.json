@@ -1,0 +1,32 @@
+{
+  "comment": "Farming. Every patch tile is a patch of its own; a group of six or more joined patch tiles is allotments, a smaller group herb patches. Each player has their own crops. A patch starts overgrown (weeds 3); raking takes a level of weeds every rakeTicks for rakeXp, and an empty patch grows a level back every weedTicks. Seeds go in with a seed dibber (seeds of them for that patch). A crop grows a stage every stageMinutes (100 ticks each), and keeps growing while you're away. After each stage but the last it may fall diseased (diseaseChance, or compostDiseaseChance if the patch was composted before planting); a diseased crop stops growing and dies at its next stage unless it gets a plant cure. A grown crop gives yield [min, max] (plus compostYield with compost), one every harvestTicks for harvestXp each; allotments are dug up with a spade, herbs picked by hand. Dead crops are cleared with a spade.",
+  "rakeTicks": 3,
+  "rakeXp": 4,
+  "weedTicks": 300,
+  "plantTicks": 3,
+  "harvestTicks": 2,
+  "clearTicks": 3,
+  "diseaseChance": 0.1,
+  "compostDiseaseChance": 0.04,
+  "compostYield": 2,
+  "offlineCapMinutes": 10080,
+  "patches": {
+    "allotment": { "name": "Allotment", "seeds": 3, "tool": "spade" },
+    "herb": { "name": "Herb patch", "seeds": 1 }
+  },
+  "crops": {
+    "potato": { "patch": "allotment", "seed": "potato_seed", "produce": "potato", "level": 1, "plantXp": 8, "harvestXp": 9, "stages": 4, "stageMinutes": 2, "yield": [4, 7] },
+    "onion": { "patch": "allotment", "seed": "onion_seed", "produce": "onion", "level": 5, "plantXp": 9.5, "harvestXp": 10.5, "stages": 4, "stageMinutes": 2, "yield": [4, 7] },
+    "cabbage": { "patch": "allotment", "seed": "cabbage_seed", "produce": "cabbage", "level": 7, "plantXp": 10, "harvestXp": 11.5, "stages": 4, "stageMinutes": 2.5, "yield": [4, 7] },
+    "tomato": { "patch": "allotment", "seed": "tomato_seed", "produce": "tomato", "level": 12, "plantXp": 12.5, "harvestXp": 14, "stages": 4, "stageMinutes": 3, "yield": [4, 7] },
+    "sweetcorn": { "patch": "allotment", "seed": "sweetcorn_seed", "produce": "sweetcorn", "level": 20, "plantXp": 17, "harvestXp": 19, "stages": 5, "stageMinutes": 3, "yield": [4, 8] },
+    "strawberry": { "patch": "allotment", "seed": "strawberry_seed", "produce": "strawberry", "level": 31, "plantXp": 26, "harvestXp": 29, "stages": 5, "stageMinutes": 3.5, "yield": [4, 8] },
+    "watermelon": { "patch": "allotment", "seed": "watermelon_seed", "produce": "watermelon", "level": 47, "plantXp": 48.5, "harvestXp": 54.5, "stages": 6, "stageMinutes": 4, "yield": [4, 8] },
+    "sunleaf": { "patch": "herb", "seed": "sunleaf_seed", "produce": "grimy_sunleaf", "level": 9, "plantXp": 11, "harvestXp": 12.5, "stages": 4, "stageMinutes": 3, "yield": [3, 6] },
+    "marshwort": { "patch": "herb", "seed": "marshwort_seed", "produce": "grimy_marshwort", "level": 14, "plantXp": 13.5, "harvestXp": 15, "stages": 4, "stageMinutes": 3, "yield": [3, 6] },
+    "duskroot": { "patch": "herb", "seed": "duskroot_seed", "produce": "grimy_duskroot", "level": 26, "plantXp": 21, "harvestXp": 24, "stages": 4, "stageMinutes": 3, "yield": [3, 6] },
+    "silverfern": { "patch": "herb", "seed": "silverfern_seed", "produce": "grimy_silverfern", "level": 32, "plantXp": 27, "harvestXp": 30.5, "stages": 4, "stageMinutes": 3, "yield": [3, 6] },
+    "hawkweed": { "patch": "herb", "seed": "hawkweed_seed", "produce": "grimy_hawkweed", "level": 38, "plantXp": 34, "harvestXp": 38.5, "stages": 4, "stageMinutes": 3, "yield": [3, 6] },
+    "emberbloom": { "patch": "herb", "seed": "emberbloom_seed", "produce": "grimy_emberbloom", "level": 50, "plantXp": 49, "harvestXp": 55, "stages": 4, "stageMinutes": 3, "yield": [3, 6] }
+  }
+}

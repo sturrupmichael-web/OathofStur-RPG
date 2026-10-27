@@ -37,8 +37,10 @@ export type PlayerAction =
   | { kind: 'inscribe'; targetId: EntityId; nextAttempt: number; started?: boolean }
   /** Tending a farming patch: the task is picked on arrival (or by the item used on it), then done every `nextAttempt`. */
   | { kind: 'farm'; targetId: EntityId; itemId?: string; task?: FarmTask; nextAttempt: number }
-  /** Fighting a monster: chase it into reach, then swing whenever the weapon is ready. */
-  | { kind: 'attack'; targetId: EntityId; chasing?: Point };
+  /** Fighting a monster: chase it into reach, then swing whenever the weapon is ready. `spell` is one spell to cast at it. */
+  | { kind: 'attack'; targetId: EntityId; chasing?: Point; spell?: string }
+  /** Teleporting: (chanting until `departAt` for Hearth Recall), vanishing, then arriving at `to` on `arriveAt`. */
+  | { kind: 'teleport'; spell: string; to: Point; departAt: number; arriveAt: number; departed?: boolean };
 
 export type FarmTask = 'rake' | 'plant' | 'compost' | 'cure' | 'harvest' | 'clear';
 
@@ -106,6 +108,8 @@ export interface PlayerEntity {
   lap?: { course: string; next: number };
   /** Their own crops, by patch tile ("x,y"). Patches they never touched are overgrown. */
   farm: Record<string, PatchState>;
+  /** The combat spell a staff casts by itself in a fight. */
+  autocast?: string;
 }
 
 /** A monster at its spawn point. Dead monsters stay in the world, hidden, until they respawn. */

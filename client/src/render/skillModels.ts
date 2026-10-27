@@ -271,6 +271,18 @@ export function buildSkillItem(itemId: string): THREE.Group | null {
       g.add(mesh(C(0.05, 0.055, 0.03, 10), 0xd8d0c0, x, 0.015, z));
       g.add(mesh(C(0.025, 0.025, 0.005, 6), GLYPH_COLOURS[glyph], x, 0.033, z, { emissive: GLYPH_COLOURS[glyph] & 0x3f3f3f }));
     }
+  } else if (itemId.endsWith('staff')) {
+    // A staff lying in the grass, its orb catching the light.
+    const orb = ({ wind: 0xe8f6ff, tide: 0x3d8bff, root: 0x7aa840, ember: 0xff6a1a } as Record<string, number>)[itemId.split('_')[0]];
+    g.add(mesh(C(0.016, 0.02, 1.0, 6).rotateZ(Math.PI / 2), 0x6b4428, 0, 0.02, 0));
+    g.add(mesh(new THREE.SphereGeometry(orb ? 0.045 : 0.028, 10, 8), orb ?? 0x8a5a32, 0.52, 0.04, 0, orb ? { emissive: orb & 0x3f3f3f } : {}));
+  } else if (/^(wizard|starweave)_/.test(itemId)) {
+    // Folded cloth.
+    const cloth = itemId.startsWith('wizard') ? 0x2b3f9e : 0x4b2a7a;
+    if (itemId.endsWith('_hat')) {
+      g.add(mesh(C(0.16, 0.16, 0.01, 14), cloth, 0, 0.01, 0));
+      g.add(mesh(new THREE.ConeGeometry(0.08, 0.26, 12), cloth, 0, 0.14, 0));
+    } else g.add(mesh(B(0.3, 0.05, 0.24), cloth, 0, 0.025, 0), mesh(B(0.3, 0.012, 0.03), itemId.startsWith('wizard') ? 0xd8dcf0 : 0xe0c060, 0, 0.052, 0.08));
   } else if (itemId === 'rake' || itemId === 'spade' || itemId === 'seed_dibber') {
     const len = itemId === 'seed_dibber' ? 0.2 : 0.75;
     g.add(mesh(C(0.014, 0.016, len, 6).rotateZ(Math.PI / 2), 0x8a6a42, 0, 0.02, 0));

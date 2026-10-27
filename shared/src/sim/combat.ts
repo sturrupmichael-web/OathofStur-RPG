@@ -51,6 +51,10 @@ export interface MonsterStats {
   boss?: boolean;
   /** A fire attack used instead of a bite now and then, and from range. It always lands. */
   breath?: { chance: number; maxHit: number; range: number };
+  /** Magic level, which defends against spells (and aims its own). Defence when left out. */
+  magic?: number;
+  /** A spell thrown now and then instead of the usual attack, and from up to `range` tiles. */
+  casts?: { element: string; chance: number; maxHit: number; range: number };
   examine: string;
   drops: Drop[];
 }
@@ -62,16 +66,19 @@ export interface Bonuses {
   attack: number;
   strength: number;
   defence: number;
+  /** Casting bonus: robes and staves raise it, metal armour lowers it. */
+  magic: number;
 }
 
 export function equipmentBonuses(equipment: Equipment): Bonuses {
-  const total: Bonuses = { attack: 0, strength: 0, defence: 0 };
+  const total: Bonuses = { attack: 0, strength: 0, defence: 0, magic: 0 };
   for (const itemId of Object.values(equipment)) {
     const e = itemId ? ITEMS[itemId]?.equip : undefined;
     if (!e) continue;
     total.attack += e.attack ?? 0;
     total.strength += e.strength ?? 0;
     total.defence += e.defence ?? 0;
+    total.magic += e.magic ?? 0;
   }
   return total;
 }
@@ -115,12 +122,31 @@ export function rangedFighter(skills: SkillXp, equipment: Equipment, style: Atta
     attack: ranged,
     strength: ranged,
     defence: effectiveLevel(skills, 'defence', mods) + (style === 'defensive' ? 3 : 0),
-    bonuses: { attack: bow?.attack ?? 0, strength: arrowStrength, defence: worn.defence },
+    bonuses: { attack: bow?.attack ?? 0, strength: arrowStrength, defence: worn.defence, magic: worn.magic },
   };
 }
 
+/** A player casting: Magic to aim, against a monster's Magic. The spell sets the damage, not the fighter. */
+export function magicFighter(skills: SkillXp, equipment: Equipment, mods: LevelMods = {}): Fighter {
+  const worn = equipmentBonuses(equipment);
+  return { attack: effectiveLevel(skills, 'magic', mods), strength: 0, defence: effectiveLevel(skills, 'defence', mods), bonuses: { ...worn, attack: worn.magic } };
+}
+
+/** A player warding off a spell: mostly Magic, a little Defence, and the casting bonus of what they wear. */
+export function magicDefender(skills: SkillXp, equipment: Equipment, mods: LevelMods = {}): Fighter {
+  const worn = equipmentBonuses(equipment);
+  const defence = Math.floor(0.7 * effectiveLevel(skills, 'magic', mods) + 0.3 * effectiveLevel(skills, 'defence', mods));
+  return { attack: 0, strength: 0, defence, bonuses: { ...worn, defence: worn.magic } };
+}
+
 export function monsterFighter(m: MonsterStats): Fighter {
-  return { attack: m.attack, strength: m.strength, defence: m.defence, bonuses: { attack: 0, strength: 0, defence: 0 } };
+  return { attack: m.attack, strength: m.strength, defence: m.defence, bonuses: { attack: 0, strength: 0, defence: 0, magic: 0 } };
+}
+
+/** A monster against spells: its Magic level does the defending. */
+export function monsterMagicFighter(m: MonsterStats): Fighter {
+  const magic = m.magic ?? m.defence;
+  return { attack: magic, strength: 0, defence: magic, bonuses: { attack: 0, strength: 0, defence: 0, magic: 0 } };
 }
 
 /**

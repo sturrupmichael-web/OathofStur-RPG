@@ -57,7 +57,19 @@ export type SoundName =
   | 'quest'
   | 'quest_complete'
   | 'coins'
-  | 'click';
+  | 'click'
+  | 'cast_wind'
+  | 'cast_tide'
+  | 'cast_root'
+  | 'cast_ember'
+  | 'spell_hit'
+  | 'splash'
+  | 'teleport'
+  | 'arrive'
+  | 'recall'
+  | 'gild'
+  | 'forge'
+  | 'autocast';
 
 const STORE_KEY = 'oathofstur.sound';
 
@@ -295,6 +307,59 @@ const RECIPES: Record<SoundName, (v: Voice) => void> = {
   },
   // The glyphs take: a bright little arpeggio.
   inscribe_done: (v) => v.tune('sine', [[784, 0, 0.3], [988, 0.08, 0.3], [1319, 0.16, 0.5]], 0.12),
+  // Spells leaving the hand, one sound per element: a gust, a gush, a grinding rush, a roar of flame.
+  cast_wind: (v) => {
+    v.hiss('bandpass', 600, 2600, 0.4, 0, 0.06, 0.45, 2);
+    v.tone('sine', 700, 1400, 0.05, 0, 0.05, 0.35);
+  },
+  cast_tide: (v) => {
+    v.hiss('lowpass', 2400, 700, 0.45, 0, 0.03, 0.4, 1.2);
+    v.tone('sine', 520, 260, 0.08, 0.02, 0.03, 0.3, 18);
+  },
+  cast_root: (v) => {
+    v.hiss('lowpass', 500, 180, 0.6, 0, 0.02, 0.45, 2);
+    v.tone('triangle', 140, 70, 0.12, 0, 0.02, 0.35);
+  },
+  cast_ember: (v) => {
+    v.hiss('bandpass', 900, 400, 0.55, 0, 0.04, 0.45, 0.8);
+    v.tone('sawtooth', 180, 120, 0.05, 0, 0.04, 0.35, 9);
+  },
+  // A spell striking home, and one fizzling out against its target.
+  spell_hit: (v) => {
+    v.hiss('lowpass', 1800, 300, 0.7, 0, 0.003, 0.3);
+    v.tone('sine', 300, 90, 0.15, 0, 0.003, 0.25);
+  },
+  splash: (v) => {
+    v.hiss('highpass', 2500, 5000, 0.25, 0, 0.005, 0.25);
+    v.tone('sine', 900, 400, 0.04, 0, 0.005, 0.2);
+  },
+  // Teleporting away: a rising shimmer. Arriving: it settles.
+  teleport: (v) => {
+    v.tune('sine', [[523, 0, 0.5], [659, 0.1, 0.5], [784, 0.2, 0.5], [1047, 0.3, 0.8]], 0.08);
+    v.hiss('bandpass', 1500, 6000, 0.18, 0.1, 0.4, 1.4, 3);
+  },
+  arrive: (v) => {
+    v.tone('sine', 1568, 784, 0.07, 0, 0.01, 0.6);
+    v.hiss('bandpass', 5000, 1200, 0.15, 0, 0.01, 0.5, 3);
+  },
+  // The Hearth Recall chant: a low hum that swells.
+  recall: (v) => {
+    v.tone('triangle', 196, 196, 0.07, 0, 0.4, 1.4, 4);
+    v.tone('sine', 294, 294, 0.05, 0.1, 0.4, 1.4, 3);
+  },
+  // Gilding: a chime and the clink of new coins.
+  gild: (v) => {
+    v.tune('sine', [[1319, 0, 0.3], [1760, 0.06, 0.4]], 0.07);
+    v.tone('square', 3200, 2800, 0.03, 0.35, 0.002, 0.42);
+    v.tone('square', 3600, 3100, 0.03, 0.45, 0.002, 0.52);
+  },
+  // Forge Touch: a whoomph of heat and a hiss.
+  forge: (v) => {
+    v.hiss('lowpass', 300, 1500, 0.6, 0, 0.08, 0.5, 1);
+    v.hiss('highpass', 3000, 6000, 0.15, 0.3, 0.05, 0.8);
+  },
+  // Picking a spell for the staff.
+  autocast: (v) => v.tune('sine', [[880, 0, 0.12], [1175, 0.07, 0.2]], 0.08),
   // Rake tines dragged through soil.
   rake: (v) => v.hiss('bandpass', 1800, 1200, 0.3, 0, 0.05, 0.35, 1.5),
   // A spade bites into earth.

@@ -23,7 +23,7 @@ export interface CharacterStyle {
   hairStyle?: 'short' | 'long' | 'bun' | 'none';
   beard?: number;
   cape?: number;
-  hat?: 'cap' | 'chef' | 'hood';
+  hat?: 'cap' | 'chef' | 'hood' | 'wizard';
   hatColor?: number;
   apron?: number;
   robe?: number;
@@ -52,7 +52,13 @@ export interface CharacterStyle {
   legsMetal?: boolean;
 }
 
-type WeaponKind = 'dagger' | 'sword' | 'scimitar' | 'axe' | 'pickaxe' | 'shortbow' | 'longbow';
+type WeaponKind = 'dagger' | 'sword' | 'scimitar' | 'axe' | 'pickaxe' | 'shortbow' | 'longbow' | 'staff';
+
+/** Orbs on elemental staves, by element; a plain staff has none. */
+const STAFF_ORBS: Record<string, number> = { wind: 0xe8f6ff, tide: 0x3d8bff, root: 0x7aa840, ember: 0xff6a1a };
+
+/** Cloth for each set of robes: the cloth, and the trim. */
+const ROBES: Record<string, [number, number]> = { wizard: [0x2b3f9e, 0xd8dcf0], starweave: [0x4b2a7a, 0xe0c060] };
 
 /** Bow wood by the log it was carved from. */
 const BOW_WOOD: Record<string, number> = { oak: 0xa87a44, willow: 0xc2a265, yew: 0x7a3f22 };
@@ -68,11 +74,20 @@ export function withGear(base: CharacterStyle, gear: Partial<Record<string, stri
   if (!gear) return base;
   const metal = (id: string | undefined) => (id ? METALS[id.split('_')[0]] : undefined);
   const s: CharacterStyle = { ...base };
-  if (gear.helmet) [s.helm, s.hat, s.hairStyle] = [metal(gear.helmet), undefined, 'none'];
+  const robe = (id: string | undefined) => (id ? ROBES[id.split('_')[0]] : undefined);
+  const hat = robe(gear.helmet);
+  if (hat) [s.hat, s.hatColor, s.trim] = ['wizard', hat[0], s.trim ?? hat[1]];
+  else if (gear.helmet) [s.helm, s.hat, s.hairStyle] = [metal(gear.helmet), undefined, 'none'];
   if (gear.shield) s.shield = metal(gear.shield);
-  if (gear.body) [s.tunic, s.trim, s.bodyMetal] = [shadeHex(metal(gear.body)!, 0.82), metal(gear.body), true];
-  if (gear.legs) [s.trousers, s.bootCuff, s.legsMetal] = [shadeHex(metal(gear.legs)!, 0.9), undefined, true];
-  if (gear.weapon) {
+  const top = robe(gear.body);
+  if (top) [s.tunic, s.trim, s.cape] = [top[0], top[1], undefined];
+  else if (gear.body) [s.tunic, s.trim, s.bodyMetal] = [shadeHex(metal(gear.body)!, 0.82), metal(gear.body), true];
+  const skirt = robe(gear.legs);
+  // Skirts fall to the ground like a robe.
+  if (skirt) [s.trousers, s.robe, s.bootCuff] = [skirt[0], skirt[0], undefined];
+  else if (gear.legs) [s.trousers, s.bootCuff, s.legsMetal] = [shadeHex(metal(gear.legs)!, 0.9), undefined, true];
+  if (gear.weapon?.endsWith('staff')) s.weapon = { kind: 'staff', color: STAFF_ORBS[gear.weapon.split('_')[0]] ?? 0 };
+  else if (gear.weapon) {
     const kind = weaponKind(gear.weapon);
     const bow = kind === 'shortbow' || kind === 'longbow';
     s.weapon = { kind, color: bow ? (BOW_WOOD[gear.weapon.split('_')[0]] ?? 0x8a5a2e) : (metal(gear.weapon) ?? 0x9a9ca4) };
@@ -437,6 +452,8 @@ export interface CharacterRig {
   weapon: THREE.Object3D | null;
   /** Holds a bow, so fights from a drawn stance. */
   archer: boolean;
+  /** The head of a staff in hand, where spells leave from. */
+  staffTip: THREE.Object3D | null;
   /** A one-off animation (attack, block, eat) playing over everything else. */
   oneShot: { kind: string; start: number } | null;
   /** 0 = standing, 1 = lying dead. */
@@ -476,9 +493,11 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
 
   // Held item in the right hand
   const grip = bones.handR;
+  let staffTip: THREE.Object3D | null = null;
   if (s.holding === 'staff') {
     grip.add(part(new THREE.CylinderGeometry(0.016, 0.02, 1.3, 7), 0x7a5230, 0, 0.12, 0.02));
-    grip.add(part(new THREE.OctahedronGeometry(0.05), 0x8fe0ff, 0, 0.8, 0.02, 0x2a6aa0));
+    staffTip = part(new THREE.OctahedronGeometry(0.05), 0x8fe0ff, 0, 0.8, 0.02, 0x2a6aa0);
+    grip.add(staffTip);
   }
   if (s.holding === 'scroll') {
     grip.add(part(new THREE.CylinderGeometry(0.022, 0.022, 0.18, 10).rotateX(Math.PI / 2), 0xeee0b8, 0, -0.06, 0.03));
@@ -503,6 +522,10 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
     weapon = buildBow(s.weapon.kind === 'longbow' ? 0.56 : 0.4, s.weapon.color);
     bones.handL.add(weapon);
     bones.torso.add(buildQuiver(s.bulk ?? 1));
+  } else if (s.weapon?.kind === 'staff') {
+    weapon = buildStaff(s.weapon.color);
+    staffTip = weapon.getObjectByName('staff-tip') ?? null;
+    grip.add(weapon);
   } else if (s.weapon) {
     weapon = buildBlade(s.weapon.kind, s.weapon.color);
     grip.add(weapon);
@@ -578,6 +601,7 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
     seed,
     weapon,
     archer,
+    staffTip,
     oneShot: null,
     fallen: 0,
     ghost,
@@ -634,6 +658,36 @@ function buildQuiver(bulk: number): THREE.Group {
   }
   g.position.set(0.07, BODY.shoulderY - 0.2, -0.1 * bulk);
   g.rotation.set(-0.12, 0, -0.42);
+  return g;
+}
+
+/**
+ * A staff held upright in the right hand: a long shaft, iron-shod at the
+ * foot, with a glowing orb in a carved cradle (or a plain knob) at the head.
+ */
+function buildStaff(orb: number): THREE.Group {
+  const g = new THREE.Group();
+  g.add(part(new THREE.CylinderGeometry(0.017, 0.021, 1.25, 7), 0x6b4428, 0, 0.12, 0.02));
+  g.add(metalPart(new THREE.CylinderGeometry(0.022, 0.016, 0.06, 7), 0x55575c, 0, -0.5, 0.02));
+  const head = new THREE.Group();
+  head.position.set(0, 0.76, 0.02);
+  g.add(head);
+  if (orb) {
+    // Three prongs curl up round the orb.
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const prong = part(new THREE.CylinderGeometry(0.006, 0.01, 0.11, 5).translate(0, 0.05, 0), 0x6b4428, Math.cos(a) * 0.022, -0.01, Math.sin(a) * 0.022);
+      prong.rotation.set(Math.sin(a) * 0.45, 0, -Math.cos(a) * 0.45);
+      head.add(prong);
+    }
+    const tip = part(new THREE.SphereGeometry(0.042, 14, 10), orb, 0, 0.06, 0, shadeHex(orb, 0.55));
+    tip.name = 'staff-tip';
+    head.add(tip);
+  } else {
+    const tip = part(new THREE.SphereGeometry(0.03, 10, 8), 0x8a5a32, 0, 0.0, 0);
+    tip.name = 'staff-tip';
+    head.add(tip);
+  }
   return g;
 }
 
@@ -718,7 +772,8 @@ const TOOL_MODELS: Record<string, () => THREE.Group> = {
     g.add(hoop);
     const netting = new THREE.MeshLambertMaterial({ color: 0xe8e0c8, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.16, 8, 1, true), netting);
-    mesh.rotation.z = Math.PI / 2;
+    // The open end sits on the hoop and the bag hangs away from it.
+    mesh.rotation.z = -Math.PI / 2;
     mesh.position.set(0.08, 0.47, 0.02);
     g.add(mesh);
     g.rotation.x = Math.PI / 2;
@@ -1079,6 +1134,14 @@ const ACTIVITIES: Record<string, { period: number; pose: (u: number) => Pose }> 
     },
   },
   // Inscribing: both hands raised to the shrine, the shards held up to its light, a slow pulse.
+  // Chanting Hearth Recall: arms held low and open, palms up, rising and falling with the words.
+  recall: {
+    period: 2400,
+    pose: (u) => {
+      const breath = Math.sin(u * Math.PI * 2);
+      return { shoulderRx: -0.55 - 0.1 * breath, shoulderLx: -0.55 - 0.1 * breath, shoulderRz: 0.55 + 0.12 * breath, shoulderLz: -0.55 - 0.12 * breath, elbowR: -0.5, elbowL: -0.5, headX: -0.18 - 0.06 * breath, torsoX: -0.05 };
+    },
+  },
   inscribe: {
     period: 1800,
     pose: (u) => {
@@ -1190,6 +1253,10 @@ export function activityPhase(rig: CharacterRig, activity: string, now: number):
   return anim ? ((now + rig.seed * 1000) % anim.period) / anim.period : null;
 }
 
+/** How long a cast takes, and where in it the spell leaves the hand. */
+export const CAST_MS = 1000;
+export const CAST_RELEASE = 0.5;
+
 /** How long a bow shot takes, and where in it the arrow leaves the string. */
 export const SHOOT_MS = 900;
 export const SHOOT_RELEASE = 0.6;
@@ -1263,6 +1330,63 @@ const ONE_SHOTS: Record<string, { ms: number; pose: (u: number) => Pose }> = {
         hipL: -0.15 * raise,
         kneeL: 0.12 * raise,
       };
+    },
+  },
+  // A spell: draw the staff (or hand) back, then thrust it at the target, the other hand flung out to steady it.
+  cast: {
+    ms: CAST_MS,
+    pose: (u) => {
+      const draw = u < CAST_RELEASE ? Math.sin((u / CAST_RELEASE) * Math.PI * 0.5) : 1 - (u - CAST_RELEASE) / (1 - CAST_RELEASE);
+      const thrust = u < CAST_RELEASE ? 0 : Math.sin(((u - CAST_RELEASE) / (1 - CAST_RELEASE)) * Math.PI);
+      const k = Math.min(1, u * 4);
+      return {
+        shoulderRx: (-0.35 - 0.5 * draw - 1.05 * thrust) * k,
+        shoulderRz: 0.25 * draw * k,
+        elbowR: (-1.3 * draw - 0.15 * thrust) * k,
+        shoulderLx: (-0.5 - 0.6 * thrust) * k,
+        shoulderLz: -0.35 * thrust * k,
+        elbowL: (-0.9 + 0.6 * thrust) * k,
+        torsoY: (0.3 * draw - 0.2 * thrust) * k,
+        torsoX: (-0.06 * draw + 0.18 * thrust) * k,
+        headX: 0.06 * thrust,
+        hipL: -0.3 * thrust,
+        kneeL: 0.3 * thrust,
+      };
+    },
+  },
+  // Teleporting: arms swept up overhead, head thrown back, up on the toes as the light takes you.
+  teleport: {
+    ms: 1800,
+    pose: (u) => {
+      const up = Math.min(1, u / 0.35);
+      const rise = Math.max(0, (u - 0.4) / 0.6);
+      return { shoulderRx: -2.9 * up, shoulderLx: -2.9 * up, shoulderRz: 0.25 * up, shoulderLz: -0.25 * up, elbowR: -0.15, elbowL: -0.15, headX: -0.45 * up, torsoX: -0.12 * up, hipsY: 0.05 * rise };
+    },
+  },
+  // Arriving: landing in a crouch, arms out, then standing.
+  arrive: {
+    ms: 900,
+    pose: (u) => {
+      const k = 1 - u;
+      return { hipsY: -0.12 * k, hipL: -0.45 * k, hipR: -0.45 * k, kneeL: 0.8 * k, kneeR: 0.8 * k, torsoX: 0.25 * k, shoulderRz: 0.8 * k, shoulderLz: -0.8 * k, shoulderRx: -0.3 * k, shoulderLx: -0.3 * k };
+    },
+  },
+  // Gilding: the item on the left palm, the right hand passing slowly over it.
+  gild: {
+    ms: 1200,
+    pose: (u) => {
+      const k = Math.min(1, Math.sin(u * Math.PI) * 2);
+      const pass = Math.sin(u * Math.PI * 2);
+      return { shoulderLx: -1.0 * k, shoulderLz: 0.2 * k, elbowL: -1.0 * k, shoulderRx: (-1.15 - 0.15 * pass) * k, shoulderRz: (-0.55 + 0.25 * pass) * k, elbowR: -0.9 * k, headX: 0.35 * k, torsoX: 0.08 * k };
+    },
+  },
+  // Forge Touch: the ore cupped in both hands, which shake with the heat.
+  forge: {
+    ms: 1200,
+    pose: (u) => {
+      const k = Math.min(1, Math.sin(u * Math.PI) * 2);
+      const shake = Math.sin(u * Math.PI * 18) * 0.04 * k;
+      return { shoulderRx: (-1.0 + shake) * k, shoulderLx: (-1.0 - shake) * k, shoulderRz: -0.42 * k, shoulderLz: 0.42 * k, elbowR: -1.15 * k, elbowL: -1.15 * k, headX: 0.3 * k, torsoX: 0.1 * k };
     },
   },
   // Monsters with a club or blade: a heavy overhead blow.

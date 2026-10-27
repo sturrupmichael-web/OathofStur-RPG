@@ -1,0 +1,36 @@
+{
+  "comment": "The spellbook. glyphs lists what one cast uses up (an elemental staff stands in for its own element). Combat spells hit for 1 to maxHit and give xp per cast plus 2 per point of damage. range is in tiles; a cast takes castTicks. Teleports land on the nearest open tile to `to`. Hearth Recall needs no glyphs but has to be chanted for recallTicks, and can't be done in a fight.",
+  "range": 10,
+  "castTicks": 5,
+  "teleportTicks": 3,
+  "recallTicks": 10,
+  "xpPerDamage": 2,
+  "spells": [
+    { "id": "wind_spark", "name": "Wind Spark", "kind": "combat", "element": "wind", "tier": 1, "level": 1, "maxHit": 2, "xp": 5.5, "glyphs": { "wind": 1, "thought": 1 }, "description": "A gust that stings." },
+    { "id": "tide_spark", "name": "Tide Spark", "kind": "combat", "element": "tide", "tier": 1, "level": 5, "maxHit": 4, "xp": 7.5, "glyphs": { "wind": 1, "tide": 1, "thought": 1 }, "description": "A splash of cold water, thrown hard." },
+    { "id": "root_spark", "name": "Root Spark", "kind": "combat", "element": "root", "tier": 1, "level": 9, "maxHit": 6, "xp": 9.5, "glyphs": { "wind": 1, "root": 2, "thought": 1 }, "description": "A clod of earth that flies like a stone." },
+    { "id": "ember_spark", "name": "Ember Spark", "kind": "combat", "element": "ember", "tier": 1, "level": 13, "maxHit": 8, "xp": 11.5, "glyphs": { "wind": 2, "ember": 3, "thought": 1 }, "description": "A spitting coal." },
+    { "id": "wind_bolt", "name": "Wind Bolt", "kind": "combat", "element": "wind", "tier": 2, "level": 17, "maxHit": 9, "xp": 13.5, "glyphs": { "wind": 2, "storm": 1 }, "description": "A twisting bolt of air." },
+    { "id": "tide_bolt", "name": "Tide Bolt", "kind": "combat", "element": "tide", "tier": 2, "level": 23, "maxHit": 10, "xp": 16.5, "glyphs": { "wind": 2, "tide": 2, "storm": 1 }, "description": "A bolt of churning water." },
+    { "id": "root_bolt", "name": "Root Bolt", "kind": "combat", "element": "root", "tier": 2, "level": 29, "maxHit": 11, "xp": 19.5, "glyphs": { "wind": 2, "root": 3, "storm": 1 }, "description": "A bolt of packed earth." },
+    { "id": "ember_bolt", "name": "Ember Bolt", "kind": "combat", "element": "ember", "tier": 2, "level": 35, "maxHit": 12, "xp": 22.5, "glyphs": { "wind": 3, "ember": 4, "storm": 1 }, "description": "A bolt of flame." },
+    { "id": "wind_lance", "name": "Wind Lance", "kind": "combat", "element": "wind", "tier": 3, "level": 41, "maxHit": 13, "xp": 25.5, "glyphs": { "wind": 3, "dusk": 1 }, "description": "Air pressed to a point." },
+    { "id": "tide_lance", "name": "Tide Lance", "kind": "combat", "element": "tide", "tier": 3, "level": 47, "maxHit": 14, "xp": 28.5, "glyphs": { "wind": 3, "tide": 3, "dusk": 1 }, "description": "A spear of ice-cold water." },
+    { "id": "root_lance", "name": "Root Lance", "kind": "combat", "element": "root", "tier": 3, "level": 53, "maxHit": 15, "xp": 31.5, "glyphs": { "wind": 3, "root": 4, "dusk": 1 }, "description": "A shard of stone torn from the ground." },
+    { "id": "ember_lance", "name": "Ember Lance", "kind": "combat", "element": "ember", "tier": 3, "level": 59, "maxHit": 16, "xp": 34.5, "glyphs": { "wind": 4, "ember": 5, "dusk": 1 }, "description": "A white-hot spear of fire." },
+    { "id": "wind_surge", "name": "Wind Surge", "kind": "combat", "element": "wind", "tier": 4, "level": 62, "maxHit": 17, "xp": 36, "glyphs": { "wind": 5, "crimson": 1 }, "description": "A gale, all at once." },
+    { "id": "tide_surge", "name": "Tide Surge", "kind": "combat", "element": "tide", "tier": 4, "level": 65, "maxHit": 18, "xp": 37.5, "glyphs": { "wind": 5, "tide": 7, "crimson": 1 }, "description": "A wave from nowhere." },
+    { "id": "root_surge", "name": "Root Surge", "kind": "combat", "element": "root", "tier": 4, "level": 70, "maxHit": 19, "xp": 40, "glyphs": { "wind": 5, "root": 7, "crimson": 1 }, "description": "The ground itself rises up." },
+    { "id": "ember_surge", "name": "Ember Surge", "kind": "combat", "element": "ember", "tier": 4, "level": 75, "maxHit": 20, "xp": 42.5, "glyphs": { "wind": 5, "ember": 7, "crimson": 1 }, "description": "A roaring column of fire." },
+
+    { "id": "hearth_recall", "name": "Hearth Recall", "kind": "teleport", "level": 1, "xp": 0, "glyphs": {}, "to": { "x": 190, "y": 119 }, "place": "Kelmoor", "recall": true, "description": "Chant the way home to Kelmoor. Slow, but it costs nothing." },
+    { "id": "kelmoor_teleport", "name": "Kelmoor Teleport", "kind": "teleport", "level": 25, "xp": 35, "glyphs": { "oath": 1, "wind": 3, "ember": 1 }, "to": { "x": 190, "y": 116 }, "place": "Kelmoor Square", "description": "To Kelmoor Square, by the fountain." },
+    { "id": "falcrest_teleport", "name": "Falcrest Teleport", "kind": "teleport", "level": 31, "xp": 41, "glyphs": { "oath": 1, "wind": 3, "root": 1 }, "to": { "x": 63, "y": 141 }, "place": "Falcrest Square", "description": "To Falcrest Square." },
+    { "id": "brightwater_teleport", "name": "Brightwater Teleport", "kind": "teleport", "level": 37, "xp": 48, "glyphs": { "oath": 1, "wind": 5 }, "to": { "x": 196, "y": 228 }, "place": "Brightwater", "description": "To the gates of Brightwater Castle." },
+    { "id": "qadir_teleport", "name": "Qadir Teleport", "kind": "teleport", "level": 45, "xp": 55.5, "glyphs": { "oath": 2, "wind": 2, "tide": 2 }, "to": { "x": 313, "y": 180 }, "place": "Qadir Bazaar", "description": "To the Qadir Bazaar, in the desert." },
+
+    { "id": "lesser_gilding", "name": "Lesser Gilding", "kind": "item", "effect": "gild", "rate": 0.5, "level": 21, "xp": 31, "glyphs": { "ember": 3, "bloom": 1 }, "description": "Turns an item to coins: half what a shop asks for it." },
+    { "id": "forge_touch", "name": "Forge Touch", "kind": "item", "effect": "smelt", "level": 43, "xp": 53, "glyphs": { "ember": 4, "bloom": 1 }, "description": "Smelts ore in the hand, no furnace needed. Gives Smithing XP too." },
+    { "id": "greater_gilding", "name": "Greater Gilding", "kind": "item", "effect": "gild", "rate": 0.75, "level": 55, "xp": 65, "glyphs": { "ember": 5, "bloom": 1 }, "description": "Turns an item to coins: three quarters of what a shop asks for it." }
+  ]
+}

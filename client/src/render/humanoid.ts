@@ -448,6 +448,23 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
       { radial: 16 },
     );
   }
+  if (s.hat === 'wizard') {
+    // A tall pointed hat with a wide brim, the tip bent back a little.
+    b.add(headShell(1.1, (u) => u.y > 0.22 - u.z * 0.12).translate(headC.x, headC.y, headC.z), () => hat, () => [[head, 1]]);
+    const cone: [number, number, number][] = [
+      [0.045, 0.15, 0],
+      [0.055, 0.092, 0],
+      [0.1, 0.075, -0.004],
+      [0.16, 0.055, -0.012],
+      [0.22, 0.036, -0.026],
+      [0.27, 0.018, -0.046],
+      [0.3, 0.004, -0.068],
+    ];
+    b.tube(
+      cone.map(([dy, r, dz], i) => ring(headC.x, headC.y + dy, headC.z - 0.006 + dz, r, r, i === 1 && s.trim !== undefined ? s.trim : hat, [[head, 1]])),
+      { radial: 18 },
+    );
+  }
   if (s.helm !== undefined) {
     // An open-faced helm with a nose guard and a rim.
     b.add(

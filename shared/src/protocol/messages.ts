@@ -11,7 +11,7 @@ import type { SaveData } from '../sim/save';
 import type { SkillId, SkillXp } from '../sim/skills';
 
 /** Bumped whenever a message shape changes, so client and server can refuse a mismatch. */
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 
 // ---------------------------------------------------------------------------
 // Client -> server. Intents only: the simulation validates and decides outcomes.
@@ -31,6 +31,10 @@ export type ClientMessage =
   | { type: 'useOn'; slot: number; targetId: EntityId }
   /** Turn running on or off. */
   | { type: 'setRun'; on: boolean }
+  /** Cast a spell: a combat spell at a monster, an item spell on a pack slot, a teleport on its own. */
+  | { type: 'cast'; spell: string; targetId?: EntityId; slot?: number }
+  /** Pick the combat spell a staff casts by itself (null for none). */
+  | { type: 'setAutocast'; spell: string | null }
   /** In a conversation: pick an option, or (option 0 on a page without options) carry on. */
   | { type: 'dialogueChoice'; option: number }
   | { type: 'examine'; targetId: EntityId }
@@ -98,7 +102,7 @@ export interface PublicEntity {
   /** Players and monsters: fallen and playing the death animation. */
   dead?: boolean;
   /** Players: a ward prayer that is on, shown over their head. */
-  overhead?: 'ward_of_blades' | 'ember_ward';
+  overhead?: 'ward_of_blades' | 'ward_of_spells' | 'ember_ward';
   /** Players: the tile they ran through this tick, when they moved two. */
   via?: Point;
   /** Players: crossing an agility obstacle, from one tile to another over `ms`. A fall ends on the obstacle and drops off its side. */
@@ -107,7 +111,7 @@ export interface PublicEntity {
   patch?: PatchView;
 }
 
-export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith' | 'fletch' | 'light' | 'clean' | 'mix' | 'offer' | 'inscribe' | 'rake' | 'plant' | 'dig' | 'pick';
+export type Activity = 'chop' | 'mine' | 'net' | 'rod' | 'cook' | 'smelt' | 'smith' | 'fletch' | 'light' | 'clean' | 'mix' | 'offer' | 'inscribe' | 'rake' | 'plant' | 'dig' | 'pick' | 'recall';
 
 /**
  * One-off animations, sent as they happen. Players: punch, stab, slash, block, eat, death.
@@ -157,6 +161,8 @@ export interface SelfState {
   /** Run energy, 0 to 100 (rounded down), and whether running is on. */
   energy: number;
   run: boolean;
+  /** The combat spell the staff casts by itself, if one is picked. */
+  autocast: string | null;
 }
 
 export type GameMessageKind = 'info' | 'warn' | 'examine' | 'quest' | 'levelup';
@@ -169,7 +175,8 @@ export type ServerMessage =
   | { type: 'gameMessage'; text: string; kind: GameMessageKind }
   | { type: 'xpDrop'; skill: SkillId; amount: number }
   | { type: 'levelUp'; skill: SkillId; level: number }
-  | { type: 'hit'; attackerId: EntityId; targetId: EntityId; damage: number; hp: number; maxHp: number }
+  /** A blow, arrow or spell landing (damage 0 is a miss). `spell` says a spell was thrown, and how it looks in flight. */
+  | { type: 'hit'; attackerId: EntityId; targetId: EntityId; damage: number; hp: number; maxHp: number; spell?: { element: string; tier: number } }
   | { type: 'animation'; entityId: EntityId; kind: AnimationKind }
   | { type: 'saveData'; save: SaveData }
   /** A quest finished: the scroll with what you got. */

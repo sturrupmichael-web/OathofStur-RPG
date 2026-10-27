@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PATCH_KINDS, areaAt, glyphForArea, isBow, obstacleAt, type EntityId, type MapData, type WorldGrid } from '@rpg/shared';
-import type { ClientState, EntityView } from '../state/ClientState';
-import { CHARACTER_STYLES, SHOOT_MS, SHOOT_RELEASE, activityPhase, animateCharacter, buildCharacter, characterBusy, crossingPose, playCharacter, styleForNpc, withGear, type CharacterRig } from './character';
+import type { ClientState, EntityView, HitEvent } from '../state/ClientState';
+import { CAST_MS, CAST_RELEASE, CHARACTER_STYLES, SHOOT_MS, SHOOT_RELEASE, activityPhase, animateCharacter, buildCharacter, characterBusy, crossingPose, playCharacter, styleForNpc, withGear, type CharacterRig } from './character';
 import { animateCreature, buildCreature, creatureBusy, isCreature, playCreature, shotMs, type CreatureRig } from './creatures';
 import { disposeModel } from './dispose';
 import { Effects } from './effects';
@@ -38,6 +38,8 @@ export class EntityLayer {
   onImpact: ((id: EntityId, activity: string) => void) | null = null;
   private readonly workPhase = new Map<EntityId, number>();
   /** Rope swings by tile, so the rope can swing with whoever is on it. */
+  /** Who has a Hearth Recall ring going. */
+  private readonly chanting = new Set<EntityId>();
   private readonly ropes = new Map<string, THREE.Object3D>();
 
   constructor(
@@ -91,12 +93,16 @@ export class EntityLayer {
     });
     state.on('animation', ({ entityId, kind }) => this.play(entityId, kind, performance.now()));
     // Whoever is hit flinches as the blow lands, unless busy with a move of their own.
-    // An archer's arrow flies first, and the flinch waits for it to land.
-    state.on('hit', ({ attackerId, targetId }) => {
+    // An archer's arrow or a mage's spell flies first, and the flinch waits for it to land.
+    state.on('hit', (hit) => {
+      const { attackerId, targetId } = hit;
       const now = performance.now();
       let lands = now + 220;
-      const flight = arrowFlight(state, attackerId, targetId);
-      if (flight) {
+      const flight = missileFlight(state, hit);
+      if (flight && hit.spell) {
+        this.effects.bolt(() => this.handOf(attackerId), () => this.chestOf(targetId), now + flight.loose, flight.ms, hit.spell.element, hit.spell.tier, hit.damage === 0);
+        lands = now + flight.loose + flight.ms;
+      } else if (flight) {
         this.effects.shoot(() => this.chestOf(attackerId), () => this.chestOf(targetId), now + flight.loose, flight.ms);
         lands = now + flight.loose + flight.ms;
       }
@@ -335,6 +341,11 @@ export class EntityLayer {
       if (u !== null && was !== undefined && at.some((p) => (was < p && u >= p) || (u < was && (p > was || u >= p)))) this.onImpact?.(id, view.data.activity);
       if (u !== null) this.workPhase.set(id, u);
     } else this.workPhase.delete(id);
+    // Chanting Hearth Recall: a ring of light gathers at the feet for as long as the chant goes on.
+    if (work && view.data.activity === 'recall' && !this.chanting.has(id)) {
+      this.chanting.add(id);
+      this.effects.fountain(() => (this.state.entities.get(id)?.data.activity === 'recall' ? obj.position.clone() : (this.chanting.delete(id), null)), 0x8fd4ff, now, 7000, 'ring', 45);
+    }
     const creature = this.creatures.get(id);
     if (creature) animateCreature(creature, dt, now, moving, speed, fighting, dead);
   }
@@ -343,9 +354,24 @@ export class EntityLayer {
   play(id: EntityId, kind: string, now: number): void {
     const rig = this.rigs.get(id);
     if (rig) playCharacter(rig, kind, now);
+    const feet = () => this.meshes.get(id)?.position.clone() ?? null;
+    const hands = () => this.handOf(id);
+    // Magic: light pouring up round a teleport, falling round an arrival, gold or fire in the hands.
+    if (kind === 'teleport') this.effects.fountain(feet, 0xb98cff, now + 200, 1500, 'rise', 90);
+    if (kind === 'arrive') this.effects.fountain(feet, 0xb98cff, now, 700, 'fall', 70);
+    if (kind === 'gild') this.effects.fountain(hands, 0xffd24a, now + 300, 700, 'hands', 70);
+    if (kind === 'forge') this.effects.fountain(hands, 0xff8a2a, now + 250, 800, 'hands', 80);
     const creature = this.creatures.get(id);
     if (creature) playCreature(creature, kind, now);
     if (creature && kind === 'breath') this.effects.breathe(creature, now, shotMs(creature, kind), () => this.chestOf(this.state.entities.get(id)?.data.interacting));
+  }
+
+  /** Where a caster's spell leaves from: the staff's head, or the right hand. */
+  private handOf(id: EntityId | undefined): THREE.Vector3 | null {
+    const rig = id !== undefined ? this.rigs.get(id) : undefined;
+    if (!rig) return this.chestOf(id);
+    const tip = rig.staffTip ?? rig.handR;
+    return tip.getWorldPosition(new THREE.Vector3());
   }
 
   /** Roughly where someone's chest is, in world space, for aiming effects at them. */
@@ -381,15 +407,15 @@ export class EntityLayer {
 }
 
 /**
- * When an archer's arrow leaves the string and how long it flies (ms), or
- * null if the attacker has no bow. Splats and sounds wait for it to land.
+ * When an archer's arrow (or a spell) leaves and how long it flies (ms), or
+ * null for a blow in reach. Splats and sounds wait for it to land.
  */
-export function arrowFlight(state: ClientState, attackerId: EntityId, targetId: EntityId): { loose: number; ms: number } | null {
-  const from = state.entities.get(attackerId);
-  if (!isBow(from?.data.gear?.weapon)) return null;
-  const to = state.entities.get(targetId);
-  const tiles = to ? Math.hypot(to.toX - from!.toX, to.toY - from!.toY) : 4;
-  return { loose: SHOOT_MS * SHOOT_RELEASE, ms: 120 + tiles * 45 };
+export function missileFlight(state: ClientState, hit: Pick<HitEvent, 'attackerId' | 'targetId' | 'spell'>): { loose: number; ms: number } | null {
+  const from = state.entities.get(hit.attackerId);
+  if (!from || (!hit.spell && !isBow(from.data.gear?.weapon))) return null;
+  const to = state.entities.get(hit.targetId);
+  const tiles = to ? Math.hypot(to.toX - from.toX, to.toY - from.toY) : 4;
+  return hit.spell ? { loose: CAST_MS * CAST_RELEASE, ms: 180 + tiles * 70 } : { loose: SHOOT_MS * SHOOT_RELEASE, ms: 120 + tiles * 45 };
 }
 
 /** Points in each work cycle where the tool meets its target. */
@@ -411,6 +437,7 @@ const IMPACT: Record<string, number[]> = {
   dig: [0.2],
   plant: [0.25],
   pick: [0.5],
+  recall: [0.02],
 };
 
 function shortestAngle(from: number, to: number): number {

@@ -5,6 +5,8 @@ import {
   QUESTS,
   RESOURCE_DATA,
   SELL_RATE,
+  SPELL_BY_ID,
+  type SpellDef,
   WorldGrid,
   areaAt,
   isBanker,
@@ -23,7 +25,7 @@ import vellReaches from '@rpg/shared/data/maps/vell-reaches.json';
 import { Sound, type SoundName } from './audio/Sound';
 import { LocalServer } from './net/LocalServer';
 import type { ServerConnection } from './net/ServerConnection';
-import { arrowFlight } from './render/EntityLayer';
+import { missileFlight } from './render/EntityLayer';
 import { Renderer, type PickResult } from './render/Renderer';
 import { ClientState } from './state/ClientState';
 import { CombatOverlay } from './ui/CombatOverlay';
@@ -135,6 +137,11 @@ async function start(): Promise<void> {
     pray: 'pray',
     spread: 'spread',
     pour: 'pour',
+    teleport: 'teleport',
+    arrive: 'arrive',
+    gild: 'gild',
+    forge: 'forge',
+    bash: 'swing',
   };
   state.on('animation', ({ entityId, kind }) => {
     const e = state.entities.get(entityId)?.data;
@@ -144,9 +151,17 @@ async function start(): Promise<void> {
     else if (ANIM_SOUNDS[kind]) sound.play(ANIM_SOUNDS[kind], near(entityId));
   });
   // Bigger hits land with a deeper thud.
-  state.on('hit', ({ attackerId, targetId, damage, maxHp }) => {
-    const land = () => (damage > 0 ? sound.play('hit', near(targetId), 1.15 - Math.min(0.45, damage / Math.max(1, maxHp))) : sound.play('miss', near(targetId)));
-    const flight = arrowFlight(state, attackerId, targetId);
+  state.on('hit', (hit) => {
+    const { targetId, damage, maxHp } = hit;
+    const land = () =>
+      hit.spell
+        ? sound.play(damage > 0 ? 'spell_hit' : 'splash', near(targetId))
+        : damage > 0
+          ? sound.play('hit', near(targetId), 1.15 - Math.min(0.45, damage / Math.max(1, maxHp)))
+          : sound.play('miss', near(targetId));
+    const flight = missileFlight(state, hit);
+    // The spell's own sound as it leaves the hand.
+    if (hit.spell && flight) setTimeout(() => sound.play(`cast_${hit.spell!.element}` as SoundName, near(hit.attackerId)), flight.loose);
     if (flight) setTimeout(land, flight.loose + flight.ms);
     else land();
   });
@@ -267,6 +282,22 @@ async function start(): Promise<void> {
     using = null;
     hud.setUsing(null);
   };
+  /**
+   * A spell picked from the spellbook waits on the cursor the same way: a
+   * combat spell for a creature to throw it at, an item spell for something
+   * in the pack.
+   */
+  let casting: SpellDef | null = null;
+  const stopCasting = () => {
+    casting = null;
+    hud.setCasting(null);
+  };
+  /** A creature a spell could be thrown at, under the cursor. */
+  const castTarget = (pick: PickResult): PublicEntity | undefined => {
+    const id = entityAt(pick);
+    const e = id !== null ? state.entities.get(id)?.data : undefined;
+    return e?.kind === 'monster' && !e.dead ? e : undefined;
+  };
   /** The entity a use would land on: anything but yourself and the ground. */
   const useTarget = (pick: PickResult): PublicEntity | undefined => {
     const id = entityAt(pick);
@@ -276,6 +307,10 @@ async function start(): Promise<void> {
 
   /** Human-readable description of whatever is under the cursor. */
   const describe = (pick: PickResult): { action: string; target: string } => {
+    if (casting) {
+      const e = casting.kind === 'combat' ? castTarget(pick) : undefined;
+      return { action: `Cast ${casting.name} ->`, target: e ? `${e.name} (level-${e.combatLevel})` : '' };
+    }
     if (using) {
       const e = useTarget(pick);
       return { action: `Use ${using.name} ->`, target: e ? nameOf(e) : '' };
@@ -308,6 +343,16 @@ async function start(): Promise<void> {
       if (hud.consumeMenuDismiss()) return;
       const pick = renderer.pick(x, y);
       if (!pick) return;
+      if (casting) {
+        const spell = casting;
+        const target = spell.kind === 'combat' ? castTarget(pick) : undefined;
+        stopCasting();
+        if (target) {
+          renderer.showClick(pick.tile);
+          server.send({ type: 'cast', spell: spell.id, targetId: target.id });
+        }
+        return;
+      }
       if (using) {
         const target = useTarget(pick);
         const slot = using.slot;
@@ -335,6 +380,15 @@ async function start(): Promise<void> {
       const e = id !== null ? state.entities.get(id)?.data : undefined;
       const primary = primaryAction(e);
       const options = [];
+      if (casting) {
+        const spell = casting;
+        if (spell.kind === 'combat' && e?.kind === 'monster' && !e.dead) {
+          options.push({ label: `Cast ${spell.name} ->`, target, action: () => (stopCasting(), server.send({ type: 'cast', spell: spell.id, targetId: e.id })) });
+        }
+        options.push({ label: 'Cancel', target: undefined, action: stopCasting });
+        hud.showMenu(x, y, options);
+        return;
+      }
       const useOn = using && e && e.id !== state.playerId ? { slot: using.slot, label: `Use ${using.name} ->` } : null;
       if (useOn) options.push({ label: useOn.label, target, action: () => (stopUsing(), server.send({ type: 'useOn', slot: useOn.slot, targetId: e!.id })) });
       if (using) {
@@ -370,6 +424,12 @@ async function start(): Promise<void> {
     open: (slot, x, y) => {
       const stack = state.self?.inventory[slot];
       if (using) return stopUsing();
+      if (casting) {
+        const spell = casting;
+        stopCasting();
+        if (spell.kind === 'item' && stack) server.send({ type: 'cast', spell: spell.id, slot });
+        return;
+      }
       if (!stack) return;
       const name = ITEMS[stack.itemId]?.name ?? stack.itemId;
       const examine = { label: 'Examine', target: name, action: () => server.send({ type: 'examineItem', slot }) };
@@ -424,6 +484,30 @@ async function start(): Promise<void> {
   state.on('self', (self) => {
     if (using && self.inventory[using.slot]?.itemId !== using.itemId) stopUsing();
   });
+
+  hud.spellHandlers = {
+    select: (id) => {
+      const spell = SPELL_BY_ID[id];
+      if (!spell) return;
+      stopUsing();
+      if (casting?.id === id) return stopCasting();
+      sound.play('click');
+      if (spell.kind === 'teleport') {
+        stopCasting();
+        server.send({ type: 'cast', spell: id });
+        return;
+      }
+      casting = spell;
+      hud.setCasting(id);
+      // Item spells: over to the pack to pick what to cast it on.
+      const pack = document.querySelector<HTMLButtonElement>('.tab[data-tab="inventory"]');
+      if (spell.kind === 'item' && pack && !pack.classList.contains('active')) pack.click();
+    },
+    autocast: (id) => {
+      sound.play('autocast');
+      server.send({ type: 'setAutocast', spell: id });
+    },
+  };
 
   hud.prayerHandlers = {
     toggle: (prayer) => server.send({ type: 'togglePrayer', prayer }),
@@ -535,6 +619,7 @@ async function start(): Promise<void> {
     keys.add(e.key.toLowerCase());
     if (e.key === 'Escape') {
       if (using) stopUsing();
+      else if (casting) stopCasting();
       else if (worldMap.isOpen) worldMap.hide();
       else if (!hud.menuOpen && state.self?.ui) server.send({ type: 'closeInterface' });
       hud.hideMenu();

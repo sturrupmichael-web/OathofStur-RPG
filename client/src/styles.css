@@ -1053,7 +1053,7 @@ body {
   }
 
   #boss-bar {
-    top: calc(150px + env(safe-area-inset-top, 0px));
+    top: calc(186px + env(safe-area-inset-top, 0px));
     width: calc(100% - 32px);
   }
 
@@ -1094,14 +1094,6 @@ body {
     right: calc(8px + env(safe-area-inset-right, 0px));
     width: 132px;
     opacity: 0.95;
-  }
-
-  #run-orb {
-    position: fixed;
-    left: auto;
-    bottom: auto;
-    top: calc(146px + env(safe-area-inset-top, 0px));
-    right: calc(8px + env(safe-area-inset-right, 0px));
   }
 
   #player-card {
@@ -1610,4 +1602,42 @@ body {
 .inv-slot.using {
   outline: 2px solid #ffe14a;
   outline-offset: -2px;
+}
+
+/* Phone layout for the minimap buttons and the bars in the player card. This sits after
+   their base rules so it wins: run energy and Map go in a row under the minimap. */
+@media (max-width: 720px) {
+  #run-orb,
+  #worldmap-open {
+    position: fixed;
+    left: auto;
+    bottom: auto;
+    top: calc(146px + env(safe-area-inset-top, 0px));
+    min-height: 32px;
+    padding: 4px 10px;
+    font-size: 13px;
+  }
+
+  #run-orb {
+    right: calc(74px + env(safe-area-inset-right, 0px));
+    min-width: 62px;
+  }
+
+  #run-orb svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  #worldmap-open {
+    right: calc(8px + env(safe-area-inset-right, 0px));
+    min-width: 60px;
+    border-radius: 10px;
+  }
+
+  #hp-bar,
+  #prayer-bar {
+    flex-basis: auto;
+    width: 100%;
+    min-width: 110px;
+  }
 }

@@ -176,7 +176,7 @@ describe('Equipment and eating', () => {
     expect(p.equipment.weapon).toBe('iron_sword');
     expect(p.inventory[1]).toEqual({ itemId: 'bronze_sword', qty: 1 });
     const self = sim.drain(p.id).filter((m) => m.type === 'self').pop();
-    expect(self?.type === 'self' && self.state.bonuses).toEqual({ attack: 10, strength: 9, defence: 2 });
+    expect(self?.type === 'self' && self.state.bonuses).toEqual({ attack: 10, strength: 9, defence: 2, magic: -3 });
   });
 
   it('wields an axe as a weapon and still chops with it', () => {

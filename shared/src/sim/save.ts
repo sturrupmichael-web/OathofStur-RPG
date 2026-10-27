@@ -2,6 +2,7 @@ import type { Point } from '../map/types';
 import { ATTACK_STYLES, type AttackStyle } from './combat';
 import { QUESTS, QUEST_IDS, doneStage } from './quests';
 import { CROPS, MAX_WEEDS, type PatchState } from './farming';
+import { SPELL_BY_ID } from './magic';
 import { EQUIP_SLOTS, INVENTORY_SIZE, ITEMS, type Equipment, type Inventory, type ItemStack } from './items';
 import { MAX_XP, SKILLS, startingXp, type SkillXp } from './skills';
 
@@ -36,6 +37,8 @@ export interface SaveData {
   run?: boolean;
   /** Farming patches the character has worked, by tile ("x,y"). They keep growing from `updatedAt`. */
   farm?: Record<string, PatchState>;
+  /** The combat spell a staff casts by itself. */
+  autocast?: string;
   bank: ItemStack[];
   quests: Record<string, number>;
   createdAt: string;
@@ -115,6 +118,7 @@ export function parseSave(raw: unknown): SaveData | null {
     ...(Number.isFinite(energy) && energy >= 0 && energy <= 100 && { energy }),
     ...(s.run === true && { run: true }),
     ...(farm && { farm }),
+    ...(typeof s.autocast === 'string' && SPELL_BY_ID[s.autocast]?.kind === 'combat' && { autocast: s.autocast }),
     bank,
     quests,
     createdAt: typeof s.createdAt === 'string' ? s.createdAt : now,

@@ -1,5 +1,5 @@
 import { MONSTERS, type EntityId } from '@rpg/shared';
-import { arrowFlight } from '../render/EntityLayer';
+import { missileFlight } from '../render/EntityLayer';
 import type { Renderer } from '../render/Renderer';
 import type { ClientState } from '../state/ClientState';
 
@@ -12,6 +12,7 @@ const HEIGHTS: Record<string, number> = { cow: 1.15, desert_lizard: 0.55, scorpi
 
 const OVERHEAD_ICONS: Record<string, string> = {
   ward_of_blades: `<svg viewBox="0 0 24 24"><path d="M12 2 L21 5.5 V12 C21 17.5 17 21 12 22.5 C7 21 3 17.5 3 12 V5.5 Z" fill="#9fd4ff" stroke="#1e3a52" stroke-width="1.4"/><path d="M7.5 7.5 L16.5 16.5 M16.5 7.5 L7.5 16.5" stroke="#1e3a52" stroke-width="2.2" stroke-linecap="round"/></svg>`,
+  ward_of_spells: `<svg viewBox="0 0 24 24"><path d="M12 2 L21 5.5 V12 C21 17.5 17 21 12 22.5 C7 21 3 17.5 3 12 V5.5 Z" fill="#c9b0ff" stroke="#3a2a5a" stroke-width="1.4"/><path d="M12 6.5 L13.6 10.6 L17.8 10.8 L14.5 13.5 L15.6 17.6 L12 15.3 L8.4 17.6 L9.5 13.5 L6.2 10.8 L10.4 10.6 Z" fill="#5a3a9a"/></svg>`,
   ember_ward: `<svg viewBox="0 0 24 24"><path d="M12 2 C15.5 7.5 20 10 19 15.5 C18 20 14.5 22.5 12 22.5 C8.5 22.5 5 20 5 15.5 C5 12 7.5 9.5 8.5 7.5 C9.5 10.5 11 11.5 12 11.5 C12 8.5 11 5.5 12 2 Z" fill="#f08a32" stroke="#6a2a10" stroke-width="1.4"/><path d="M12 14 C13.5 16 14.5 17.5 13.2 19.5 C11 19.6 9.8 18 11 16 Z" fill="#ffd36a"/></svg>`,
 };
 
@@ -32,9 +33,10 @@ export class CombatOverlay {
     private readonly state: ClientState,
     private readonly renderer: Renderer,
   ) {
-    state.on('hit', ({ attackerId, targetId, damage }) => {
-      // An arrow's splat shows when it lands.
-      const flight = arrowFlight(state, attackerId, targetId);
+    state.on('hit', (hit) => {
+      const { targetId, damage } = hit;
+      // An arrow's or a spell's splat shows when it lands.
+      const flight = missileFlight(state, hit);
       if (flight) setTimeout(() => this.splat(targetId, damage), flight.loose + flight.ms);
       else this.splat(targetId, damage);
     });

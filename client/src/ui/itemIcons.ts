@@ -222,8 +222,27 @@ const SKILL_ICONS: Record<string, string> = {
   plant_cure: vial('#6ad84a', 0.8),
 };
 
+/** A staff on the diagonal, with its element's orb (or a plain knob) at the head. */
+const staff = (orb: string | null) => `<path d="M7 32 L25 10" stroke="#6b4428" stroke-width="3" stroke-linecap="round"/><path d="M7 32 L9 29.6" stroke="#55575c" stroke-width="3.4" stroke-linecap="round"/>
+  ${orb ? `<path d="M23 12 Q21 7 24 5 M25 10 Q30 9 31 6 M24 11 Q27 6 30 7" fill="none" stroke="#6b4428" stroke-width="1.4" stroke-linecap="round"/><circle cx="27" cy="7" r="4.2" fill="${orb}" stroke="#2a2a3a" stroke-width="1"/><circle cx="25.6" cy="5.6" r="1.3" fill="#fff" opacity=".8"/>` : '<circle cx="26" cy="9" r="2.6" fill="#8a5a32" stroke="#3d2814"/>'}`;
+/** Pointed hat, robe top and long skirt, in a set's cloth and trim. */
+const wizardHat = (cloth: string, trim: string) => `<path d="M18 3 Q20 10 25 22 L11 22 Q16 10 18 3 Z" fill="${cloth}" stroke="#1a1a2a" stroke-width="1.2" stroke-linejoin="round"/><ellipse cx="18" cy="24" rx="14" ry="4" fill="${cloth}" stroke="#1a1a2a" stroke-width="1.2"/><path d="M11.5 21 Q18 23.5 24.5 21" fill="none" stroke="${trim}" stroke-width="2"/><path d="M17 10 L18.4 12.4 L21 12.6 L19 14.2 L19.7 16.8 L17.5 15.4" fill="${trim}"/>`;
+const wizardRobe = (cloth: string, trim: string) => `<path d="M11 6 L25 6 L31 13 L28 17 L26 15 L27 31 L9 31 L10 15 L8 17 L5 13 Z" fill="${cloth}" stroke="#1a1a2a" stroke-width="1.2" stroke-linejoin="round"/><path d="M14 6 L18 12 L22 6" fill="none" stroke="${trim}" stroke-width="1.6"/><path d="M18 12 V31" stroke="${trim}" stroke-width="1.4"/><path d="M9 29.5 H27" stroke="${trim}" stroke-width="2"/>`;
+const wizardSkirt = (cloth: string, trim: string) => `<path d="M11 5 H25 L29 31 H7 Z" fill="${cloth}" stroke="#1a1a2a" stroke-width="1.2" stroke-linejoin="round"/><path d="M11 7 H25" stroke="${trim}" stroke-width="2"/><path d="M7.6 29 H28.4" stroke="${trim}" stroke-width="2"/><path d="M15 9 L13 29 M21 9 L23 29" stroke="#000" stroke-opacity=".25" stroke-width="1"/>`;
+
 const ICONS: Record<string, string> = {
   ...SKILL_ICONS,
+  staff: staff(null),
+  wind_staff: staff('#e8f6ff'),
+  tide_staff: staff('#3d8bff'),
+  root_staff: staff('#7aa840'),
+  ember_staff: staff('#ff6a1a'),
+  wizard_hat: wizardHat('#2b3f9e', '#d8dcf0'),
+  wizard_robe: wizardRobe('#2b3f9e', '#d8dcf0'),
+  wizard_skirt: wizardSkirt('#2b3f9e', '#d8dcf0'),
+  starweave_hat: wizardHat('#4b2a7a', '#e0c060'),
+  starweave_robe: wizardRobe('#4b2a7a', '#e0c060'),
+  starweave_skirt: wizardSkirt('#4b2a7a', '#e0c060'),
   shortbow_u: bow('#a8743e', '#5a3a1e', false, false),
   shortbow: bow('#a8743e', '#5a3a1e', false, true),
   longbow_u: bow('#a8743e', '#5a3a1e', true, false),

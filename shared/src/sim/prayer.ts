@@ -3,8 +3,8 @@ import type { SkillId } from './skills';
 /**
  * Prayers. Each one, while on, drains prayer points (`drain` points a minute);
  * the points are the Prayer level when full, and an altar fills them again.
- * Prayers in the same group replace each other, and the ranged ones push off
- * the melee ones (and back), so only one of each kind of help is on at once.
+ * Prayers in the same group replace each other, and the ranged, magic and melee
+ * ones push each other off, so only one of each kind of help is on at once.
  */
 export type PrayerId =
   | 'oak_skin'
@@ -21,9 +21,13 @@ export type PrayerId =
   | 'steel_skin'
   | 'titans_might'
   | 'seers_focus'
-  | 'falcons_eye';
+  | 'falcons_eye'
+  | 'inner_spark'
+  | 'kindled_spirit'
+  | 'burning_insight'
+  | 'ward_of_spells';
 
-type Group = 'defence' | 'strength' | 'attack' | 'ranged' | 'mending' | 'ward';
+type Group = 'defence' | 'strength' | 'attack' | 'ranged' | 'magic' | 'mending' | 'ward';
 
 export interface PrayerDef {
   id: PrayerId;
@@ -42,26 +46,30 @@ const list: PrayerDef[] = [
   { id: 'burst_of_will', name: 'Burst of Will', level: 4, drain: 5, group: 'strength', description: '+5% Strength', boost: { skill: 'strength', by: 0.05 } },
   { id: 'clear_mind', name: 'Clear Mind', level: 7, drain: 5, group: 'attack', description: '+5% Attack', boost: { skill: 'attack', by: 0.05 } },
   { id: 'keen_eye', name: 'Keen Eye', level: 8, drain: 5, group: 'ranged', description: '+5% Ranged', boost: { skill: 'ranged', by: 0.05 } },
+  { id: 'inner_spark', name: 'Inner Spark', level: 9, drain: 5, group: 'magic', description: '+5% Magic', boost: { skill: 'magic', by: 0.05 } },
   { id: 'mending_hands', name: 'Mending Hands', level: 10, drain: 3, group: 'mending', description: 'Hitpoints come back twice as fast' },
   { id: 'stone_skin', name: 'Stone Skin', level: 13, drain: 10, group: 'defence', description: '+10% Defence', boost: { skill: 'defence', by: 0.1 } },
   { id: 'bulls_might', name: "Bull's Might", level: 16, drain: 10, group: 'strength', description: '+10% Strength', boost: { skill: 'strength', by: 0.1 } },
   { id: 'sharp_mind', name: 'Sharp Mind', level: 19, drain: 10, group: 'attack', description: '+10% Attack', boost: { skill: 'attack', by: 0.1 } },
   { id: 'hawks_eye', name: "Hawk's Eye", level: 22, drain: 10, group: 'ranged', description: '+10% Ranged', boost: { skill: 'ranged', by: 0.1 } },
+  { id: 'kindled_spirit', name: 'Kindled Spirit', level: 27, drain: 10, group: 'magic', description: '+10% Magic', boost: { skill: 'magic', by: 0.1 } },
   { id: 'ember_ward', name: 'Ember Ward', level: 28, drain: 10, group: 'ward', description: 'Halves the harm of dragonfire' },
+  { id: 'ward_of_spells', name: 'Ward of Spells', level: 35, drain: 20, group: 'ward', description: 'Monsters’ spells do no harm' },
   { id: 'ward_of_blades', name: 'Ward of Blades', level: 37, drain: 20, group: 'ward', description: 'Monsters’ blows and bites do no harm' },
   { id: 'steel_skin', name: 'Steel Skin', level: 40, drain: 20, group: 'defence', description: '+15% Defence', boost: { skill: 'defence', by: 0.15 } },
   { id: 'titans_might', name: "Titan's Might", level: 43, drain: 20, group: 'strength', description: '+15% Strength', boost: { skill: 'strength', by: 0.15 } },
   { id: 'seers_focus', name: "Seer's Focus", level: 46, drain: 20, group: 'attack', description: '+15% Attack', boost: { skill: 'attack', by: 0.15 } },
   { id: 'falcons_eye', name: "Falcon's Eye", level: 49, drain: 20, group: 'ranged', description: '+15% Ranged', boost: { skill: 'ranged', by: 0.15 } },
+  { id: 'burning_insight', name: 'Burning Insight', level: 52, drain: 20, group: 'magic', description: '+15% Magic', boost: { skill: 'magic', by: 0.15 } },
 ];
 
 export const PRAYERS: Readonly<Record<PrayerId, PrayerDef>> = Object.fromEntries(list.map((p) => [p.id, p])) as Record<PrayerId, PrayerDef>;
 export const PRAYER_IDS: readonly PrayerId[] = list.map((p) => p.id);
 
-/** Groups a prayer pushes off when it is turned on: its own, and melee and ranged push each other off. */
+/** Groups a prayer pushes off when it is turned on: its own, and melee, ranged and magic push each other off. */
 function clashes(group: Group): Group[] {
-  if (group === 'ranged') return ['ranged', 'attack', 'strength'];
-  if (group === 'attack' || group === 'strength') return [group, 'ranged'];
+  if (group === 'ranged' || group === 'magic') return [group === 'ranged' ? 'magic' : 'ranged', group, 'attack', 'strength'];
+  if (group === 'attack' || group === 'strength') return [group, 'ranged', 'magic'];
   return [group];
 }
 

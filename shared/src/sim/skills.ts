@@ -5,6 +5,7 @@ export type SkillId =
   | 'strength'
   | 'defence'
   | 'ranged'
+  | 'magic'
   | 'prayer'
   | 'hitpoints'
   | 'woodcutting'
@@ -62,7 +63,8 @@ export function combatLevel(xp: SkillXp): number {
   const defence = levelForXp(xp.defence);
   const melee = levelForXp(xp.attack) + levelForXp(xp.strength) + defence;
   const ranged = 2 * levelForXp(xp.ranged) + defence;
-  return Math.floor((meleeWeight * Math.max(melee, ranged)) / 3 + hitpointsWeight * levelForXp(xp.hitpoints) + prayerWeight * levelForXp(xp.prayer));
+  const magic = 2 * levelForXp(xp.magic) + defence;
+  return Math.floor((meleeWeight * Math.max(melee, ranged, magic)) / 3 + hitpointsWeight * levelForXp(xp.hitpoints) + prayerWeight * levelForXp(xp.prayer));
 }
 
 /** Level used for a requirement: a skill id, or "combat" for combat level. */

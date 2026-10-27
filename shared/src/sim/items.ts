@@ -50,10 +50,16 @@ export interface EquipStats {
   attack?: number;
   strength?: number;
   defence?: number;
+  /** Bonus to casting spells; metal armour gets in the way. */
+  magic?: number;
   /** Attack level to wield a weapon (Ranged for a bow), Defence level to wear armour. */
   level?: number;
+  /** Which skill `level` is in, when not the usual one (Magic for staves and robes). */
+  skill?: SkillId;
+  /** Elemental staves: the glyph element they stand in for. */
+  staffOf?: string;
   /** Weapons: how it is swung (or shot), which picks the animation. */
-  style?: 'stab' | 'slash' | 'shoot';
+  style?: 'stab' | 'slash' | 'bash' | 'shoot';
   /** Bows: how many tiles away they can hit from. */
   range?: number;
   /** Ticks between attacks, when not the usual 4. */
@@ -118,6 +124,11 @@ export function hasAnyTool(inv: Inventory, skill: SkillId): boolean {
 /** Whether an item is a bow (fights from range with arrows). */
 export function isBow(itemId: string | undefined): boolean {
   return !!itemId && ITEMS[itemId]?.equip?.style === 'shoot';
+}
+
+/** Staves: what a mage wields to cast with. */
+export function isStaff(itemId: string | undefined): boolean {
+  return !!itemId && ITEMS[itemId]?.equip?.style === 'bash';
 }
 
 /** The strongest arrows in the pack that a Ranged level can fire, or null. */

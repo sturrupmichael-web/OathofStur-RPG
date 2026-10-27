@@ -25,6 +25,8 @@ export interface HitEvent {
   damage: number;
   hp: number;
   maxHp: number;
+  /** Set when it was a spell: its element and tier, for how it looks in flight. */
+  spell?: { element: string; tier: number };
 }
 
 type Events = {
@@ -109,7 +111,7 @@ export class ClientState {
           target.hitAt = now;
           target.data = { ...target.data, hp: msg.hp, maxHp: msg.maxHp };
         }
-        this.emit('hit', { attackerId: msg.attackerId, targetId: msg.targetId, damage: msg.damage, hp: msg.hp, maxHp: msg.maxHp });
+        this.emit('hit', { attackerId: msg.attackerId, targetId: msg.targetId, damage: msg.damage, hp: msg.hp, maxHp: msg.maxHp, spell: msg.spell });
         break;
       }
       case 'animation':

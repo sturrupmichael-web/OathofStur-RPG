@@ -11,6 +11,12 @@ import {
   MAX_LEVEL,
   PRAYERS,
   PRAYER_IDS,
+  SPELLS,
+  SPELL_BY_ID,
+  castsLeft,
+  glyphCost,
+  isStaff,
+  type SpellDef,
   type AttackStyle,
   type PrayerId,
   type EquipSlot,
@@ -62,6 +68,12 @@ export interface PrayerHandlers {
   toggle: (prayer: PrayerId) => void;
 }
 
+/** What the spellbook asks the game to do: pick a spell to cast, or set (or clear) the staff's spell. */
+export interface SpellHandlers {
+  select: (spell: string) => void;
+  autocast: (spell: string | null) => void;
+}
+
 /** What the run button asks the game to do. */
 export interface RunHandlers {
   toggle: () => void;
@@ -88,7 +100,11 @@ export class Hud {
   dialogueHandlers: DialogueHandlers = { choose: () => {} };
   prayerHandlers: PrayerHandlers = { toggle: () => {} };
   runHandlers: RunHandlers = { toggle: () => {} };
+  spellHandlers: SpellHandlers = { select: () => {}, autocast: () => {} };
   private prayerKey = '';
+  private magicKey = '';
+  private lastSelf: SelfState | null = null;
+  private casting: string | null = null;
   private readonly dialogue = el('dialogue');
   private dialogueOptions: string[] | null = null;
   private questsKey = '';
@@ -441,7 +457,7 @@ export class Hud {
 
   /** The Equipment tab: what's worn, its bonuses, and the fighting style. */
   renderEquipment(self: SelfState): void {
-    const key = JSON.stringify([self.equipment, self.attackStyle, self.bonuses, self.maxHit]);
+    const key = JSON.stringify([self.equipment, self.attackStyle, self.bonuses, self.maxHit, self.autocast]);
     if (key === this.equipmentKey) return;
     this.equipmentKey = key;
     this.equipment = self.equipment;
@@ -456,10 +472,13 @@ export class Hud {
     const b = self.bonuses;
     const bow = isBow(self.equipment.weapon);
     const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
+    const casting = isStaff(self.equipment.weapon) && self.autocast ? SPELL_BY_ID[self.autocast] : undefined;
     el('equip-stats').replaceChildren(
-      ...(bow
-        ? [`Ranged ${sign(ITEMS[self.equipment.weapon!].equip!.attack ?? 0)}`, `Range ${ITEMS[self.equipment.weapon!].equip!.range} tiles`, `Defence ${sign(b.defence)}`, `Max hit ${self.maxHit}`]
-        : [`Attack ${sign(b.attack)}`, `Strength ${sign(b.strength)}`, `Defence ${sign(b.defence)}`, `Max hit ${self.maxHit}`]
+      ...(casting
+        ? [`Magic ${sign(b.magic)}`, `Casting ${casting.name}`, `Defence ${sign(b.defence)}`, `Max hit ${self.maxHit}`]
+        : bow
+          ? [`Ranged ${sign(ITEMS[self.equipment.weapon!].equip!.attack ?? 0)}`, `Range ${ITEMS[self.equipment.weapon!].equip!.range} tiles`, `Defence ${sign(b.defence)}`, `Max hit ${self.maxHit}`]
+          : [`Attack ${sign(b.attack)}`, `Strength ${sign(b.strength)}`, `Defence ${sign(b.defence)}`, `Magic ${sign(b.magic)}`, `Max hit ${self.maxHit}`]
       ).map((t) => span(t, 'equip-stat')),
     );
     const styles = el('attack-styles');
@@ -473,6 +492,80 @@ export class Hud {
       b.addEventListener('click', () => this.equipmentHandlers.setStyle(id));
       styles.appendChild(b);
     }
+  }
+
+  /**
+   * The spellbook: every spell, dim when the level is too low or the glyphs
+   * run short, ringed when it is the staff's spell. Tap to cast; right-click
+   * (or press and hold) a combat spell to set it on the staff.
+   */
+  renderMagic(self: SelfState): void {
+    const level = levelForXp(self.skills.magic) + (self.boosts.magic ?? 0);
+    const key = JSON.stringify([level, self.autocast, self.equipment.weapon, self.inventory.map((s) => (s?.itemId.endsWith('_glyph') ? s : null)), this.casting]);
+    if (key === this.magicKey) return;
+    this.magicKey = key;
+    const staff = isStaff(self.equipment.weapon);
+    const auto = self.autocast ? SPELL_BY_ID[self.autocast] : undefined;
+    const head = el('magic-head');
+    head.replaceChildren(span(`Magic level ${level}`, ''));
+    if (auto) {
+      const clear = document.createElement('button');
+      clear.textContent = 'Clear';
+      clear.title = 'Stop the staff casting by itself';
+      clear.addEventListener('click', () => this.spellHandlers.autocast(null));
+      const what = span(`Staff: ${auto.name}${staff ? '' : ' (no staff)'}`, '');
+      head.append(what, clear);
+    }
+    const grid = el('spell-grid');
+    grid.replaceChildren();
+    const info = el('spell-info');
+    const describe = (spell: SpellDef) => {
+      const glyphs = Object.entries(spell.glyphs).map(([g, n]) => `${n} ${g}`).join(', ') || 'no glyphs';
+      const casts = castsLeft(spell, self.inventory, self.equipment);
+      const lines = [
+        `${spell.name} (level ${spell.level})`,
+        spell.description,
+        `${spell.kind === 'combat' ? `Max hit ${spell.maxHit}. ` : ''}Takes ${glyphs}${casts === Infinity || !glyphCost(spell, self.equipment).length ? '' : `: enough for ${casts}`}.`,
+      ];
+      if (spell.kind === 'combat') lines.push(staff ? 'Right-click to set it on your staff.' : 'Wield a staff to cast it in every swing.');
+      return lines.join('\n');
+    };
+    for (const spell of SPELLS) {
+      const b = document.createElement('button');
+      const locked = level < spell.level;
+      const short = !locked && castsLeft(spell, self.inventory, self.equipment) < 1;
+      b.className = `spell${locked ? ' locked' : ''}${short ? ' short' : ''}${self.autocast === spell.id ? ' autocast' : ''}${this.casting === spell.id ? ' casting' : ''}`;
+      b.setAttribute('aria-label', spell.name);
+      b.innerHTML = spellIcon(spell);
+      b.addEventListener('pointerenter', () => (info.textContent = describe(spell)));
+      b.addEventListener('focus', () => (info.textContent = describe(spell)));
+      b.addEventListener('click', () => {
+        info.textContent = describe(spell);
+        this.spellHandlers.select(spell.id);
+      });
+      b.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        info.textContent = describe(spell);
+        const options: MenuOption[] = [{ label: 'Cast', target: spell.name, action: () => this.spellHandlers.select(spell.id) }];
+        if (spell.kind === 'combat') {
+          options.push(
+            self.autocast === spell.id
+              ? { label: 'Clear staff spell', target: undefined, action: () => this.spellHandlers.autocast(null) }
+              : { label: 'Set on staff', target: spell.name, action: () => this.spellHandlers.autocast(spell.id) },
+          );
+        }
+        this.showMenu(e.clientX, e.clientY, options);
+      });
+      grid.appendChild(b);
+    }
+    if (!info.textContent) info.textContent = 'Tap a spell to cast it. Combat spells then need a target, item spells an item in your pack.';
+  }
+
+  /** Lights the spell waiting for a target (or none). */
+  setCasting(spell: string | null): void {
+    this.casting = spell;
+    this.magicKey = '';
+    if (this.lastSelf) this.renderMagic(this.lastSelf);
   }
 
   /** The prayer points bar, and the Prayer tab: every prayer, lit while it is on. */
@@ -501,12 +594,14 @@ export class Hud {
   }
 
   renderSelf(self: SelfState): void {
+    this.lastSelf = self;
     el('player-name').textContent = self.name;
     el('combat-level').textContent = `Combat level ${self.combatLevel}`;
     el('hp-text').textContent = `${self.hp} / ${self.maxHp}`;
     el('hp-fill').style.width = `${(self.hp / self.maxHp) * 100}%`;
     el('hp-bar').classList.toggle('low', self.hp <= self.maxHp / 4);
     this.renderPrayer(self);
+    this.renderMagic(self);
     const orb = el('run-orb');
     el('run-text').textContent = String(self.energy);
     orb.style.setProperty('--energy', `${self.energy}%`);
@@ -661,9 +756,12 @@ function prayerIcon(id: PrayerId): string {
     strength: `<path d="M4 20 L12 12" stroke="#5a3a20" stroke-width="2.6" stroke-linecap="round"/><circle cx="15" cy="9" r="5" fill="${c}" stroke="#3a2a14" stroke-width="1.2"/><path d="M15 2.5 V4 M21.5 9 H20 M19.6 4.4 L18.5 5.5 M19.6 13.6 L18.5 12.5 M10.4 4.4 L11.5 5.5" stroke="#3a2a14" stroke-width="1.6" stroke-linecap="round"/>`,
     attack: `<path d="M18 3 L21 3 L21 6 L10 17 L7 14 Z" fill="${c}" stroke="#3a2a14" stroke-width="1.2"/><path d="M5 13 L11 19 M6 18 L3 21" stroke="#5a3a20" stroke-width="2.2" stroke-linecap="round"/>`,
     ranged: `<ellipse cx="12" cy="12" rx="9" ry="5.5" fill="#f4ecd8" stroke="#3a2a14" stroke-width="1.2"/><circle cx="12" cy="12" r="3.6" fill="${c}" stroke="#3a2a14"/><circle cx="12" cy="12" r="1.4" fill="#222"/>`,
+    magic: `<path d="M12 2.5 L14.4 9 L21 9.4 L15.9 13.6 L17.6 20.5 L12 16.7 L6.4 20.5 L8.1 13.6 L3 9.4 L9.6 9 Z" fill="${c}" stroke="#3a2a14" stroke-width="1.2" stroke-linejoin="round"/><circle cx="12" cy="12.5" r="2.2" fill="#fff8e0"/>`,
     mending: `<path d="M12 20 C5 15 3 11 5 8 C7 5 10 6 12 8 C14 6 17 5 19 8 C21 11 19 15 12 20 Z" fill="${c}" stroke="#3a2a14" stroke-width="1.2"/><path d="M12 10 V16 M9 13 H15" stroke="#fff" stroke-width="1.6"/>`,
     ward:
-      id === 'ember_ward'
+      id === 'ward_of_spells'
+        ? `<path d="M12 3 L20 6 V12 C20 17 16 20 12 21 C8 20 4 17 4 12 V6 Z" fill="#c9b0ff" stroke="#3a2a5a" stroke-width="1.2"/><path d="M12 7 L13.4 10.8 L17.2 11 L14.2 13.4 L15.2 17 L12 14.9 L8.8 17 L9.8 13.4 L6.8 11 L10.6 10.8 Z" fill="#5a3a9a"/>`
+        : id === 'ember_ward'
         ? `<path d="M12 3 C15 8 19 10 18 15 C17 19 14 21 12 21 C9 21 6 19 6 15 C6 12 8 10 9 8 C10 11 11 12 12 12 C12 9 11 6 12 3 Z" fill="#f08a32" stroke="#6a2a10" stroke-width="1.2"/><path d="M12 14 C13 16 14 17 13 19 C11 19 10 18 11 16 Z" fill="#ffd36a"/>`
         : `<path d="M12 3 L20 6 V12 C20 17 16 20 12 21 C8 20 4 17 4 12 V6 Z" fill="${c}" stroke="#2a3a4a" stroke-width="1.2"/><path d="M8 8 L16 16 M16 8 L8 16" stroke="#3a4a5a" stroke-width="2"/>`,
   };
@@ -695,4 +793,42 @@ function span(content: string, className: string): HTMLSpanElement {
 
 function text(content: string): Text {
   return document.createTextNode(content);
+}
+
+/** Each element's colour in the spellbook. */
+const ELEMENT_FILL: Record<string, [string, string]> = { wind: ['#e8f4ff', '#7a8ea8'], tide: ['#4a90ff', '#1a3a7a'], root: ['#8fbf4a', '#4a3a1a'], ember: ['#ff8a2a', '#7a2a0a'] };
+
+/**
+ * A spell's icon. Combat spells are their element (a swirl of wind, a drop,
+ * a stone, a flame) with one ray per tier; teleports a swirling portal;
+ * Hearth Recall a little house; gilding a coin; Forge Touch a glowing bar.
+ */
+function spellIcon(spell: SpellDef): string {
+  if (spell.kind === 'combat') {
+    const [fill, edge] = ELEMENT_FILL[spell.element!] ?? ['#fff', '#333'];
+    const shapes: Record<string, string> = {
+      wind: `<path d="M5 10 C9 6 15 6 17 9 C19 12 15 14 13 12 M4 14 C8 12 14 13 16 16 C17 18 14 20 12 18" fill="none" stroke="${fill}" stroke-width="2.4" stroke-linecap="round"/><path d="M5 10 C9 6 15 6 17 9 C19 12 15 14 13 12 M4 14 C8 12 14 13 16 16 C17 18 14 20 12 18" fill="none" stroke="${edge}" stroke-width="0.6" stroke-linecap="round"/>`,
+      tide: `<path d="M12 4 C15 9 17.5 11.5 17.5 15 A5.5 5.5 0 0 1 6.5 15 C6.5 11.5 9 9 12 4 Z" fill="${fill}" stroke="${edge}" stroke-width="1.2"/><path d="M9.5 15 A2.5 2.5 0 0 0 12 17.5" fill="none" stroke="#dff0ff" stroke-width="1.2" stroke-linecap="round"/>`,
+      root: `<path d="M6 16 L8 9 L13 6 L18 9 L18.5 15 L13 19 Z" fill="${fill}" stroke="${edge}" stroke-width="1.2" stroke-linejoin="round"/><path d="M8 9 L12 12 L13 19 M12 12 L18 9" fill="none" stroke="${edge}" stroke-width="0.8"/>`,
+      ember: `<path d="M12 3.5 C15 8 18.5 10 17.5 15 C16.8 18.5 14.5 20.5 12 20.5 C9 20.5 6.5 18.5 6.5 15 C6.5 12 8.5 10 9.5 8 C10.5 11 11.5 11.5 12 11.5 C12 8.5 11 6.5 12 3.5 Z" fill="${fill}" stroke="${edge}" stroke-width="1.2"/><path d="M12 13.5 C13.5 15.5 14 17 12.8 18.8 C11 18.8 10.2 17.5 11 16 Z" fill="#ffe08a"/>`,
+    };
+    const rays = Array.from({ length: spell.tier! }, (_, i) => {
+      const a = (-90 + (i - (spell.tier! - 1) / 2) * 32) * (Math.PI / 180);
+      const [x1, y1, x2, y2] = [12 + Math.cos(a) * 9.2, 12.5 + Math.sin(a) * 9.2, 12 + Math.cos(a) * 11.4, 12.5 + Math.sin(a) * 11.4];
+      return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#f2c94c" stroke-width="1.6" stroke-linecap="round"/>`;
+    }).join('');
+    return `<svg viewBox="0 0 24 24" aria-hidden="true">${shapes[spell.element!] ?? ''}${rays}</svg>`;
+  }
+  if (spell.recall) {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 L12 5 L20 12 V20 H4 Z" fill="#c98a4a" stroke="#3a2a14" stroke-width="1.2" stroke-linejoin="round"/><path d="M3 12.5 L12 4.5 L21 12.5" fill="none" stroke="#8a3a2a" stroke-width="2" stroke-linecap="round"/><rect x="10" y="14" width="4" height="6" fill="#5a3a20"/><circle cx="12" cy="9.5" r="1.6" fill="#8fd4ff"/></svg>`;
+  }
+  if (spell.kind === 'teleport') {
+    const initial = (spell.place ?? spell.name).charAt(0);
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="#3a2a6a" stroke="#b98cff" stroke-width="1.4"/><path d="M12 5 A7 7 0 0 1 19 12 M12 19 A7 7 0 0 1 5 12" fill="none" stroke="#d8c0ff" stroke-width="1.4" stroke-linecap="round"/><text x="12" y="15.5" text-anchor="middle" font-size="9" font-weight="700" fill="#fff" font-family="serif">${initial}</text></svg>`;
+  }
+  if (spell.effect === 'gild') {
+    const big = (spell.rate ?? 0) > 0.6;
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="#f2c94c" stroke="#7a5a10" stroke-width="1.3"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="#c99a2a" stroke-width="1"/><path d="M12 8.5 V15.5 M10 10 H14" stroke="#7a5a10" stroke-width="1.4" stroke-linecap="round"/>${big ? '<path d="M4 4 L6 6 M20 4 L18 6 M4 20 L6 18 M20 20 L18 18" stroke="#fff3b0" stroke-width="1.6" stroke-linecap="round"/>' : ''}</svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16 L8 12 H20 L16 16 Z" fill="#ffb060" stroke="#6a2a10" stroke-width="1.2" stroke-linejoin="round"/><path d="M4 16 H16 V19 H4 Z" fill="#e0782a" stroke="#6a2a10" stroke-width="1.2"/><path d="M16 16 L20 12 V15 L16 19 Z" fill="#c05a1a" stroke="#6a2a10" stroke-width="1.2"/><path d="M11 9 C10 7 12 5.5 11.5 3.5 C14 5 14.5 7 13.5 9" fill="#ff7a1a" stroke="#6a2a10" stroke-width="0.8"/></svg>`;
 }

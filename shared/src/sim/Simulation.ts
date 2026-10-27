@@ -23,7 +23,10 @@ import {
   XP_PER_DAMAGE,
   equipmentBonuses,
   hitChance,
+  magicDefender,
+  magicFighter,
   monsterFighter,
+  monsterMagicFighter,
   playerFighter,
   playerMaxHit,
   rangedFighter,
@@ -47,11 +50,13 @@ import {
   hasAnyTool,
   hasItem,
   isBow,
+  isStaff,
   removeItem,
   roomFor,
   type EquipSlot,
   type ItemStack,
 } from './items';
+import { CAST_TICKS, MAGIC_RANGE, MAGIC_XP_PER_DAMAGE, RECALL_TICKS, SPELL_BY_ID, TELEPORT_TICKS, glyphCost, missingGlyphs, type SpellDef } from './magic';
 import { findPath } from './pathfinding';
 import { PRAYERS, drainPerTick, withPrayer, type PrayerId } from './prayer';
 import { QUESTS, QUEST_IDS, conversation, doneStage, questView, type QuestId, type TalkActions } from './quests';
@@ -104,6 +109,8 @@ const BOOST_FADE_TICKS = 100;
 const HERBLORE_QUEST: QuestId = 'nessas_cauldron';
 /** Intents ignored while crossing an obstacle. */
 const CROSSING_LOCKS: readonly ClientMessage['type'][] = ['walk', 'interact', 'useOn', 'attack', 'useItem', 'clean', 'light', 'eat', 'drink', 'bury', 'equip', 'unequip'];
+/** Intents ignored while teleporting (and casting another spell is no use either). */
+const TELEPORT_LOCKS: readonly ClientMessage['type'][] = [...CROSSING_LOCKS, 'cast'];
 /** Joined patch tiles that make allotments rather than herb patches. */
 const ALLOTMENT_SIZE = 6;
 /** Ticks before the first go at each farming task. */
@@ -125,6 +132,9 @@ const GATHER_TEXT = {
   net: { start: 'You cast out your net.', got: (item: string) => `You catch some ${item}.`, tool: 'a small fishing net to fish here', what: 'fish here' },
   rod: { start: 'You cast out your line.', got: (item: string) => `You catch a ${item}.`, tool: 'a fishing rod to fish here', what: 'fish here' },
 } as const;
+
+/** How a spell looks on its way, sent with the hit it lands. */
+type HitSpell = { element: string; tier: number };
 
 export interface SimulationOptions {
   map: MapData;
@@ -211,6 +221,7 @@ export class Simulation {
       energy: save?.energy ?? 100,
       run: save?.run ?? false,
       farm: Object.fromEntries(Object.entries(save?.farm ?? {}).map(([k, v]) => [k, { ...v }])),
+      ...(save?.autocast && { autocast: save.autocast }),
     };
     // Crops kept growing while the player was away.
     const away = save ? offlineTicks(save.updatedAt, now) : 0;
@@ -257,6 +268,7 @@ export class Simulation {
       energy: Math.floor(p.energy),
       ...(p.run && { run: true }),
       ...(Object.keys(p.farm).length && { farm: Object.fromEntries(Object.entries(p.farm).map(([k, v]) => [k, { ...v }])) }),
+      ...(p.autocast && { autocast: p.autocast }),
       bank: p.bank.map((s) => ({ ...s })),
       quests: { ...p.quests },
       createdAt: p.createdAt || now,
@@ -304,6 +316,7 @@ export class Simulation {
       else if (e.action?.kind === 'cross') this.crossStep(e);
       else if (e.action?.kind === 'inscribe') this.inscribeStep(e);
       else if (e.action?.kind === 'farm') this.farmStep(e);
+      else if (e.action?.kind === 'teleport') this.teleportStep(e);
     }
     for (const e of [...this.entities.values()]) {
       if (e.kind === 'player') {
@@ -341,6 +354,8 @@ export class Simulation {
     if (player.deadUntil !== undefined) return;
     // Halfway over an obstacle there's no turning back.
     if (player.action?.kind === 'cross' && player.action.started && CROSSING_LOCKS.includes(msg.type)) return;
+    // Once the words of a teleport are spoken it can't be stopped (a Hearth Recall chant can, until it ends).
+    if (player.action?.kind === 'teleport' && player.action.departed && TELEPORT_LOCKS.includes(msg.type)) return;
     switch (msg.type) {
       case 'walk':
         if (!Number.isInteger(msg.x) || !Number.isInteger(msg.y) || !this.grid.inBounds(msg.x, msg.y)) {
@@ -360,6 +375,10 @@ export class Simulation {
         if (msg.on && player.energy < RUN_DRAIN) return this.message(player.id, "You're too tired to run.", 'warn');
         player.run = !!msg.on;
         return;
+      case 'cast':
+        return this.cast(player, msg.spell, msg.targetId, msg.slot);
+      case 'setAutocast':
+        return this.setAutocast(player, msg.spell);
       case 'examine':
         this.examine(player, msg.targetId);
         return;
@@ -831,6 +850,10 @@ export class Simulation {
   /** Whether a player can hit a monster from where they stand: beside it, or within a bow's range with a clear shot. */
   private canHit(player: PlayerEntity, target: MonsterEntity): boolean {
     const weapon = player.equipment.weapon;
+    if (this.spellFor(player)) {
+      const d = distance(player, target);
+      return d > 0 && d <= MAGIC_RANGE && this.clearShot(player, target);
+    }
     if (!isBow(weapon)) return inReach(player, target);
     const range = ITEMS[weapon!].equip!.range! + (player.attackStyle === 'defensive' ? 2 : 0);
     const d = distance(player, target);
@@ -855,6 +878,8 @@ export class Simulation {
   }
 
   private playerAttack(player: PlayerEntity, monster: MonsterEntity): void {
+    const spell = this.spellFor(player);
+    if (spell) return this.playerCast(player, monster, spell);
     if (isBow(player.equipment.weapon)) return this.playerShoot(player, monster);
     const stats = MONSTERS[monster.defKey];
     const attacker = playerFighter(player.skills, player.equipment, player.attackStyle, player);
@@ -886,6 +911,34 @@ export class Simulation {
     this.landPlayerHit(player, monster, damage, player.attackStyle === 'defensive' ? [['ranged', 0.5], ['defence', 0.5]] : [['ranged', 1]]);
   }
 
+  /** The spell a player throws in this fight: one picked for it, or the staff's own. */
+  private spellFor(player: PlayerEntity): SpellDef | undefined {
+    const action = player.action;
+    if (action?.kind === 'attack' && action.spell) return SPELL_BY_ID[action.spell];
+    return player.autocast && isStaff(player.equipment.weapon) ? SPELL_BY_ID[player.autocast] : undefined;
+  }
+
+  /** A spell thrown: glyphs used up, Magic against the monster's Magic, the spell's own damage. */
+  private playerCast(player: PlayerEntity, monster: MonsterEntity, spell: SpellDef): void {
+    if (!this.takeGlyphs(player, spell)) {
+      player.action = null;
+      return;
+    }
+    const attacker = magicFighter(player.skills, player.equipment, player);
+    const landed = this.rng.chance(hitChance(attacker, monsterMagicFighter(MONSTERS[monster.defKey])));
+    const damage = landed ? Math.min(monster.hp, this.rng.int(1, spell.maxHit!)) : 0;
+    player.nextAttack = this.tick + CAST_TICKS;
+    this.animate(player, 'cast');
+    this.addXp(player, 'magic', spell.xp);
+    const action = player.action;
+    // A spell picked by hand is thrown once; then the staff takes over, or the fight waits for a new order.
+    if (action?.kind === 'attack' && action.spell) {
+      if (player.autocast && isStaff(player.equipment.weapon)) delete action.spell;
+      else player.action = null;
+    }
+    this.landPlayerHit(player, monster, damage, [['magic', MAGIC_XP_PER_DAMAGE / XP_PER_DAMAGE]], { element: spell.element!, tier: spell.tier! });
+  }
+
   /** How a player fights right now: with a bow and their best arrows, or hand to hand. */
   private fighterFor(player: PlayerEntity) {
     if (!isBow(player.equipment.weapon)) return playerFighter(player.skills, player.equipment, player.attackStyle, player);
@@ -906,11 +959,11 @@ export class Simulation {
   }
 
   /** A player's blow or arrow lands (or misses): XP split between `skills`, and the monster turns on them. */
-  private landPlayerHit(player: PlayerEntity, monster: MonsterEntity, damage: number, skills: [SkillId, number][]): void {
+  private landPlayerHit(player: PlayerEntity, monster: MonsterEntity, damage: number, skills: [SkillId, number][], spell?: HitSpell): void {
     const stats = MONSTERS[monster.defKey];
     monster.hp -= damage;
     monster.damageBy.set(player.id, (monster.damageBy.get(player.id) ?? 0) + damage);
-    this.broadcastHit(player, monster, damage, monster.hp, monster.maxHp);
+    this.broadcastHit(player, monster, damage, monster.hp, monster.maxHp, spell);
     if (damage > 0) {
       for (const [skill, share] of skills) this.addXp(player, skill, damage * XP_PER_DAMAGE * share);
       this.addXp(player, 'hitpoints', Math.round((damage * XP_PER_DAMAGE * 10) / 3) / 10);
@@ -926,6 +979,7 @@ export class Simulation {
   private monsterAttack(monster: MonsterEntity, player: PlayerEntity): void {
     const stats = MONSTERS[monster.defKey];
     if (stats.breath && this.rng.chance(stats.breath.chance)) return this.breathe(monster, player);
+    if (stats.casts && this.rng.chance(stats.casts.chance)) return this.monsterCast(monster, player);
     const defender = playerFighter(player.skills, player.equipment, player.attackStyle, player);
     const landed = this.rng.chance(hitChance(monsterFighter(stats), defender));
     // The Ward of Blades turns every bite and blow aside.
@@ -955,11 +1009,30 @@ export class Simulation {
     this.landMonsterHit(monster, player, damage);
   }
 
-  private landMonsterHit(monster: MonsterEntity, player: PlayerEntity, damage: number): void {
+  /** A monster's spell: its Magic against the player's magic defence. The Ward of Spells stops it. */
+  private monsterCast(monster: MonsterEntity, player: PlayerEntity): void {
+    const stats = MONSTERS[monster.defKey];
+    const spell = stats.casts!;
+    const magic = stats.magic ?? stats.attack;
+    const attacker = { attack: magic, strength: 0, defence: magic, bonuses: { attack: 0, strength: 0, defence: 0, magic: 0 } };
+    const landed = this.rng.chance(hitChance(attacker, magicDefender(player.skills, player.equipment, player)));
+    const warded = player.prayers.includes('ward_of_spells');
+    const damage = landed && !warded ? Math.min(player.hp, this.rng.int(1, spell.maxHit)) : 0;
+    monster.nextAttack = this.tick + stats.attackSpeed;
+    this.animate(monster, 'cast');
+    this.landMonsterHit(monster, player, damage, { element: spell.element, tier: 2 });
+  }
+
+  private landMonsterHit(monster: MonsterEntity, player: PlayerEntity, damage: number, spell?: HitSpell): void {
     player.hp -= damage;
     player.attackedBy = monster.id;
-    this.broadcastHit(monster, player, damage, player.hp, levelForXp(player.skills.hitpoints));
+    this.broadcastHit(monster, player, damage, player.hp, levelForXp(player.skills.hitpoints), spell);
     if (player.hp <= 0) return this.playerDies(player);
+    // A blow breaks a Hearth Recall chant.
+    if (player.action?.kind === 'teleport' && !player.action.departed) {
+      player.action = null;
+      this.message(player.id, 'Your chant is broken.', 'warn');
+    }
     // Auto-retaliate when standing idle.
     if (!player.action && !player.path.length) {
       player.action = { kind: 'attack', targetId: monster.id };
@@ -1227,7 +1300,7 @@ export class Simulation {
     const stack = this.slot(player, slot);
     const equip = stack ? ITEMS[stack.itemId].equip : undefined;
     if (!stack || !equip) return;
-    const skill = equip.style === 'shoot' ? 'ranged' : equip.slot === 'weapon' ? 'attack' : 'defence';
+    const skill = equip.skill ?? (equip.style === 'shoot' ? 'ranged' : equip.slot === 'weapon' ? 'attack' : 'defence');
     const need = equip.level ?? 1;
     if (levelForXp(player.skills[skill]) < need) {
       this.message(player.id, `You need ${aOrSome(this.skillName(skill))} level of ${need} to ${equip.slot === 'weapon' ? 'wield' : 'wear'} this.`, 'warn');
@@ -1257,6 +1330,170 @@ export class Simulation {
       return;
     }
     delete player.equipment[slot];
+  }
+
+  // -------------------------------------------------------------------------
+  // Magic
+  // -------------------------------------------------------------------------
+
+  /** A spell from the spellbook: at a monster, on an item in the pack, or a teleport. */
+  private cast(player: PlayerEntity, spellId: string, targetId?: EntityId, slot?: number): void {
+    const spell = SPELL_BY_ID[spellId];
+    if (!spell) return;
+    if (levelForXp(player.skills.magic) < spell.level) {
+      this.message(player.id, `You need a Magic level of ${spell.level} to cast ${spell.name}.`, 'warn');
+      return;
+    }
+    if (!this.hasGlyphs(player, spell)) return;
+    if (spell.kind === 'teleport') return this.startTeleport(player, spell);
+    if (spell.kind === 'item') {
+      if (slot !== undefined && this.validSlot(slot)) this.castOnItem(player, spell, slot);
+      return;
+    }
+    const target = targetId !== undefined ? this.entities.get(targetId) : undefined;
+    if (target?.kind !== 'monster' || !alive(target)) {
+      this.message(player.id, 'You can only cast that on a creature you can fight.', 'warn');
+      return;
+    }
+    this.stopActions(player);
+    player.action = { kind: 'attack', targetId: target.id, spell: spell.id };
+  }
+
+  /** Picks (or clears) the spell a staff casts by itself. */
+  private setAutocast(player: PlayerEntity, spellId: string | null): void {
+    const spell = spellId ? SPELL_BY_ID[spellId] : undefined;
+    if (!spell) {
+      delete player.autocast;
+      return;
+    }
+    if (spell.kind !== 'combat') return;
+    if (levelForXp(player.skills.magic) < spell.level) {
+      this.message(player.id, `You need a Magic level of ${spell.level} to cast ${spell.name}.`, 'warn');
+      return;
+    }
+    player.autocast = spell.id;
+    this.message(player.id, isStaff(player.equipment.weapon) ? `Your staff will cast ${spell.name} when you fight.` : `Your staff will cast ${spell.name} when you fight. Wield one to use it.`);
+  }
+
+  /** The spell a staff in hand is set to cast, if any. */
+  private autocastSpell(player: PlayerEntity): SpellDef | undefined {
+    return player.autocast && isStaff(player.equipment.weapon) ? SPELL_BY_ID[player.autocast] : undefined;
+  }
+
+  /** Whether the pack (and staff) has the glyphs for a cast; says which run short if not. */
+  private hasGlyphs(player: PlayerEntity, spell: SpellDef, extra?: { itemId: string; qty: number }): boolean {
+    const missing = missingGlyphs(spell, player.inventory, player.equipment);
+    // Gilding a glyph the spell also uses needs one more of it.
+    if (extra && !missing.length) {
+      const need = glyphCost(spell, player.equipment).find((c) => c.itemId === extra.itemId);
+      if (need && countItem(player.inventory, extra.itemId) < need.qty + extra.qty) missing.push({ itemId: extra.itemId, qty: 1 });
+    }
+    if (!missing.length) return true;
+    const names = missing.map((m) => ITEMS[m.itemId].name.toLowerCase().replace(/ glyph$/, ''));
+    this.message(player.id, `You don't have enough ${names.join(' and ')} glyphs to cast ${spell.name}.`, 'warn');
+    return false;
+  }
+
+  /** Uses up a cast's glyphs; false (and a message) when there aren't enough. */
+  private takeGlyphs(player: PlayerEntity, spell: SpellDef): boolean {
+    if (!this.hasGlyphs(player, spell)) return false;
+    for (const { itemId, qty } of glyphCost(spell, player.equipment)) removeItem(player.inventory, itemId, qty);
+    return true;
+  }
+
+  /** A teleport: the words, a flash, and a few ticks later the caster is there. Hearth Recall is chanted first. */
+  private startTeleport(player: PlayerEntity, spell: SpellDef): void {
+    if (spell.recall && this.inFight(player)) {
+      this.message(player.id, "You can't chant the way home while something is fighting you.", 'warn');
+      return;
+    }
+    if (!spell.recall && !this.takeGlyphs(player, spell)) return;
+    this.stopActions(player);
+    player.path = [];
+    player.destination = null;
+    const departAt = this.tick + (spell.recall ? RECALL_TICKS : 0);
+    player.action = { kind: 'teleport', spell: spell.id, to: this.openTileNear(spell.to!), departAt, arriveAt: departAt + TELEPORT_TICKS };
+    if (spell.recall) this.message(player.id, 'You begin to chant the way home...');
+    else this.addXp(player, 'magic', spell.xp);
+  }
+
+  private teleportStep(player: PlayerEntity): void {
+    const action = player.action;
+    if (action?.kind !== 'teleport') return;
+    if (!action.departed && this.tick >= action.departAt) {
+      action.departed = true;
+      this.animate(player, 'teleport');
+    }
+    if (this.tick < action.arriveAt) return;
+    player.x = action.to.x;
+    player.y = action.to.y;
+    player.action = null;
+    player.attackedBy = null;
+    for (const e of this.entities.values()) if (e.kind === 'monster' && e.target === player.id) e.target = null;
+    this.animate(player, 'arrive');
+    const spell = SPELL_BY_ID[action.spell];
+    this.message(player.id, `You arrive in ${spell.place}.`);
+  }
+
+  /** Whether a monster is fighting this player right now. */
+  private inFight(player: PlayerEntity): boolean {
+    for (const e of this.entities.values()) if (e.kind === 'monster' && e.target === player.id && alive(e)) return true;
+    return false;
+  }
+
+  /** The nearest walkable tile to a point, searching outward ring by ring. */
+  private openTileNear(p: Point): Point {
+    for (let r = 0; r <= 8; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          if (this.grid.inBounds(p.x + dx, p.y + dy) && this.grid.isWalkable(p.x + dx, p.y + dy)) return { x: p.x + dx, y: p.y + dy };
+        }
+      }
+    }
+    return this.map.spawn;
+  }
+
+  /** Gilding (an item to coins) or Forge Touch (ore to a bar), on one item in the pack. */
+  private castOnItem(player: PlayerEntity, spell: SpellDef, slot: number): void {
+    const stack = this.slot(player, slot);
+    if (!stack || this.tick < player.nextAttack) return;
+    const item = ITEMS[stack.itemId];
+    if (spell.effect === 'gild') {
+      if (stack.itemId === 'coins') return this.message(player.id, 'Coins are already gold.');
+      const coins = Math.floor(item.value * (spell.rate ?? 0));
+      if (coins < 1) return this.message(player.id, "There's not enough worth in that to gild.");
+      const freesSlot = !item.stackable || stack.qty === 1;
+      if (!freesSlot && !canAdd(player.inventory, 'coins', coins)) return this.message(player.id, "You don't have enough inventory space.", 'warn');
+      if (!this.hasGlyphs(player, spell, { itemId: stack.itemId, qty: 1 })) return;
+      this.takeGlyphs(player, spell);
+      removeItem(player.inventory, stack.itemId, 1);
+      addItem(player.inventory, 'coins', coins);
+      player.nextAttack = this.tick + CAST_TICKS;
+      this.animate(player, 'gild');
+      this.addXp(player, 'magic', spell.xp);
+      this.message(player.id, `The ${item.name.toLowerCase()} melts into ${coins} gold coin${coins === 1 ? '' : 's'}.`);
+      return;
+    }
+    // Forge Touch: the best bar this ore (and whatever else is carried) can make.
+    const smithing = levelForXp(player.skills.smithing);
+    const recipes = RECIPES.filter((r) => r.station === 'furnace' && r.inputs.some((i) => i.itemId === stack.itemId));
+    if (!recipes.length) return this.message(player.id, 'Forge Touch only works on ore.');
+    const can = recipes
+      .filter((r) => smithing >= r.level && r.inputs.every((i) => countItem(player.inventory, i.itemId) >= i.qty))
+      .sort((a, b) => b.level - a.level)[0];
+    if (!can) {
+      const least = Math.min(...recipes.map((r) => r.level));
+      return this.message(player.id, smithing < least ? `You need a Smithing level of ${least} to smelt that.` : "You don't have everything that bar needs.", 'warn');
+    }
+    if (!this.takeGlyphs(player, spell)) return;
+    for (const i of can.inputs) removeItem(player.inventory, i.itemId, i.qty);
+    addItem(player.inventory, can.output, can.outputQty ?? 1);
+    player.nextAttack = this.tick + CAST_TICKS;
+    this.animate(player, 'forge');
+    this.addXp(player, 'magic', spell.xp);
+    this.addXp(player, 'smithing', can.xp);
+    this.message(player.id, `The ore glows white in your hand and runs into ${aOrSome(ITEMS[can.output].name.toLowerCase())}.`);
   }
 
   // -------------------------------------------------------------------------
@@ -1306,6 +1543,11 @@ export class Simulation {
       // Fire reaches further than teeth: a fleeing or approaching player may get breathed on.
       if (stats.breath && this.tick >= m.nextAttack && distance(m, target) <= stats.breath.range && this.rng.chance(0.5)) {
         this.breathe(m, target);
+        return;
+      }
+      // So do spells, with a clear line to the target.
+      if (stats.casts && this.tick >= m.nextAttack && distance(m, target) <= stats.casts.range && this.clearShot(m, target) && this.rng.chance(0.5)) {
+        this.monsterCast(m, target);
         return;
       }
       const route = findPath(this.grid, m, this.meleeGoals(target), target, { maxNodes: 600, canStep: this.monsterCanStep(m) });
@@ -1993,6 +2235,7 @@ export class Simulation {
       const shrine = this.entities.get(a.targetId);
       return shrine ? { target: shrine, activity: 'inscribe' } : null;
     }
+    if (a?.kind === 'teleport' && !a.departed) return { target: player, activity: 'recall' };
     if (a?.kind === 'farm' && a.task && a.task !== 'compost' && a.task !== 'cure') {
       const patch = this.entities.get(a.targetId);
       if (!patch || patch.kind !== 'scenery') return null;
@@ -2148,8 +2391,8 @@ export class Simulation {
     this.broadcast(e, { type: 'animation', entityId: e.id, kind });
   }
 
-  private broadcastHit(attacker: Entity, target: Entity, damage: number, hp: number, maxHp: number): void {
-    this.broadcast(target, { type: 'hit', attackerId: attacker.id, targetId: target.id, damage, hp: Math.max(0, hp), maxHp });
+  private broadcastHit(attacker: Entity, target: Entity, damage: number, hp: number, maxHp: number, spell?: HitSpell): void {
+    this.broadcast(target, { type: 'hit', attackerId: attacker.id, targetId: target.id, damage, hp: Math.max(0, hp), maxHp, ...(spell && { spell }) });
   }
 
   private reject(playerId: EntityId, reason: string): void {
@@ -2173,7 +2416,7 @@ export class Simulation {
     if (e.kind === 'player') {
       const work = this.activityOf(e);
       const fighting = e.action?.kind === 'attack' ? e.action.targetId : e.attackedBy;
-      const overhead = (['ward_of_blades', 'ember_ward'] as const).find((p) => e.prayers.includes(p));
+      const overhead = (['ward_of_blades', 'ward_of_spells', 'ember_ward'] as const).find((p) => e.prayers.includes(p));
       const crossing = e.action?.kind === 'cross' && e.action.started ? this.crossingView(e.action) : undefined;
       return {
         id: e.id,
@@ -2270,7 +2513,7 @@ export class Simulation {
       equipment: player.equipment,
       attackStyle: player.attackStyle,
       bonuses: equipmentBonuses(player.equipment),
-      maxHit: playerMaxHit(this.fighterFor(player)),
+      maxHit: this.autocastSpell(player)?.maxHit ?? playerMaxHit(this.fighterFor(player)),
       ui: this.uiView(player),
       quests: QUEST_IDS.map((id) => questView(id, player.quests[id] ?? 0)),
       questPoints: this.questPoints(player),
@@ -2281,6 +2524,7 @@ export class Simulation {
       ...(player.firewardUntil !== undefined && { fireward: Math.ceil((player.firewardUntil - this.tick) / 100) }),
       energy: Math.floor(player.energy),
       run: player.run,
+      autocast: player.autocast ?? null,
     };
     const json = JSON.stringify(state);
     if (json === session.lastSelf) return;

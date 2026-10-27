@@ -523,8 +523,8 @@ function priest(def: NpcDef): DialoguePage[] {
 }
 
 /** People who teach a skill: what they say about it, and their shop if they have one. */
-const LESSONS: Record<string, { ask: string; pages: string[] }> = {
-  'Agility trainer': {
+const LESSONS: Record<string, { ask: string; pages: string[] }[]> = {
+  'Agility trainer': [{
     ask: 'Tell me about Agility.',
     pages: [
       'Go round the course: logs, hurdles, nets, the lot. Each obstacle teaches your legs something, and a full lap in order earns a bonus.',
@@ -532,17 +532,25 @@ const LESSONS: Record<string, { ask: string; pages: string[] }> = {
       'Agility brings your run energy back faster. Click the boot by your minimap to run: two steps for every one, until your legs give out.',
       "Once you reach level 30 there's a harder course far to the north, out in the Ashen Waste. Mind the fumes.",
     ],
-  },
-  'Glyphcraft tutor': {
+  }],
+  'Glyphcraft tutor': [{
     ask: 'Tell me about Glyphcraft.',
     pages: [
       'The pale stone in the quarry beside my spire is aether stone. Any pickaxe will chip shards off it, and it never runs out.',
       "Carry the shards to a shrine and hold them up to it. The shrine marks every shard you carry with its glyph: wind, thought, tide, root, and many more for the skilled.",
       'The Wind Shrine stands just south of Falcrest, the Thought Shrine just north of it. The rest are further out, and each asks more of you than the last.',
-      'With practice a shard takes two marks, then three. Orrin, at Glyph & Robe in Kelmoor, buys glyphs, and one day you may learn to cast with them.',
+      'With practice a shard takes two marks, then three. Orrin, at Glyph & Robe in Kelmoor, buys glyphs, and they are what every spell is cast with.',
     ],
-  },
-  'Farming supplier': {
+  }, {
+    ask: 'Tell me about Magic.',
+    pages: [
+      'Every spell takes glyphs. Open your spellbook, pick a combat spell, then pick the creature to throw it at.',
+      'Wind Spark wants one wind glyph and one thought glyph. Orrin sells both at Glyph & Robe in Kelmoor, along with staves and robes.',
+      "Pick a spell for your staff and it will cast by itself in a fight. An elemental staff stands in for its own glyphs, so a wind staff saves you a great many.",
+      "Metal armour gets in the way of a spell; robes help it along. And when you're far from home, Hearth Recall walks you back to Kelmoor for nothing but a little patience.",
+    ],
+  }],
+  'Farming supplier': [{
     ask: 'How do I grow things?',
     pages: [
       'The Brightwater Allotments, south-east of here, have patches anyone may use. They start overgrown, so rake them clear first.',
@@ -550,17 +558,16 @@ const LESSONS: Record<string, { ask: string; pages: string[] }> = {
       "Crops grow while you get on with other things, even while you're away. Come back, dig them up with a spade, or pick the herbs by hand.",
       'Sometimes a crop falls sick. Pour a plant cure on it before it grows again, or it dies. Compost on the soil before planting keeps them healthier and gives a bigger crop.',
     ],
-  },
+  }],
 };
 
 function teacher(def: NpcDef, a: TalkActions): DialoguePage[] {
-  const lesson = LESSONS[def.role];
   return [
     {
       speaker: 'npc',
       text: ROLE_LINES[def.role],
       options: [
-        { label: lesson.ask, then: () => lesson.pages.map((t) => npc(t)) },
+        ...LESSONS[def.role].map((lesson) => ({ label: lesson.ask, then: () => lesson.pages.map((t) => npc(t)) })),
         ...(a.trade ? [{ label: "Let's trade.", then: () => (a.trade!(), []) }] : []),
         { label: 'Just passing by.', then: () => [] },
       ],

@@ -64,7 +64,7 @@ const ROBES: Record<string, [number, number]> = { wizard: [0x2b3f9e, 0xd8dcf0], 
 const BOW_WOOD: Record<string, number> = { oak: 0xa87a44, willow: 0xc2a265, yew: 0x7a3f22 };
 
 /** Colours for each metal tier, used on worn gear. */
-export const METALS: Record<string, number> = { bronze: 0xb8793a, iron: 0x7d7f86, steel: 0xb4bec8, cinder: 0x6a2418, drakescale: 0xa8401e };
+export const METALS: Record<string, number> = { bronze: 0xb8793a, iron: 0x7d7f86, steel: 0xb4bec8, cobalt: 0x3f62b4, verdite: 0x2f5c44, glacite: 0x9cd0e4, duskfang: 0xd8ccb4, cinder: 0x6a2418, drakescale: 0xa8401e };
 
 /**
  * A look with gear on top: helmets and shields are added, a chainbody
@@ -100,7 +100,7 @@ function weaponKind(itemId: string): WeaponKind {
   if (itemId.endsWith('longbow')) return 'longbow';
   if (itemId.endsWith('pickaxe')) return 'pickaxe';
   if (itemId.endsWith('axe')) return 'axe';
-  return itemId.endsWith('dagger') ? 'dagger' : 'sword';
+  return itemId.endsWith('dagger') || itemId === 'duskfang' ? 'dagger' : 'sword';
 }
 
 function shadeHex(hex: number, k: number): number {
@@ -329,6 +329,24 @@ export const CHARACTER_STYLES: Record<string, CharacterStyle> = {
     glowEyes: 0xff5a2a,
     bones: true,
     weapon: { kind: 'sword', color: 0x7a6a5a },
+  },
+  barrow_wight: {
+    tunic: 0x4f5a48,
+    trim: 0x8a7a3a,
+    trousers: 0x3a4036,
+    boots: 0x2e3228,
+    belt: 0x5a4a2a,
+    buckle: 0xc8a840,
+    skin: 0x9aa89a,
+    hair: 0xc8ccc0,
+    hairStyle: 'long',
+    helm: 0x5f6a52,
+    glowEyes: 0x7affc8,
+    bodyMetal: true,
+    shield: 0x4a5a44,
+    weapon: { kind: 'sword', color: 0x6a7a62 },
+    cape: 0x22261e,
+    bulk: 1.05,
   },
   falcrest_guard: {
     tunic: 0x6a6f7a,

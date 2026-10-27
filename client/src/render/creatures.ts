@@ -8,7 +8,7 @@ import { paint, vertexMaterial, warp } from './skin';
  * guards) use the character rig instead; see CHARACTER_STYLES.
  */
 
-export type CreatureKind = 'cow' | 'desert_lizard' | 'scorpion' | 'cave_creeper' | 'crimson_swift' | 'cinder_drake' | 'brine_slug' | 'gloom_bat' | 'rockmaw' | 'glare_lizard';
+export type CreatureKind = 'cow' | 'desert_lizard' | 'scorpion' | 'cave_creeper' | 'crimson_swift' | 'cinder_drake' | 'brine_slug' | 'gloom_bat' | 'rockmaw' | 'glare_lizard' | 'frost_wolf' | 'dusk_stalker' | 'fen_lurker';
 
 /** Creatures that fly: always on the wing, and they drop out of the air when they die. */
 const FLYING: ReadonlySet<CreatureKind> = new Set(['crimson_swift', 'gloom_bat']);
@@ -505,6 +505,155 @@ function glareLizard(seed: number): CreatureRig {
 }
 
 /**
+ * A four-legged hunter with a long snout and a jaw (wolves and great cats).
+ * `fur` colours the coat by position; `cat` gives a rounder skull, small
+ * ears and a long low body; legs bend at the knee.
+ */
+function hunter(r: CreatureRig, o: { fur: (p: THREE.Vector3) => number; dark: number; eye: number; eyeGlow: number; cat: boolean; tailSegs: number }): CreatureRig {
+  const { fur, dark, eye, eyeGlow, cat } = o;
+  const len = cat ? 0.42 : 0.36;
+  r.torso.position.y = cat ? 0.36 : 0.43;
+  const barrel = warp(rounded(cat ? 0.16 : 0.165, cat ? 0.15 : 0.17, len, 2.4, 28), (p) => {
+    // Deep chest, tucked waist, a little hump at the shoulders.
+    const front = p.z / len;
+    if (p.y < 0) p.y *= front > 0 ? 1.15 : 0.75 + 0.25 * (1 + front);
+    if (p.y > 0) p.y += 0.02 * Math.max(0, front);
+    p.x *= cat ? 1 : 1 - 0.15 * Math.max(0, -front);
+  });
+  part(r.torso, barrel, fur);
+  // Ruff of fur round the neck (the wolf), sleek shoulders (the cat).
+  if (!cat) part(r.torso, rounded(0.16, 0.17, 0.12, 2.2, 20), fur, 0, 0.03, len - 0.06);
+
+  r.head.position.set(0, cat ? 0.08 : 0.12, len + 0.04);
+  r.head.rotation.x = cat ? 0.1 : -0.05;
+  const skull = warp(rounded(cat ? 0.1 : 0.085, cat ? 0.085 : 0.08, cat ? 0.1 : 0.1, 2.4, 20), (p) => {
+    const front = Math.max(0, p.z / 0.1);
+    p.x *= 1 - 0.18 * front;
+  });
+  part(r.head, skull, fur, 0, 0, 0.04);
+  // The snout and the lower jaw, which opens to bite.
+  const snout = warp(rounded(cat ? 0.055 : 0.045, cat ? 0.04 : 0.038, cat ? 0.06 : 0.11, 2.4, 16), (p) => (p.x *= 1 - 0.25 * Math.max(0, p.z / 0.11)));
+  part(r.head, snout, fur, 0, -0.01, cat ? 0.13 : 0.16);
+  part(r.head, rounded(0.02, 0.016, 0.016, 2, 10), 0x141414, 0, 0.01, cat ? 0.19 : 0.27, 0, true);
+  const jaw = pivot(r.head, 0, -0.04, 0.08);
+  part(jaw, warp(rounded(cat ? 0.05 : 0.04, 0.018, cat ? 0.07 : 0.1, 2.4, 14), (p) => (p.x *= 1 - 0.3 * Math.max(0, p.z / 0.1))), dark, 0, 0, cat ? 0.05 : 0.08);
+  for (const side of [-1, 1]) part(jaw, horn(0.008, 0.035, 0), 0xf0ead8, side * 0.025, 0.005, cat ? 0.09 : 0.14);
+  for (const side of [-1, 1]) part(r.head, horn(0.007, 0.03, 0).rotateX(Math.PI), 0xf0ead8, side * 0.03, -0.035, cat ? 0.15 : 0.22);
+  r.jaw = jaw;
+  for (const side of [-1, 1]) {
+    // Ears: tall points for the wolf, low rounded ones for the cat.
+    const ear = cat ? rounded(0.035, 0.04, 0.012, 2, 10) : horn(0.04, 0.1, -0.02).scale(1, 1, 0.45);
+    part(r.head, ear.rotateZ(-side * (cat ? 0.4 : 0.25)), dark, side * (cat ? 0.07 : 0.05), cat ? 0.07 : 0.05, cat ? 0.01 : -0.01);
+    part(r.head, new THREE.SphereGeometry(0.017, 10, 8).scale(1, cat ? 0.7 : 0.8, 1), eye, side * (cat ? 0.05 : 0.045), 0.03, cat ? 0.11 : 0.1, eyeGlow, true);
+  }
+  const hipY = cat ? -0.06 : -0.08;
+  for (const [x, z, offset] of [[-0.09, len - 0.1, 0], [0.09, len - 0.1, Math.PI], [-0.09, -len + 0.1, Math.PI * 0.9], [0.09, -len + 0.1, -0.1]] as const) {
+    const front = z > 0;
+    const hip = pivot(r.torso, x, hipY, z);
+    part(hip, limb(cat ? 0.17 : 0.2, cat ? 0.07 : 0.065, 0.04), fur);
+    const knee = pivot(hip, 0, cat ? -0.17 : -0.2);
+    // Hind legs bend back at the hock.
+    if (!front) knee.rotation.x = 0.35;
+    part(knee, limb(cat ? 0.1 : 0.14, 0.04, 0.03), fur);
+    part(knee, rounded(cat ? 0.045 : 0.038, 0.022, cat ? 0.055 : 0.05, 2.4, 12), dark, 0, cat ? -0.115 : -0.155, 0.02);
+    r.legs.push({ hip, knee, side: Math.sign(x), offset, splay: 0 });
+  }
+  let parent: THREE.Object3D = r.torso;
+  let z = -len + 0.02;
+  for (let i = 0; i < o.tailSegs; i++) {
+    const seg = pivot(parent, 0, i === 0 ? 0.06 : 0, z);
+    const l = cat ? 0.15 : 0.13;
+    part(seg, along(l, cat ? 0.03 - i * 0.003 : 0.05 + (i === 1 ? 0.012 : 0) - i * 0.008, cat ? 0.026 - i * 0.003 : 0.045 - i * 0.008), i === o.tailSegs - 1 ? dark : fur);
+    r.tail.push(seg);
+    parent = seg;
+    z = -l;
+  }
+  return r;
+}
+
+/** A grey mountain wolf, pale-bellied, with frost along its back and ice-blue eyes. */
+function frostWolf(seed: number): CreatureRig {
+  const r = base('frost_wolf', seed);
+  r.body.scale.setScalar(1.15);
+  const grey = mix(0x8a9096, 0x6a7076, (seed % 7) / 7);
+  const coat = (p: THREE.Vector3) => {
+    if (p.y < -0.06) return 0xd8dce0;
+    const back = THREE.MathUtils.smoothstep(p.y, 0.04, 0.14);
+    const frost = noise(p, seed * 4.1, 26) > 0.7 ? 0.5 : 0;
+    return mix(mix(grey, 0x4a5056, back * 0.7), 0xf0f6fa, frost * back);
+  };
+  return hunter(r, { fur: coat, dark: 0x3a3e44, eye: 0x9fe8ff, eyeGlow: 0x2a6080, cat: false, tailSegs: 3 });
+}
+
+/** A great cat the colour of nightfall, with faint violet markings and eyes that catch the light. */
+function duskStalker(seed: number): CreatureRig {
+  const r = base('dusk_stalker', seed);
+  r.body.scale.setScalar(1.45);
+  const coat = (p: THREE.Vector3) => {
+    if (p.y < -0.08) return 0x2c2832;
+    const mark = Math.sin(p.z * 30 + Math.abs(p.x) * 18 + noise(p, seed, 8) * 3) > 0.82 && p.y > -0.02;
+    return mark ? 0x4a3a66 : mix(0x16141a, 0x221e28, noise(p, seed * 1.3, 12));
+  };
+  return hunter(r, { fur: coat, dark: 0x141018, eye: 0xc8a8ff, eyeGlow: 0x6a3ac8, cat: true, tailSegs: 5 });
+}
+
+/** A swamp ambusher: a wide mossy body like a fallen log, a broad flat jaw and yellow eyes on top. */
+function fenLurker(seed: number): CreatureRig {
+  const r = base('fen_lurker', seed);
+  r.body.scale.setScalar(1.35);
+  const bark = 0x4a4a2a;
+  const moss = 0x5a7a2a;
+  const belly = 0x8a8a5a;
+  const hide = (p: THREE.Vector3) => (p.y < -0.03 ? belly : noise(p, seed * 2.7, 13) > 0.58 ? moss : mix(bark, 0x3a3a22, noise(p, seed, 22)));
+  r.torso.position.y = 0.15;
+  const trunk = warp(rounded(0.2, 0.09, 0.32, 2.6, 26), (p) => {
+    // Knobbly, like old bark.
+    const n = noise(p, seed * 3.3, 20) - 0.5;
+    if (p.y > 0) p.y += n * 0.03;
+    p.x *= 1 - 0.2 * Math.abs(p.z / 0.32) ** 2;
+  });
+  part(r.torso, trunk, hide);
+  for (let k = 0; k < 6; k++) part(r.torso, rounded(0.025, 0.02, 0.025, 2, 8), 0x7a6a3a, ((k * 37) % 5 - 2) * 0.05, 0.08, 0.22 - k * 0.08);
+  r.head.position.set(0, 0.0, 0.3);
+  const skull = warp(rounded(0.17, 0.05, 0.16, 2.6, 22), (p) => {
+    const front = Math.max(0, p.z / 0.16);
+    p.x *= 1 - 0.2 * front;
+    p.y *= 1 - 0.3 * front;
+  });
+  part(r.head, skull, hide, 0, 0.01, 0.1);
+  const jaw = pivot(r.head, 0, -0.03, -0.02);
+  part(jaw, warp(rounded(0.16, 0.035, 0.16, 2.6, 20), (p) => (p.y = Math.min(p.y, 0.01))), belly, 0, -0.01, 0.12);
+  for (let k = 0; k < 7; k++) part(jaw, horn(0.008, 0.03, 0), 0xe8e0c0, -0.12 + k * 0.04, 0.0, 0.24 - Math.abs(k - 3) * 0.02);
+  r.jaw = jaw;
+  for (const side of [-1, 1]) {
+    part(r.head, rounded(0.035, 0.03, 0.035, 2, 12), hide, side * 0.08, 0.06, 0.04);
+    part(r.head, new THREE.SphereGeometry(0.024, 12, 8), 0xe8d040, side * 0.08, 0.08, 0.06, 0x403000, true);
+    part(r.head, new THREE.SphereGeometry(0.01, 8, 6).scale(1.6, 0.5, 1), 0x111111, side * 0.08, 0.085, 0.082);
+  }
+  for (const [x, z, offset] of [[-1, 0.2, 0], [1, 0.2, Math.PI], [-1, -0.2, Math.PI], [1, -0.2, 0]] as const) {
+    const hip = pivot(r.torso, x * 0.16, -0.02, z);
+    hip.rotation.z = x * 1.15;
+    part(hip, limb(0.12, 0.045, 0.035), hide);
+    const knee = pivot(hip, 0, -0.12);
+    knee.rotation.z = -x * 1.35;
+    part(knee, limb(0.08, 0.035, 0.03), hide);
+    part(knee, rounded(0.05, 0.012, 0.05, 2, 10), bark, 0, -0.09, 0.02);
+    r.legs.push({ hip, knee, side: x, offset, splay: x * 1.15 });
+  }
+  let parent: THREE.Object3D = r.torso;
+  let z = -0.3;
+  for (let i = 0; i < 3; i++) {
+    const seg = pivot(parent, 0, 0, z);
+    const len = 0.16 - i * 0.03;
+    part(seg, along(len, 0.075 - i * 0.02, 0.06 - i * 0.02), hide);
+    r.tail.push(seg);
+    parent = seg;
+    z = -len;
+  }
+  return r;
+}
+
+/**
  * The Cinder Drake: a coal-dark drake twice a man's height, with glowing
  * cracks along its flanks, a long neck, folded wings and a spaded tail.
  */
@@ -654,6 +803,9 @@ const BUILDERS: Record<CreatureKind, (seed: number) => CreatureRig> = {
   gloom_bat: bat,
   rockmaw,
   glare_lizard: glareLizard,
+  frost_wolf: frostWolf,
+  dusk_stalker: duskStalker,
+  fen_lurker: fenLurker,
 };
 
 export function isCreature(defKey: string): defKey is CreatureKind {
@@ -688,7 +840,7 @@ export function creatureBusy(rig: CreatureRig, now: number): boolean {
 /** Gait, idle motion, attacks and death for every creature kind. */
 export function animateCreature(rig: CreatureRig, dt: number, now: number, moving: boolean, speed = 1, fighting = false, dead = false): void {
   rig.walk += ((moving ? 1 : 0) - rig.walk) * Math.min(1, dt * 8);
-  const stride = rig.kind === 'cinder_drake' ? 1.5 : rig.kind === 'cow' || rig.kind === 'brine_slug' ? 1.2 : rig.kind === 'rockmaw' ? 0.9 : 0.6; // seconds per cycle: little legs scurry
+  const stride = rig.kind === 'cinder_drake' ? 1.5 : rig.kind === 'cow' || rig.kind === 'brine_slug' ? 1.2 : rig.kind === 'rockmaw' || rig.kind === 'fen_lurker' ? 0.9 : rig.kind === 'frost_wolf' ? 0.55 : rig.kind === 'dusk_stalker' ? 0.75 : 0.6; // seconds per cycle: little legs scurry
   if (rig.walk > 0.01) rig.phase += (dt * Math.PI * 2 * speed) / stride;
   if (rig.kind === 'cinder_drake') return animateDrake(rig, dt, now, fighting, dead);
   const w = rig.walk;
@@ -747,6 +899,23 @@ export function animateCreature(rig: CreatureRig, dt: number, now: number, movin
     // A rolling, heavy walk, and the jaw working idly.
     rig.torso.rotation.z = Math.sin(rig.phase) * 0.06 * w;
     if (rig.jaw) rig.jaw.rotation.x = Math.max(0, Math.sin(t * 0.9)) * 0.08 * idle;
+  }
+  if (rig.kind === 'frost_wolf' || rig.kind === 'dusk_stalker') {
+    // A loping run: the back flexes and the body bobs; the tail streams out behind.
+    const cat = rig.kind === 'dusk_stalker';
+    rig.body.position.y = Math.abs(Math.sin(rig.phase)) * (cat ? 0.03 : 0.05) * w;
+    rig.torso.rotation.x = Math.sin(rig.phase * 2) * 0.04 * w + (fighting ? 0.06 : 0);
+    rig.tail.forEach((seg, i) => {
+      // Negative tips the tail down: the wolf's hangs and lifts as it runs; the cat's droops, then curls up at the end.
+      seg.rotation.x = cat ? (i === 0 ? -0.7 + 0.3 * w : 0.22) : (i === 0 ? -0.75 + 0.45 * w : -0.1);
+      seg.rotation.y = Math.sin(t * (cat ? 1.4 : 2) - i * 0.8) * (cat ? 0.3 : 0.18) * (1 + (fighting ? 1 : 0));
+    });
+    if (rig.jaw) rig.jaw.rotation.x = fighting ? 0.18 + Math.sin(t * 5) * 0.04 : 0;
+  }
+  if (rig.kind === 'fen_lurker') {
+    // Lies low and still, the jaw just open; the body sways as it crawls.
+    rig.torso.rotation.y = Math.sin(rig.phase) * 0.08 * w;
+    if (rig.jaw) rig.jaw.rotation.x = 0.08 + Math.max(0, Math.sin(t * 0.4)) * 0.06 * idle;
   }
   if (rig.kind === 'cave_creeper') rig.torso.position.y = 0.3 + (fighting ? Math.sin(t * 6) * 0.015 : 0);
 

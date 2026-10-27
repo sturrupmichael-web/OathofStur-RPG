@@ -14,13 +14,13 @@ describe('JsonMapSource', () => {
     expect(map.terrain).toHaveLength(512 * 384);
     expect(map.terrain.every((t) => t >= 0)).toBe(true);
     expect(map.spawn).toEqual({ x: kx(60), y: ky(49) });
-    expect(map.areas).toHaveLength(128);
+    expect(map.areas).toHaveLength(129);
   });
 
   it('turns trees, rocks, stations and props into placements', () => {
     // Fewer than the map's tree tiles: some squares of four became one big tree.
     expect(count('tree')).toBe(6349);
-    expect(count('dead_tree')).toBe(1523);
+    expect(count('dead_tree')).toBe(1535);
     expect(count('oak_tree')).toBe(605);
     expect(count('copper_rock')).toBe(22);
     expect(count('glacite_rock')).toBe(3);
@@ -94,7 +94,7 @@ describe('JsonMapSource', () => {
   it('spawns monsters with their level and wander area, and people with their role', () => {
     const monsters = map.placements.filter((p) => p.kind === 'monster');
     const goblins = monsters.filter((p) => p.defKey === 'goblin');
-    expect(monsters).toHaveLength(86);
+    expect(monsters).toHaveLength(106);
     expect(goblins).toHaveLength(8);
     expect(monsters.filter((p) => p.defKey === 'cinder_drake').map((p) => p.level)).toEqual([60]);
     expect(goblins.every((g) => g.level === 2 && (g.wander?.radius ?? 0) > 0)).toBe(true);

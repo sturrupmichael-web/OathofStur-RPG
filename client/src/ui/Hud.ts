@@ -319,13 +319,16 @@ export class Hud {
 
   private drawCraft(ui: Extract<UiView, { kind: 'craft' }>, self: SelfState, body: HTMLElement): void {
     el('win-title').textContent = ui.title;
-    for (const r of ui.recipes) {
-      const level = levelForXp(self.skills[r.skill]);
+    const makeable = (r: (typeof ui.recipes)[number]) => {
       // A batch of one-for-one parts (shafts and feathers) can be made short.
       const partial = r.outputQty > 1 && r.inputs.every((i) => i.qty === r.outputQty);
       const canMake = Math.min(...r.inputs.map((i) => Math.floor(countItem(self.inventory, i.itemId) / (partial ? 1 : i.qty))));
       const hasTool = !r.tool || countItem(self.inventory, r.tool) > 0;
-      const ok = level >= r.level && canMake > 0 && hasTool;
+      return levelForXp(self.skills[r.skill]) >= r.level && canMake > 0 && hasTool;
+    };
+    // What can be made right now comes first; the anvil alone has six metals' worth.
+    const recipes = ui.recipes.map((r) => ({ r, ok: makeable(r) })).sort((a, b) => Number(b.ok) - Number(a.ok));
+    for (const { r, ok } of recipes) {
       const row = document.createElement('div');
       row.className = `recipe${ok ? '' : ' unavailable'}`;
       const icon = document.createElement('div');

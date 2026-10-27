@@ -904,6 +904,16 @@ for(let y=309;y<=322;y++){gset(199,y,'b');gset(200,y,'b');ROADSET.add(y*W+199);R
 // Frostpeak Mine, high in the north-east.
 grownSite(462,100,20,12,'d');
 for(let k=0;k<26;k++){const x=463+(hh6(k,1,61)*18|0),y=101+(hh6(k,2,61)*10|0),r=hh6(k,3,61);gset(x,y,r<.3?'3':r<.55?'4':r<.75?'6':r<.92?'7':'8')}
+// Wolfrun Hollow, a high meadow east of the mine where the frost wolves den: ragged
+// edges, dead trees and boulders, and a track in from the mine.
+grownSite(487,88,22,20,',');
+for(let j=88;j<108;j++)for(let i=487;i<509;i++){
+  const edge=Math.min(i-487,508-i,j-88,107-j);
+  if(edge<2&&hh6(i,j,63)<(edge?0.3:0.6))gset(i,j,'^');
+  else if(edge>=2&&hh6(i,j,64)<0.04)gset(i,j,'t');
+  else if(edge>=2&&hh6(i,j,65)<0.025)gset(i,j,'*');
+}
+for(let i=481;i<=489;i++){gset(i,105,'d');gset(i,106,'d');ROADSET.add(105*W+i);ROADSET.add(106*W+i)}
 // Avel Farm, east of Port Avel: a fenced pasture and a barn.
 grownSite(244,326,24,16,'.');outline(244,326,24,16,'F');gset(244,333,'d');rect(247,336,8,4,'f');building(258,329,7,5,'w',[[0,2]]);
 // The Barrowfield: an old burial ground with its barrows and stones.
@@ -968,10 +978,10 @@ AREAS.push(
   A('Corvane Bank',430,134,10,7,2),A('Corvane General Store',442,134,8,7,2),A('Corvane Smithy',452,133,11,8,2),A('The Antler Inn',429,157,11,8,2),
   A('Chapel of the Vigil',458,156,8,10,2),A('Port Avel Bank',181,325,9,6,2),A('Avel Tackle',210,324,7,6,2),A('Port Avel Store',218,324,8,6,2),
   A('The Drowned Lantern',184,334,10,7,2),
-  A('Corvane Market',441,145,16,10,1,{ly:145}),A('Frostpeak Mine',462,100,20,12,1,{ly:99.3}),A('Ferry Pier',197,309,6,14,1,{ly:308.3}),
+  A('Corvane Market',441,145,16,10,1,{ly:145}),A('Frostpeak Mine',462,100,20,12,1,{ly:99.3}),A('Wolfrun Hollow',487,88,22,20,1,{ly:87.3}),A('Ferry Pier',197,309,6,14,1,{ly:308.3}),
   A('Avel Farm',244,326,24,16,1,{ly:325.3}),A('The Barrowfield',300,340,22,14,1,{ly:339.3}),
   A('Corvane',424,130,48,42,0,{kind:'town',ly:128}),A('Port Avel',176,321,64,30,0,{kind:'town',ly:352}),
-  A('The Eastmarch',400,124,112,74,0,{kind:'region',lx:480,ly:180}),A('Frostpeak Heights',440,84,72,40,0,{kind:'region',lx:490,ly:92}),
+  A('The Eastmarch',400,124,112,74,0,{kind:'region',lx:480,ly:180}),A('Frostpeak Heights',440,84,72,40,0,{kind:'region',lx:470,ly:118}),
   A('Saltmere Fen',408,198,104,92,0,{kind:'region',lx:470,ly:250}),A('The Duskwood',430,322,82,62,0,{kind:'region',lx:470,ly:360}),
   A('The Southmarch',0,318,430,66,0,{kind:'region',lx:110,ly:360})
 );
@@ -989,8 +999,12 @@ const GROWN_NPCS=[
   {type:'Ferryman Hob',role:'Ferryman',shop:'Ferry Pier',box:[199,318,2,3]},
   {type:'Ferrywoman Nell',role:'Ferryman',shop:'Saltcombe Docks',box:[158,262,2,3]},
   {type:'Cow',level:2,n:6,box:[245,327,22,8]},
-  {type:'Skeleton',level:22,n:5,box:[301,341,20,12]},
-  {type:'Crimson swift',level:1,n:5,box:[470,150,30,30]}
+  {type:'Skeleton',level:22,n:4,box:[301,341,20,12]},
+  {type:'Crimson swift',level:1,n:5,box:[470,150,30,30]},
+  {type:'Barrow wight',level:48,n:3,box:[304,343,14,8]},
+  {type:'Fen lurker',level:28,n:7,box:[418,212,64,56]},
+  {type:'Frost wolf',level:36,n:6,box:[490,91,16,14]},
+  {type:'Dusk stalker',level:65,n:5,box:[440,330,62,46]}
 ];
 for(const g of GROWN_NPCS){
   g.n=g.n||1;g.ok=()=>true;let placed=0;

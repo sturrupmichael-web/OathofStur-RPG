@@ -98,7 +98,7 @@ canvas#map{display:block;width:100%;height:100%;touch-action:none;cursor:crossha
   <header class="top">
     <div class="brand">
       <h1>The Vell Reaches</h1>
-      <span class="sub">Region map · 384 × 288 tiles</span>
+      <span class="sub">Region map · 512 × 384 tiles</span>
     </div>
     <div class="tools" role="toolbar" aria-label="Map controls">
       <button class="btn" id="tLabels" aria-pressed="true">Labels</button>
@@ -117,7 +117,7 @@ canvas#map{display:block;width:100%;height:100%;touch-action:none;cursor:crossha
       <div class="toast" id="toast" hidden></div>
     </div>
     <aside class="panel">
-      <canvas class="mini" id="mini" width="384" height="288" aria-label="Minimap. Tap to jump there."></canvas>
+      <canvas class="mini" id="mini" width="512" height="384" aria-label="Minimap. Tap to jump there."></canvas>
       <section class="readout" aria-live="polite">
         <div class="eyebrow">Tile</div>
         <div class="coords" id="rc">190, 119</div>
@@ -150,7 +150,7 @@ canvas#map{display:block;width:100%;height:100%;touch-action:none;cursor:crossha
 /* =========================================================
    World setup
    ========================================================= */
-const W=384,H=288,TS=16,OX=130,OY=70,DITCH=83;
+let W=384,H=288;const TS=16,OX=130,OY=70,DITCH=83;
 const map=new Array(W*H).fill('.');
 const ROADSET=new Set(),SITES=[],SITEWARN=[];
 let ox=0,oy=0; // local offset used while stamping Kelmoor
@@ -818,6 +818,208 @@ for(const g of NPC_GROUPS){g.ok=g.ok||(()=>true);let placed=0,tries=0;
     NPCS.push({g,x,y,fx:x,fy:y,start:0,next:rnd()*2000,sx:x,sy:y});placed++}}
 
 /* =========================================================
+   6. Growing the Reaches to 512 x 384 (2026-10-27)
+   Everything above is generated at the old 384 x 288 size, so nothing in the
+   old land moves; this widens the map east and south and fills the new land
+   by hand and by hashing tiles, with no random draws.
+   East: the Eastmarch and the town of Corvane, Frostpeak Heights and its mine,
+   the Saltmere Fen. South, across the Saltwind Sea: the Southmarch, Port Avel,
+   Avel Farm, the Barrowfield and the Duskwood. A ferry crosses from Saltcombe.
+   ========================================================= */
+const OLDW=W,OLDH=H;
+{
+  const old=map.slice();
+  W=512;H=384;
+  map.length=W*H;map.fill('V');
+  for(let y=0;y<OLDH;y++)for(let x=0;x<OLDW;x++)map[y*W+x]=old[y*OLDW+x];
+  // Tile keys were y*OLDW+x: rewrite them for the new width.
+  const rekey=i=>((i/OLDW)|0)*W+i%OLDW;
+  for(const s of[ROADSET,occ]){const v=[...s];s.clear();for(const i of v)s.add(rekey(i))}
+  for(const m of[FISH,ALTAR_AT]){const v=[...m];m.clear();for(const[i,t]of v)m.set(rekey(i),t)}
+}
+const isNew=(x,y)=>x>=OLDW||y>=OLDH;
+const hh6=(a,b,k)=>{let h=(a*374761393+b*668265263+k*2147483647)|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return(h>>>0)/4294967296};
+const clamp01=v=>v<0?0:v>1?1:v;
+// The south shore of the Saltwind Sea, held flat where Port Avel stands, and the east shore of the bay.
+const southShore=x=>{const n=316+(fbm(x/60,.5,9)-.5)*44+(fbm(x/14,.7,10)-.5)*8,d=x<170?170-x:x>246?x-246:0,w=clamp01(1-d/24);return Math.round(n*(1-w)+320*w)};
+const eastShore=y=>{const n=402+(fbm(.5,y/40,7)-.5)*40+(fbm(.2,y/12,8)-.5)*6;return Math.round(y<300?Math.max(388,n):n)};
+const inSea=(x,y)=>y>coastY(x)&&y<southShore(x)&&x<eastShore(y);
+const seaDepth=(x,y)=>Math.min(y-coastY(x),southShore(x)-y,eastShore(y)-x);
+const FEN=[408,198,104,92],DUSK=[430,322,82,62],FROST=[440,84,72,56];
+// Inside a region, with a ragged edge rather than a ruler-straight one (open at the map's own edges).
+const soft=(r,x,y,k)=>{if(!inR(x,y,[r[0]-12,r[1]-12,r[2]+24,r[3]+24]))return false;
+  const d=Math.min(r[0]>0?x-r[0]:99,r[0]+r[2]<W?r[0]+r[2]-x:99,r[1]>0?y-r[1]:99,r[1]+r[3]<H?r[1]+r[3]-y:99);return d+(fbm(x/14,y/14,k)-.5)*26>2};
+
+// 1. Biomes for the new land.
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  if(!isNew(x,y))continue;
+  let c;
+  if(y<DITCH){c='a';if((y<22&&fbm(x/30,y/30,11)>.58)||(x>488&&fbm(x/30,y/30,11)>.52))c='^'}
+  else if(y===DITCH)c='D';
+  else if(inSea(x,y))c=seaDepth(x,y)>3?'V':'~';
+  else{
+    const e=fbm(x/45,y/45,11),sw=fbm(x/18,y/18,23);
+    // The desert and the ridge east of Qadir run on a little way before giving out.
+    const desert=x<392+(fbm(.3,y/20,5)-.5)*16&&y>124+(fbm(x/22,y/18,6)-.5)*24&&y<coastY(x)-3;
+    if((x<400&&y<260&&e>.5)||(soft(FROST,x,y,45)&&e>.47)||e>.7)c='^';
+    else if(desert)c='S';
+    else if(soft(FEN,x,y,44))c=sw>.66?'~':'q';
+    else c=fbm(x/12,y/12,31)>.58?',':'.';
+  }
+  map[y*W+x]=c;
+}
+// Beaches: new land within two tiles of the sea.
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  if(!isNew(x,y)||'~V^D'.includes(gget(x,y))||y<DITCH)continue;
+  let near=false;
+  for(let j=-2;j<=2&&!near;j++)for(let i=-2;i<=2;i++)if(inb(x+i,y+j)&&inSea(x+i,y+j)){near=true;break}
+  if(near)gset(x,y,'S');
+}
+
+// 2. Towns and sites. Buildings, roads and sites are drawn with the same helpers as the old land.
+const GROWN=[];
+function grownSite(x,y,w,h,g){GROWN.push([x,y,w,h]);for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++)if(inb(i,j)&&!ROADSET.has(j*W+i))gset(i,j,g)}
+// Corvane, the market town of the Eastmarch.
+grownSite(424,130,48,42,'.');
+rect(441,145,16,10,'c');gset(449,150,'0');
+building(430,134,10,7,'s',[[5,6]]);for(let x=432;x<=437;x++)set(x,136,'K');                 // Corvane Bank
+building(442,134,8,7,'w',[[4,6]]);                                                            // Corvane General Store
+building(452,133,11,8,'s',[[5,7]]);set(454,135,'U');set(459,135,'A');set(460,135,'A');         // Corvane Smithy
+building(429,157,11,8,'w',[[5,0]]);set(431,159,'R');                                          // The Antler Inn
+building(458,156,8,10,'s',[[3,0]]);set(461,158,'x');                                          // Chapel of the Vigil
+building(442,159,6,5,'w',[[3,0]]);building(450,161,6,5,'w',[[2,0]]);building(465,145,6,5,'w',[[0,2]]);
+building(426,144,6,5,'w',[[5,2]]);
+for(const[x,y]of[[443,146],[455,146],[443,153]])gset(x,y,'M');
+// Port Avel, on the south shore of the Saltwind Sea.
+grownSite(176,321,64,30,'.');
+for(let x=176;x<240;x++){for(let y=southShore(x);y<323;y++)gset(x,y,'S')}
+rect(196,325,12,7,'c');gset(201,328,'0');
+building(181,325,9,6,'s',[[8,3]]);for(let y=326;y<=329;y++)set(182,y,'K');                     // Port Avel Bank
+building(210,324,7,6,'w',[[0,3]]);                                                            // Avel Tackle
+building(218,324,8,6,'w',[[0,3]]);                                                            // Port Avel Store
+building(184,334,10,7,'w',[[5,0]]);set(186,336,'R');                                          // The Drowned Lantern
+building(197,335,7,5,'w',[[3,0]]);building(206,336,6,5,'w',[[2,0]]);building(214,335,7,5,'w',[[3,0]]);building(224,333,6,6,'w',[[0,3]]);
+// The ferry pier, out into the bay.
+for(let y=309;y<=322;y++){gset(199,y,'b');gset(200,y,'b');ROADSET.add(y*W+199);ROADSET.add(y*W+200)}
+// Frostpeak Mine, high in the north-east.
+grownSite(462,100,20,12,'d');
+for(let k=0;k<26;k++){const x=463+(hh6(k,1,61)*18|0),y=101+(hh6(k,2,61)*10|0),r=hh6(k,3,61);gset(x,y,r<.3?'3':r<.55?'4':r<.75?'6':r<.92?'7':'8')}
+// Avel Farm, east of Port Avel: a fenced pasture and a barn.
+grownSite(244,326,24,16,'.');outline(244,326,24,16,'F');gset(244,333,'d');rect(247,336,8,4,'f');building(258,329,7,5,'w',[[0,2]]);
+// The Barrowfield: an old burial ground with its barrows and stones.
+grownSite(300,340,22,14,',');
+for(let k=0;k<16;k++){const x=301+(hh6(k,4,62)*20|0),y=341+(hh6(k,5,62)*12|0);gset(x,y,'G')}
+for(const[x,y]of[[302,341],[319,341],[302,352],[319,352]])gset(x,y,'Z');
+// Glyph-free fishing along the new shores.
+const growFish=(r,count,label,c,k0)=>{
+  const cand=[];
+  for(let y=r[1];y<r[1]+r[3];y++)for(let x=r[0];x<r[0]+r[2];x++){if(gget(x,y)!=='~')continue;
+    if([gget(x-1,y),gget(x+1,y),gget(x,y-1),gget(x,y+1)].some(v=>v==='S'||v==='b'))cand.push([x,y])}
+  cand.sort((p,q)=>hh6(p[0],p[1],k0)-hh6(q[0],q[1],k0));
+  const out=[];for(const p of cand){if(out.length>=count)break;if(out.some(q=>Math.max(Math.abs(q[0]-p[0]),Math.abs(q[1]-p[1]))<3))continue;out.push(p)}
+  for(const[x,y]of out){gset(x,y,c);FISH.set(y*W+x,label)}
+  return out;
+};
+
+// 3. Roads.
+// Qadir's new east gate, then over the ridge to Corvane.
+for(const y of[179,180,181])gset(356,y,'n');
+road([[357,180],[384,180],[408,168],[430,156],[441,150]],2);
+road([[449,145],[449,120],[455,100],[453,84]],2);                                          // north to the Ashen Ditch
+for(let x=452;x<455;x++)gset(x,DITCH,'d');
+road([[452,112],[470,112]],1);                                                              // Frostpeak Mine
+road([[449,155],[440,190],[430,240],[425,300],[410,326],[330,334],[268,332],[240,330],[208,331]],2); // south through the fen to Port Avel
+road([[255,332],[255,326]],1);road([[310,334],[310,340]],1);
+
+// 4. Vegetation, by hashing each tile.
+const leafy6=c=>c==='.'||c===','||c==='T'||c==='t'||c==='o'||c==='l'||c==='e';
+const inGrown=(x,y)=>GROWN.some(r=>inR(x,y,r));
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  if(!isNew(x,y)||inGrown(x,y)||ROADSET.has(y*W+x))continue;
+  const c=gget(x,y),r=hh6(x,y,71);
+  if(c==='a'){if(r<.025&&n4(x,y,v=>v==='a'||v==='t'))gset(x,y,'t');continue}
+  if(c==='S'){if(y<coastY(x)-6&&r<.012&&n4(x,y,v=>v==='S'||v==='Y'))gset(x,y,'Y');continue}
+  if(c==='q'){if(r<.07&&n4(x,y,v=>v==='q'||leafy6(v)))gset(x,y,'t');continue}
+  if(c!=='.'&&c!==',')continue;
+  const f=fbm(x/30,y/30,41);
+  const p=soft(DUSK,x,y,46)?.42:x<420&&y>84&&y<124?.3:f>.62?.4:f>.55?.14:.03;
+  if(r>=p||!n4(x,y,leafy6))continue;
+  let nearW=false;for(let dy=-2;dy<=2&&!nearW;dy++)for(let dx=-2;dx<=2;dx++)if(gget(x+dx,y+dy)==='~'){nearW=true;break}
+  const k=hh6(x,y,72);
+  gset(x,y,nearW&&k<.55?'l':soft(DUSK,x,y,46)&&k<.12?'e':k<.12?'o':'T');
+}
+growFish([176,306,64,18],6,'Perch & pike (rod)','I',81);
+growFish([240,312,60,14],4,'Minnows (net)','j',82);
+growFish([408,214,104,76],4,'Perch & pike (rod)','I',83);
+
+// 5. Boulders in the new wilds, as in the old land.
+for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){
+  if(!isNew(x,y))continue;
+  const c=gget(x,y);
+  if((c!=='.'&&c!==','&&c!=='S'&&c!=='a')||hh6(x,y,21)>.006||ROADSET.has(y*W+x)||inGrown(x,y))continue;
+  let open=true;
+  for(let j=y-1;j<=y+1&&open;j++)for(let i=x-1;i<=x+1;i++)if((i!==x||j!==y)&&(!walk(i,j)||ROADSET.has(j*W+i))){open=false;break}
+  if(open)gset(x,y,'*');
+}
+
+// 6. Names. The old regions that ran to the edge now run to the new one.
+for(const a of AREAS){if(a.n==='The Ashen Waste'||a.n==='Ashen Ditch')a.w=W;if(a.n==='Saltwind Sea'){a.w=400;a.h=64}}
+AREAS.push(
+  A('Corvane Bank',430,134,10,7,2),A('Corvane General Store',442,134,8,7,2),A('Corvane Smithy',452,133,11,8,2),A('The Antler Inn',429,157,11,8,2),
+  A('Chapel of the Vigil',458,156,8,10,2),A('Port Avel Bank',181,325,9,6,2),A('Avel Tackle',210,324,7,6,2),A('Port Avel Store',218,324,8,6,2),
+  A('The Drowned Lantern',184,334,10,7,2),
+  A('Corvane Market',441,145,16,10,1,{ly:145}),A('Frostpeak Mine',462,100,20,12,1,{ly:99.3}),A('Ferry Pier',197,309,6,14,1,{ly:308.3}),
+  A('Avel Farm',244,326,24,16,1,{ly:325.3}),A('The Barrowfield',300,340,22,14,1,{ly:339.3}),
+  A('Corvane',424,130,48,42,0,{kind:'town',ly:128}),A('Port Avel',176,321,64,30,0,{kind:'town',ly:352}),
+  A('The Eastmarch',400,124,112,74,0,{kind:'region',lx:480,ly:180}),A('Frostpeak Heights',440,84,72,40,0,{kind:'region',lx:490,ly:92}),
+  A('Saltmere Fen',408,198,104,92,0,{kind:'region',lx:470,ly:250}),A('The Duskwood',430,322,82,62,0,{kind:'region',lx:470,ly:360}),
+  A('The Southmarch',0,318,430,66,0,{kind:'region',lx:110,ly:360})
+);
+
+// 7. People and creatures of the new land, placed by hashing (still no random draws).
+const GROWN_NPCS=[
+  {type:'Banker',role:'Banker',shop:'Corvane Bank',n:2,box:[432,137,6,1]},
+  {type:'Tilda',role:'Shopkeeper',shop:'Corvane General Store',box:[443,135,6,4]},
+  {type:'Harl',role:'Smith',shop:'Corvane Smithy',box:[453,136,9,4]},
+  {type:'Wenna',role:'Innkeeper',shop:'The Antler Inn',box:[431,159,7,5]},
+  {type:'Sister Maud',role:'Priest',shop:'Chapel of the Vigil',box:[459,159,6,6]},
+  {type:'Banker',role:'Banker',shop:'Port Avel Bank',n:2,box:[183,326,1,4]},
+  {type:'Pike',role:'Fishing supplier',shop:'Avel Tackle',box:[211,325,5,4]},
+  {type:'Bettany',role:'Shopkeeper',shop:'Port Avel Store',box:[219,325,6,4]},
+  {type:'Ferryman Hob',role:'Ferryman',shop:'Ferry Pier',box:[199,318,2,3]},
+  {type:'Ferrywoman Nell',role:'Ferryman',shop:'Saltcombe Docks',box:[158,262,2,3]},
+  {type:'Cow',level:2,n:6,box:[245,327,22,8]},
+  {type:'Skeleton',level:22,n:5,box:[301,341,20,12]},
+  {type:'Crimson swift',level:1,n:5,box:[470,150,30,30]}
+];
+for(const g of GROWN_NPCS){
+  g.n=g.n||1;g.ok=()=>true;let placed=0;
+  for(let k=0;placed<g.n&&k<500;k++){
+    const x=g.box[0]+(hh6(k,g.box[0]*7+g.box[1],91)*g.box[2]|0),y=g.box[1]+(hh6(k,g.box[1]*7+g.box[0],92)*g.box[3]|0);
+    if(!walk(x,y)||occ.has(y*W+x))continue;
+    occ.add(y*W+x);NPCS.push({g,x,y,fx:x,fy:y,start:0,next:hh6(x,y,93)*2000,sx:x,sy:y});placed++;
+  }
+  if(placed<g.n)SITEWARN.push([g.box[0],g.box[1],g.type+' (no room)']);
+}
+for(const g of GROWN_NPCS)if(g.shop&&!g.level&&g.type!=='Banker')KEEPERS.push({type:g.type,role:g.role,shop:g.shop});
+
+// 8. Can a player walk to everything new? Anything usable that can't be reached is a warning.
+{
+  const seen=new Uint8Array(W*H),q=[(OY+49)*W+OX+60];seen[q[0]]=1;
+  while(q.length){const i=q.pop(),x=i%W,y=(i/W)|0;
+    for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]){const a=x+dx,b=y+dy;
+      if(!walk(a,b)||seen[b*W+a])continue;if(dx&&dy&&(!walk(x+dx,y)||!walk(x,y+dy)))continue;seen[b*W+a]=1;q.push(b*W+a)}}
+  const reach=(x,y)=>{for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const a=x+dx,b=y+dy;if(!inb(a,b)||!seen[b*W+a])continue;
+    if(dx&&dy&&(!walk(x+dx,y)||!walk(x,y+dy)))continue;return true}return false};
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    if(!isNew(x,y))continue;const c=gget(x,y);
+    if('oleQ'.includes(c)&&!reach(x,y))gset(x,y,'T');
+    else if('123456789AKURrjIhu>x'.includes(c)&&!reach(x,y))SITEWARN.push([x,y,c+' (unreachable)']);
+  }
+  for(const n of NPCS)if(isNew(n.x,n.y)&&!seen[n.y*W+n.x]&&!n.g.level)SITEWARN.push([n.x,n.y,n.g.type+' (unreachable)']);
+}
+
+/* =========================================================
    Tile painter
    ========================================================= */
 const cl=v=>v<0?0:v>255?255:v|0;
@@ -1223,7 +1425,7 @@ document.getElementById('copy').addEventListener('click',()=>{
   const json=regionJson();
   const dump=document.getElementById('dump');
   const fallback=()=>{dump.value=json;dump.hidden=false;dump.focus();dump.select();say('Select the text below and copy it')};
-  try{navigator.clipboard.writeText(json).then(()=>say('Copied region JSON · 384 × 288 tiles'),fallback)}catch(err){fallback()}
+  try{navigator.clipboard.writeText(json).then(()=>say(`Copied region JSON · ${W} × ${H} tiles`),fallback)}catch(err){fallback()}
 });
 window.__REGION={map,W,H,walk,gget,NPCS,AREAS,TILES,SPAWN,SKILLS,SITEWARN,json:regionJson};
 })();

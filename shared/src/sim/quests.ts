@@ -1,5 +1,6 @@
 import type { NpcDef } from '../map/types';
 import { hrolfTalk, type BountyActions } from './bounty';
+import { FERRY, ferryTalk, type FerryActions } from './ferry';
 import { corwinTalk, joryTalk, type HomesteadActions, type SawmillActions } from './homestead';
 import type { SkillId } from './skills';
 
@@ -40,6 +41,8 @@ export interface TalkActions {
   homestead?: HomesteadActions;
   /** Jory's saw. */
   sawmill?: SawmillActions;
+  /** The ferry across the Saltwind Sea. */
+  ferry?: FerryActions;
 }
 
 export type QuestId = 'first_oath' | 'dukes_feast' | 'hull_and_nails' | 'feathers_for_ivy' | 'emirs_seal' | 'nessas_cauldron';
@@ -593,6 +596,7 @@ const QUEST_TALK: Record<string, (def: NpcDef, a: TalkActions) => DialoguePage[]
   hrolf: (_def, a) => hrolfTalk(a),
   corwin: (_def, a) => corwinTalk(a),
   jory: (_def, a) => joryTalk(a),
+  ...Object.fromEntries(Object.entries(FERRY.crews).map(([key, to]) => [key, (_def: NpcDef, a: TalkActions) => ferryTalk(to)(a)])),
 };
 
 /** The conversation you get when you talk to someone. */

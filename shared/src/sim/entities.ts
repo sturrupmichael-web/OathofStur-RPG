@@ -42,7 +42,7 @@ export type PlayerAction =
   /** Fighting a monster: chase it into reach, then swing whenever the weapon is ready. `spell` is one spell to cast at it. */
   | { kind: 'attack'; targetId: EntityId; chasing?: Point; spell?: string }
   /** Teleporting: (chanting until `departAt` for Hearth Recall), vanishing, then arriving at `to` on `arriveAt`. `place` names where, for a portal. */
-  | { kind: 'teleport'; spell: string; to: Point; departAt: number; arriveAt: number; departed?: boolean; place?: string }
+  | { kind: 'teleport'; spell: string; to: Point; departAt: number; arriveAt: number; departed?: boolean; place?: string; ferry?: boolean }
   /**
    * At the homestead: through the gate, look at a build spot (its window opens),
    * build a tier there (done at `doneAt`), use what's built, or take it down.

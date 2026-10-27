@@ -325,6 +325,57 @@ body {
   color: #5a4a30;
 }
 
+/* Startup choice when this browser and the cloud save both changed. */
+#save-choice {
+  position: absolute;
+  left: 50%;
+  top: 14%;
+  transform: translateX(-50%);
+  z-index: 30;
+  width: 380px;
+  max-width: calc(100% - 32px);
+  padding: 14px 18px;
+  text-align: center;
+  background: #d8c9a3;
+  color: #1a1209;
+  border: 3px solid var(--edge);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+}
+
+#save-choice-title {
+  font-size: 17px;
+  font-weight: bold;
+  color: #1f3f8a;
+}
+
+#save-choice .lu-text {
+  margin: 6px 0 10px;
+  font-size: 13px;
+}
+
+#save-choice .lu-hint {
+  margin: 10px 0 6px;
+  font-size: 11px;
+  color: #5a4a30;
+}
+
+.save-choice-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.save-choice-sides button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: pre-line;
+}
+
 @keyframes level-pop {
   from { transform: translateX(-50%) scale(0.7); opacity: 0; }
   to { transform: translateX(-50%) scale(1); opacity: 1; }

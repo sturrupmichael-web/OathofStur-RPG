@@ -12,7 +12,7 @@ export { findPath } from './sim/pathfinding';
 export * from './sim/skills';
 export { Simulation, TICK_MS, type SimulationOptions } from './sim/Simulation';
 export * from './sim/combat';
-export { QUESTS, QUEST_IDS, questView, type QuestId, type QuestView, type DialoguePage } from './sim/quests';
+export { QUESTS, QUEST_IDS, doneStage, questView, type QuestId, type QuestView, type DialoguePage } from './sim/quests';
 export * from './sim/prayer';
 export { COURSES, OBSTACLE_KINDS, obstacleAt, type ObstacleDef, type ObstacleType } from './sim/agility';
 export { CROPS, PATCH_KINDS, cropForSeed, type CropDef, type PatchKind, type PatchView } from './sim/farming';

@@ -23,14 +23,18 @@ import {
   type MapSource,
   type Point,
   type PublicEntity,
+  type SaveData,
   type SelfState,
   countItem,
   xpForLevel,
 } from '@rpg/shared';
 import vellReaches from '@rpg/shared/data/maps/vell-reaches.json';
 import { Sound, type SoundName } from './audio/Sound';
+import { account } from './net/account';
+import { CloudSave, type CloudStatus } from './net/cloudSave';
 import { LocalServer } from './net/LocalServer';
 import type { ServerConnection } from './net/ServerConnection';
+import { summary } from './net/syncRules';
 import { missileFlight } from './render/EntityLayer';
 import { Renderer, type PickResult } from './render/Renderer';
 import { ClientState } from './state/ClientState';
@@ -56,7 +60,35 @@ const CROSS_SOUNDS: Record<string, SoundName> = {
   wall: 'climb',
 };
 
+/** Asks which character to keep when this browser and the cloud save both changed. */
+function chooseSave(local: SaveData, cloud: SaveData): Promise<'local' | 'cloud'> {
+  const box = document.getElementById('save-choice')!;
+  const describe = (s: SaveData) => {
+    const sum = summary(s);
+    const when = new Date(sum.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    return `Total level ${sum.totalLevel}\n${sum.quests} quest${sum.quests === 1 ? '' : 's'} done\nSaved ${when}`;
+  };
+  const sides = box.querySelectorAll<HTMLButtonElement>('.save-choice-sides button');
+  sides.forEach((b) => (b.querySelector('span')!.textContent = describe(b.dataset.side === 'cloud' ? cloud : local)));
+  document.getElementById('save-choice-export')!.onclick = () => downloadSave(local);
+  box.hidden = false;
+  return new Promise((resolve) =>
+    sides.forEach((b) =>
+      (b.onclick = () => {
+        box.hidden = true;
+        resolve(b.dataset.side as 'local' | 'cloud');
+      }),
+    ),
+  );
+}
+
+const cloud = new CloudSave();
+
 async function start(): Promise<void> {
+  // Back from Google with a sign-in, or not; then which character to play.
+  account.init();
+  const startSave = await cloud.pick(loadLocal(), chooseSave);
+
   // Swap this for a Tiled/LDtk MapSource later; nothing below depends on the format.
   const mapSource: MapSource = new JsonMapSource('vell-reaches', vellReaches as unknown as JsonMapFile);
   const map = mapSource.load();
@@ -570,12 +602,20 @@ async function start(): Promise<void> {
   let savingEnabled = true;
   let exportNext = false;
   let maxNext = false;
+  let signInNext = false;
   const requestSave = () => {
     if (savingEnabled) server.send({ type: 'requestSave' });
   };
   state.on('saveData', (save) => {
     if (!savingEnabled) return;
     const ok = storeLocal(save);
+    void cloud.push(save);
+    if (signInNext) {
+      // Saved in this browser first, so nothing is lost on the trip to Google and back.
+      savingEnabled = false;
+      account.signIn();
+      return;
+    }
     const time = new Date(save.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     saveStatus.textContent = ok
       ? `Saved in this browser at ${time}. It also saves every 30 seconds and when you close the tab.`
@@ -640,7 +680,40 @@ async function start(): Promise<void> {
     }
     savingEnabled = false;
     clearLocal();
-    location.reload();
+    // Signed in, the cloud copy goes too, or it would come straight back on reload.
+    void cloud.remove().finally(() => location.reload());
+  });
+
+  // --- Cloud save (Google sign-in) -----------------------------------------------
+  const cloudStatus = document.getElementById('cloud-status')!;
+  const signInButton = document.getElementById('cloud-signin') as HTMLButtonElement;
+  const signOutButton = document.getElementById('cloud-signout') as HTMLButtonElement;
+  const CLOUD_TEXT: Record<CloudStatus, string> = {
+    off: '',
+    syncing: 'Syncing with your cloud save...',
+    synced: 'Your character is saved to the cloud too, and follows you to any device you sign in on.',
+    offline: "Can't reach the cloud right now. Your progress is safe in this browser and syncs when it can.",
+    conflict: 'Your cloud save changed on another device. Reload the page to choose which character to keep.',
+  };
+  const showCloud = (status: CloudStatus) => {
+    const user = account.user;
+    signInButton.hidden = !!user || !account.available;
+    signOutButton.hidden = !user;
+    reset.textContent = user ? 'Start a new character (also deletes the cloud save)' : 'Start a new character';
+    if (user) cloudStatus.textContent = `Signed in as ${user.email || 'a Google account'}. ${CLOUD_TEXT[status]}`;
+    else if (!account.available) cloudStatus.textContent = 'Cloud saves work on the game page at michaelsturrup.com/oathofstur/, not in this preview.';
+    else cloudStatus.textContent = account.lastError ? `Sign-in didn't finish: ${account.lastError}` : 'Sign in with Google to keep your character in the cloud and play it on any device.';
+  };
+  cloud.onStatus = showCloud;
+  showCloud(cloud.status);
+  signInButton.addEventListener('click', () => {
+    signInNext = true;
+    requestSave();
+  });
+  signOutButton.addEventListener('click', () => {
+    requestSave();
+    account.signOut();
+    cloud.reset();
   });
 
   // On-screen camera buttons (shown on touch screens): hold to rotate or zoom.
@@ -767,7 +840,7 @@ async function start(): Promise<void> {
   // Test hook for automated browser checks: only with #debug in the address.
   if (location.hash === '#debug') Object.assign(window, { __oath: { state, renderer, send: (m: Parameters<ServerConnection['send']>[0]) => server.send(m) } });
 
-  await server.connect('Wanderer', loadLocal());
+  await server.connect('Wanderer', startSave);
 }
 
 start().catch((err) => {

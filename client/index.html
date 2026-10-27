@@ -14,6 +14,16 @@
         <div id="xp-drops" aria-hidden="true"></div>
         <div id="level-up" role="status" hidden></div>
         <div id="quest-complete" role="status" hidden></div>
+        <div id="save-choice" role="dialog" aria-labelledby="save-choice-title" hidden>
+          <div id="save-choice-title">Which character do you want to keep?</div>
+          <p class="lu-text">This browser and your cloud save have both changed since they last synced.</p>
+          <div class="save-choice-sides">
+            <button data-side="local"><b>This browser</b><span></span></button>
+            <button data-side="cloud"><b>Cloud save</b><span></span></button>
+          </div>
+          <p class="lu-hint">The other one is replaced. Export a save file first if you want to keep both.</p>
+          <button id="save-choice-export">Export this browser's save first</button>
+        </div>
         <div id="boss-bar" hidden><span id="boss-name"></span><div id="boss-hp"><div id="boss-hp-fill"></div></div></div>
         <div id="dialogue" role="dialog" aria-live="polite" hidden></div>
         <div id="window" role="dialog" aria-labelledby="win-title" hidden>
@@ -96,6 +106,12 @@
           <div class="sound-row">
             <button id="sound-toggle" aria-pressed="true">Sound on</button>
             <input id="sound-volume" type="range" min="0" max="100" value="70" aria-label="Volume" />
+          </div>
+          <h3>Cloud save</h3>
+          <p class="muted" id="cloud-status"></p>
+          <div class="option-buttons">
+            <button id="cloud-signin">Sign in with Google</button>
+            <button id="cloud-signout" hidden>Sign out</button>
           </div>
           <h3>Your save</h3>
           <p class="muted" id="save-status">Your progress saves in this browser automatically.</p>

@@ -772,7 +772,8 @@ const TOOL_MODELS: Record<string, () => THREE.Group> = {
     g.add(hoop);
     const netting = new THREE.MeshLambertMaterial({ color: 0xe8e0c8, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.16, 8, 1, true), netting);
-    mesh.rotation.z = Math.PI / 2;
+    // The open end sits on the hoop and the bag hangs away from it.
+    mesh.rotation.z = -Math.PI / 2;
     mesh.position.set(0.08, 0.47, 0.02);
     g.add(mesh);
     g.rotation.x = Math.PI / 2;

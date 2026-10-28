@@ -650,6 +650,19 @@ export class BuildingLayer {
     return null;
   }
 
+  /**
+   * How many room lights (torches, hearths) shine at once, nearest first.
+   * Every light is worked out for every pixel on screen, so fewer is lighter.
+   */
+  setLightBudget(count: number): void {
+    this.lights.forEach((light, i) => (light.visible = i < count));
+  }
+
+  /** Everything here that moves after it's built: sails, flames, smoke and the lights that hop between rooms. */
+  get moving(): THREE.Object3D[] {
+    return [...this.sails, ...this.flames.map((f) => f.mesh), ...this.smoke.flatMap((s) => s.puffs), ...this.lights];
+  }
+
   update(now: number, player: { x: number; y: number } | null): void {
     const dt = this.lastUpdate ? Math.min(0.25, (now - this.lastUpdate) / 1000) : 0;
     this.lastUpdate = now;

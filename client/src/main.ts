@@ -97,22 +97,23 @@ const cloud = new CloudSave();
  */
 type WorldMode = 'online' | 'solo';
 const WORLD_KEY = 'oathofstur.world.v1';
-const GRAPHICS_KEY = 'oathofstur.graphics.v1';
+// v2: Balanced became the default, so earlier choices start over on it.
+const GRAPHICS_KEY = 'oathofstur.graphics.v2';
 
 const GRAPHICS_NOTES: Record<Quality, string> = {
   high: 'Full detail: sharpest picture and soft shadows.',
-  balanced: 'Lighter on the graphics card: slightly softer picture and simpler shadows.',
-  low: 'For older computers and phones: no shadows and no edge smoothing.',
+  balanced: 'Aims for a smooth 60 frames a second: simpler shadows, and a softer picture if your computer needs it.',
+  low: 'For older computers and phones: no shadows and no edge smoothing, still aiming for 60 frames a second.',
 };
 
 /** Graphics choices kept in this browser. */
 function loadGraphics(): { quality: Quality; fps: boolean } {
   try {
     const saved = JSON.parse(localStorage.getItem(GRAPHICS_KEY) ?? 'null') as { quality?: string; fps?: boolean } | null;
-    const quality = saved?.quality && saved.quality in GRAPHICS_NOTES ? (saved.quality as Quality) : 'high';
+    const quality = saved?.quality && saved.quality in GRAPHICS_NOTES ? (saved.quality as Quality) : 'balanced';
     return { quality, fps: !!saved?.fps };
   } catch {
-    return { quality: 'high', fps: false };
+    return { quality: 'balanced', fps: false };
   }
 }
 
@@ -976,7 +977,8 @@ async function start(): Promise<void> {
       if (now - fpsShownAt > 500) {
         fpsShownAt = now;
         const { calls, triangles } = renderer.stats;
-        fpsBox.textContent = `${frameTimes.length} fps · ${calls} draws · ${Math.round(triangles / 1000)}k tris`;
+        const res = Math.round(renderer.resolutionScale * 100);
+        fpsBox.textContent = `${frameTimes.length} fps · ${calls} draws · ${Math.round(triangles / 1000)}k tris${res < 100 ? ` · ${res}% res` : ''}`;
       }
     }
     combat.update(now);

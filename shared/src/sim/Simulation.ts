@@ -1787,8 +1787,10 @@ export class Simulation {
   /** The nearest player an aggressive monster will pick on: in range, alive, and (bosses aside) not too strong for it. */
   private findPrey(m: MonsterEntity, range: number, boss: boolean): PlayerEntity | undefined {
     let best: PlayerEntity | undefined;
-    for (const e of this.entities.values()) {
-      if (e.kind !== 'player' || e.deadUntil !== undefined) continue;
+    // Only players are prey, and every player has a session: far quicker than looking through the whole world.
+    for (const id of this.sessions.keys()) {
+      const e = this.entities.get(id);
+      if (e?.kind !== 'player' || e.deadUntil !== undefined) continue;
       if (distance(m, e) > range || (!boss && combatLevel(e.skills) > m.level * 2)) continue;
       // Bounty creatures leave alone anyone who doesn't yet know how to fight them.
       if (levelForXp(e.skills.bounty) < bountyLevel(m.defKey)) continue;

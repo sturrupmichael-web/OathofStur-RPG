@@ -1,3 +1,4 @@
+import type { Appearance } from '../sim/appearance';
 import type { Point } from '../map/types';
 import type { EntityId } from '../sim/entities';
 import type { AttackStyle, Bonuses } from '../sim/combat';
@@ -31,6 +32,8 @@ export type ClientMessage =
   | { type: 'useOn'; slot: number; targetId: EntityId }
   /** Turn running on or off. */
   | { type: 'setRun'; on: boolean }
+  /** Choose how the character looks. A name can be given only the first time. */
+  | { type: 'setLook'; look: Appearance; name?: string }
   /** Cast a spell: a combat spell at a monster, an item spell on a pack slot, a teleport on its own. */
   | { type: 'cast'; spell: string; targetId?: EntityId; slot?: number }
   /** Pick the combat spell a staff casts by itself (null for none). */
@@ -104,6 +107,8 @@ export interface PublicEntity {
   interacting?: EntityId;
   /** Players: what they wear, so others see it. */
   gear?: Equipment;
+  /** Players: how they look, when they have chosen. */
+  look?: Appearance;
   /** Players and monsters: fallen and playing the death animation. */
   dead?: boolean;
   /** Monsters: wrapped in shadow while the shades it called up still stand. */

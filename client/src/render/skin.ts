@@ -92,6 +92,8 @@ export class SkinBuilder {
   private readonly color = new THREE.Color();
   /** Pieces that should be seen from inside too (open skirts, hoods). */
   private twoSided = false;
+  /** Moves each vertex (and turns its normal) as later pieces are added, after their colours and weights are worked out. */
+  place: ((p: THREE.Vector3, n: THREE.Vector3) => void) | null = null;
 
   /** Adds a bone at `x, y, z` relative to its parent (body space for the first). */
   bone(name: string, parent: number | null, x: number, y: number, z = 0): number {
@@ -146,13 +148,16 @@ export class SkinBuilder {
     const nor = geo.attributes.normal;
     const base = piece.positions.length / 3;
     const p = new THREE.Vector3();
+    const n = new THREE.Vector3();
     for (let i = 0; i < pos.count; i++) {
       p.fromBufferAttribute(pos, i);
-      piece.positions.push(p.x, p.y, p.z);
-      piece.normals.push(nor.getX(i), nor.getY(i), nor.getZ(i));
+      n.fromBufferAttribute(nor, i);
       this.color.setHex(color(p, i));
       piece.colors.push(this.color.r, this.color.g, this.color.b);
       pushWeights(piece, weights(p, i));
+      this.place?.(p, n);
+      piece.positions.push(p.x, p.y, p.z);
+      piece.normals.push(n.x, n.y, n.z);
     }
     const index = geo.index!;
     for (let i = 0; i < index.count; i++) piece.indices.push(base + index.getX(i));
@@ -249,7 +254,8 @@ export class SkinBuilder {
         if (material instanceof THREE.MeshLambertMaterial) material.emissive = new THREE.Color(0x1a3040);
       }
       const mesh = new THREE.SkinnedMesh(geo, material);
-      mesh.bind(skeleton);
+      // Bound in the parent's space so a scaled body (goblins, women) scales its skin as well as its bones.
+      mesh.bind(skeleton, parent.matrixWorld);
       mesh.castShadow = opts.shadows !== false && opts.transparent === undefined && key !== 'glow';
       // A single sheet shadows itself in stripes, so open cloth only casts.
       mesh.receiveShadow = !key.endsWith('2');

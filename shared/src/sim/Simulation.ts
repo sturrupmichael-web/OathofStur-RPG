@@ -65,6 +65,7 @@ import { findPath } from './pathfinding';
 import { PRAYERS, drainPerTick, withPrayer, type PrayerId } from './prayer';
 import { QUESTS, QUEST_DROPS, QUEST_IDS, conversation, doneStage, questView, type QuestId, type TalkActions } from './quests';
 import { SAVE_VERSION, type SaveData } from './save';
+import { cleanName, parseAppearance } from './appearance';
 import { MAX_XP, SKILLS, combatLevel, levelForXp, requirementLevel, startingXp, type SkillId } from './skills';
 
 export const TICK_MS = 600;
@@ -205,6 +206,7 @@ export class Simulation {
       bank: save ? save.bank.map((s) => ({ ...s })) : [],
       quests: save ? { ...save.quests } : {},
       ui: null,
+      ...(save?.look && { look: { ...save.look } }),
       createdAt: save?.createdAt ?? now,
       path: [],
       destination: null,
@@ -274,6 +276,7 @@ export class Simulation {
       ...(Object.keys(p.farm).length && { farm: Object.fromEntries(Object.entries(p.farm).map(([k, v]) => [k, { ...v }])) }),
       ...(p.autocast && { autocast: p.autocast }),
       ...((p.bounty.points || p.bounty.done || p.bounty.task) && { bounty: { ...p.bounty, ...(p.bounty.task && { task: { ...p.bounty.task } }) } }),
+      ...(p.look && { look: { ...p.look } }),
       ...(p.homestead.owned && { homestead: { owned: true, rooms: [...p.homestead.rooms], built: { ...p.homestead.built } } }),
       bank: p.bank.map((s) => ({ ...s })),
       quests: { ...p.quests },
@@ -378,6 +381,17 @@ export class Simulation {
       case 'useOn':
         this.useOn(player, msg.slot, msg.targetId);
         return;
+      case 'setLook': {
+        const look = parseAppearance(msg.look);
+        if (!look) return;
+        // Characters name themselves once, as they first choose a look.
+        const name = msg.name !== undefined && !player.look ? cleanName(msg.name) : null;
+        if (name) player.name = name;
+        const first = !player.look;
+        player.look = look;
+        if (!first) this.message(player.id, 'You look in a mirror. Your new look suits you.');
+        return;
+      }
       case 'setRun':
         if (msg.on && player.energy < RUN_DRAIN) return this.message(player.id, "You're too tired to run.", 'warn');
         player.run = !!msg.on;
@@ -2881,6 +2895,7 @@ export class Simulation {
         hp: e.hp,
         maxHp: levelForXp(e.skills.hitpoints),
         ...(Object.keys(e.equipment).length && { gear: { ...e.equipment } }),
+        ...(e.look && { look: { ...e.look } }),
         ...(fighting !== null && { interacting: fighting }),
         ...(e.deadUntil !== undefined && { dead: true }),
         ...(work && { workingOn: nearestTile(work.target, e), activity: work.activity }),

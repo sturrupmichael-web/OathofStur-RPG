@@ -181,6 +181,7 @@ export class ClientState {
       data.dead !== view.data.dead ||
       JSON.stringify(data.workingOn) !== JSON.stringify(view.data.workingOn) ||
       JSON.stringify(data.gear) !== JSON.stringify(view.data.gear) ||
+      JSON.stringify(data.look) !== JSON.stringify(view.data.look) ||
       JSON.stringify(data.patch) !== JSON.stringify(view.data.patch);
     view.data = data;
     if (changed) this.emit('changed', view);

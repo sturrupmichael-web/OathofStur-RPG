@@ -35,10 +35,12 @@ import { CloudSave, type CloudStatus } from './net/cloudSave';
 import { LocalServer } from './net/LocalServer';
 import type { ServerConnection } from './net/ServerConnection';
 import { summary } from './net/syncRules';
+import { loadBodyModels } from './render/bodyModels';
 import { missileFlight } from './render/EntityLayer';
 import { Renderer, type PickResult } from './render/Renderer';
 import { ClientState } from './state/ClientState';
 import { CombatOverlay } from './ui/CombatOverlay';
+import { Creator } from './ui/Creator';
 import { Hud } from './ui/Hud';
 import { Minimap } from './ui/Minimap';
 import { WorldMap } from './ui/WorldMap';
@@ -88,6 +90,8 @@ async function start(): Promise<void> {
   // Back from Google with a sign-in, or not; then which character to play.
   account.init();
   const startSave = await cloud.pick(loadLocal(), chooseSave);
+  // The sculpted bodies are inlined, so this is quick; characters wait for it so they never swap bodies mid-game.
+  await loadBodyModels();
 
   // Swap this for a Tiled/LDtk MapSource later; nothing below depends on the format.
   const mapSource: MapSource = new JsonMapSource('vell-reaches', vellReaches as unknown as JsonMapFile);
@@ -841,6 +845,28 @@ async function start(): Promise<void> {
   if (location.hash === '#debug') Object.assign(window, { __oath: { state, renderer, send: (m: Parameters<ServerConnection['send']>[0]) => server.send(m) } });
 
   await server.connect('Wanderer', startSave);
+
+  // A new character, or one made before looks could be chosen, picks a look (and a name) first.
+  const creator = new Creator();
+  const me = () => state.player?.data;
+  document.getElementById('change-look')!.addEventListener('click', async () => {
+    if (creator.isOpen) return;
+    const chosen = await creator.open({ look: me()?.look, first: !me()?.look, name: me()?.name });
+    if (chosen) server.send({ type: 'setLook', ...chosen });
+    // Saved once the next tick has applied it.
+    if (chosen) setTimeout(requestSave, 1500);
+  });
+  // For tuning hair and hats on the sculpted heads: in the play-test (shown in a frame) or with #dev.
+  const fitRoom = document.getElementById('fit-room') as HTMLButtonElement;
+  fitRoom.hidden = window.top === window && location.hash !== '#dev';
+  fitRoom.addEventListener('click', () => {
+    if (!creator.isOpen) void creator.open({ look: me()?.look, first: false, fitting: true });
+  });
+  if (me() && !me()!.look) {
+    const chosen = await creator.open({ first: true, name: me()!.name });
+    if (chosen) server.send({ type: 'setLook', ...chosen });
+    setTimeout(requestSave, 1500);
+  }
 }
 
 start().catch((err) => {

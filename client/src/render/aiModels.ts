@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { shared } from './dispose';
+import { loadGlb } from './loadGlb';
 import brineSlugGlb from './models/brine_slug.glb?inline';
 import caveCreeperGlb from './models/cave_creeper.glb?inline';
 import cowGlb from './models/cow.glb?inline';
@@ -92,8 +92,7 @@ function load(kind: CreatureKind): void {
   const src = SOURCES[kind];
   if (!src || loading.has(kind)) return;
   loading.add(kind);
-  new GLTFLoader().load(
-    src.url,
+  loadGlb(src.url).then(
     (gltf) => {
       ready.set(kind, prepare(kind, src, gltf.scene));
       for (const w of [...waiting]) {
@@ -102,7 +101,6 @@ function load(kind: CreatureKind): void {
         waiting.delete(w);
       }
     },
-    undefined,
     (err) => console.warn(`AI model for ${kind} failed to load; keeping the built-in one`, err),
   );
 }

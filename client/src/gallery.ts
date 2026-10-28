@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import { CHARACTER_STYLES, animateCharacter, buildCharacter, playCharacter, withGear, type CharacterRig } from './render/character';
+import { DEFAULT_APPEARANCE, HAIR_STYLES, type Appearance } from '@rpg/shared';
+import { CHARACTER_STYLES, animateCharacter, buildCharacter, playCharacter, styleForLook, townsfolkStyle, withGear, type CharacterRig } from './render/character';
 import { hasAiModel } from './render/aiModels';
+import { loadBodyModels } from './render/bodyModels';
 import { animateCreature, buildCreature, playCreature, setShroud, type CreatureKind, type CreatureRig } from './render/creatures';
 
 /**
@@ -8,8 +10,9 @@ import { animateCreature, buildCreature, playCreature, setShroud, type CreatureK
  * and creature in a row, lit like the game, for checking models and
  * animations up close. Not part of the build.
  *
- * Query: ?set=people|monsters|gear&only=a,b&anim=idle|walk|fight|chop|...&shot=slash&yaw=0.4&zoom=1&shroud
+ * Query: ?set=people|monsters|gear|looks|townsfolk&only=a,b&anim=idle|walk|fight|chop|...&shot=slash&yaw=0.4&zoom=1&shroud
  */
+await loadBodyModels();
 const params = new URLSearchParams(location.search);
 const set = params.get('set') ?? 'people';
 let anim = params.get('anim') ?? 'idle';
@@ -66,6 +69,48 @@ if (set === 'monsters') {
       }
     }
   }
+} else if (set === 'looks') {
+  // Both bodies in every hair style, then a few in full gear.
+  for (const body of ['male', 'female'] as const)
+    HAIR_STYLES.forEach((hairStyle, i) => {
+      const look: Appearance = { ...DEFAULT_APPEARANCE, body, hairStyle, hair: (i * 3) % 10, skin: (i + (body === 'female' ? 3 : 0)) % 8, shirt: i * 2, beard: body === 'male' && i === 1 };
+      const rig = buildCharacter(styleForLook(look), entries.length, true);
+      entries.push({ name: `${body}_${hairStyle}`, root: rig.root, human: rig });
+    });
+  for (const body of ['male', 'female'] as const) {
+    const rig = buildCharacter(withGear(styleForLook({ ...DEFAULT_APPEARANCE, body, hairStyle: 'long' }), GEAR[4]), entries.length, true);
+    entries.push({ name: `${body}_cobalt`, root: rig.root, human: rig });
+  }
+  // Robes, aprons and hats over each body.
+  for (const body of ['male', 'female'] as const) {
+    const look = { ...DEFAULT_APPEARANCE, body, hairStyle: 'short' as const };
+    const robed = buildCharacter(withGear(styleForLook(look), { helmet: 'wizard_hat', body: 'wizard_robe', legs: 'wizard_skirt', weapon: 'ember_staff' }), entries.length, true);
+    entries.push({ name: `${body}_robes`, root: robed.root, human: robed });
+    const cook = buildCharacter({ ...styleForLook(look), apron: 0xd9ccaa, hat: 'chef', hatColor: 0xffffff }, entries.length, true);
+    entries.push({ name: `${body}_apron`, root: cook.root, human: cook });
+    const hood = buildCharacter({ ...styleForLook(look), hat: 'hood', hatColor: 0x4a3a2a, cape: 0x4a3a2a }, entries.length, true);
+    entries.push({ name: `${body}_hood`, root: hood.root, human: hood });
+  }
+} else if (set === 'hats') {
+  // Every hat and helm over a few hair styles, to check hair stays hidden under them (?hair=bun,long).
+  const hats: [string, Partial<ReturnType<typeof styleForLook>>][] = [
+    ['helm', { helm: 0xb4bec8 }],
+    ['wizard', { hat: 'wizard', hatColor: 0x2c3f8f, trim: 0xd8d8e0 }],
+    ['chef', { hat: 'chef', hatColor: 0xffffff }],
+    ['hood', { hat: 'hood', hatColor: 0x4a3a2a }],
+    ['cap', { hat: 'cap', hatColor: 0x8a3a2a }],
+  ];
+  for (const body of ['female', 'male'] as const)
+    for (const hairStyle of (params.get('hair') ?? 'spiky').split(',') as Appearance['hairStyle'][])
+      for (const [name, wear] of hats) {
+        const rig = buildCharacter({ ...styleForLook({ ...DEFAULT_APPEARANCE, body, hairStyle, hair: 4 }), ...wear }, entries.length, true);
+        entries.push({ name: `${body}_${hairStyle}_${name}`, root: rig.root, human: rig });
+      }
+} else if (set === 'townsfolk') {
+  for (let i = 0; i < 12; i++) {
+    const rig = buildCharacter(townsfolkStyle(i / 12 + 0.013), i);
+    entries.push({ name: `townsfolk_${i}`, root: rig.root, human: rig });
+  }
 } else if (set === 'gear') {
   GEAR.forEach((gear, i) => {
     const rig = buildCharacter(withGear(CHARACTER_STYLES.player, gear), i, true);
@@ -97,8 +142,10 @@ function resize() {
   camera.aspect = innerWidth / innerHeight;
   const tan = Math.tan((camera.fov * Math.PI) / 360);
   const dist = Math.max(span / 2 / tan / camera.aspect, 0.85 / tan) / zoom;
-  camera.position.set(0, 0.65 + dist * 0.25, dist);
-  camera.lookAt(0, 0.62, 0);
+  // ?aim=1.05 centres the view higher, on the heads.
+  const aim = Number(params.get('aim') ?? 0.62);
+  camera.position.set(0, aim + 0.03 + dist * 0.25, dist);
+  camera.lookAt(0, aim, 0);
   camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize);
@@ -140,7 +187,8 @@ function frame(now: number) {
   for (const e of entries) {
     e.root.rotation.y = yaw0 + spin;
     const activity = ['idle', 'walk', 'dead'].includes(anim) ? null : anim;
-    if (e.human) animateCharacter(e.human, dt, now, moving, 1, activity, anim === 'dead');
+    // ?still holds people in their bind pose, for checking fit.
+    if (e.human && !params.has('still')) animateCharacter(e.human, dt, now, moving, 1, activity, anim === 'dead');
     if (e.creature) {
       setShroud(e.creature, params.has('shroud'));
       animateCreature(e.creature, dt, now, moving, 1, anim === 'fight', anim === 'dead');

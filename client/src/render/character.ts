@@ -1,6 +1,8 @@
+import { BOOT_COLOURS, CLOTH_COLOURS, HAIR_COLOURS, SKIN_TONES, randomAppearance, type Appearance, type BodyType, type HairStyle } from '@rpg/shared';
 import * as THREE from 'three';
 import { shared } from './dispose';
-import { BODY, buildBody } from './humanoid';
+import { attachBodyModel, bodyFrame, type Tints } from './bodyModels';
+import { buildBody, type BodyFrame } from './humanoid';
 import { paint, vertexMaterial } from './skin';
 
 /**
@@ -20,7 +22,11 @@ export interface CharacterStyle {
   pouch?: number;
   skin?: number;
   hair?: number;
-  hairStyle?: 'short' | 'long' | 'bun' | 'none';
+  hairStyle?: HairStyle;
+  /** A woman's figure. */
+  female?: boolean;
+  /** Wear a sculpted base body (see bodyModels.ts) once it has loaded, instead of the built-in one. */
+  model?: BodyType;
   beard?: number;
   cape?: number;
   hat?: 'cap' | 'chef' | 'hood' | 'wizard';
@@ -95,6 +101,53 @@ export function withGear(base: CharacterStyle, gear: Partial<Record<string, stri
     s.weapon = { kind, color: bow ? (BOW_WOOD[gear.weapon.split('_')[0]] ?? 0x8a5a2e) : (metal(gear.weapon) ?? 0x9a9ca4) };
   }
   return s;
+}
+
+/**
+ * A chosen look on top of the player's outfit: body, skin, hair and the
+ * colours of shirt, trousers and boots. Gear then goes on over it.
+ */
+export function styleForLook(look: Appearance, base: CharacterStyle = CHARACTER_STYLES.player): CharacterStyle {
+  const hair = HAIR_COLOURS[look.hair];
+  const s: CharacterStyle = {
+    ...base,
+    female: look.body === 'female',
+    model: look.body,
+    skin: SKIN_TONES[look.skin],
+    hair,
+    hairStyle: look.hairStyle,
+    tunic: CLOTH_COLOURS[look.shirt],
+    trousers: CLOTH_COLOURS[look.trousers],
+    boots: BOOT_COLOURS[look.boots],
+    bootCuff: shadeHex(BOOT_COLOURS[look.boots], 1.5),
+    beard: look.beard ? shadeHex(hair, 0.9) : undefined,
+  };
+  if (s.female) s.scale = (base.scale ?? 1) * 0.96;
+  return s;
+}
+
+/** The colours a sculpted body is dyed to for a look. */
+function sculptTints(s: CharacterStyle): Tints {
+  const bald = s.hairStyle === 'none' || s.hair === undefined;
+  return {
+    skin: s.skin ?? 0xd9a77e,
+    shirt: s.tunic,
+    trousers: s.trousers,
+    boots: s.boots,
+    belt: s.belt ?? shadeHex(s.tunic, 0.7),
+    brows: s.beard ?? (bald ? undefined : s.hair),
+  };
+}
+
+/** Plain townsfolk get a look of their own, the same every visit. */
+export function townsfolkStyle(seed: number): CharacterStyle {
+  let t = Math.floor(seed * 2654435761) >>> 0;
+  const rng = { next: () => ((t = (Math.imul(t ^ (t >>> 15), 2246822519) + 0x9e3779b9) >>> 0) / 4294967296) };
+  const look = randomAppearance(rng);
+  const base = CHARACTER_STYLES.town_guide;
+  const dye = () => CLOTH_COLOURS[Math.floor(rng.next() * CLOTH_COLOURS.length)];
+  const hat = rng.next() < 0.25 && look.hairStyle !== 'spiky' ? 'cap' : undefined;
+  return { ...styleForLook(look, base), holding: undefined, cape: undefined, trim: rng.next() < 0.5 ? undefined : dye(), hat, hatColor: dye() };
 }
 
 function weaponKind(itemId: string): WeaponKind {
@@ -507,6 +560,8 @@ export interface CharacterRig {
   /** Everything above the feet; tips over when the character dies. */
   body: THREE.Group;
   hips: THREE.Object3D;
+  /** Where the bones sit, for things hung on the body. */
+  frame: BodyFrame;
   /** The hang of a tunic hem or robe, swaying with the walk. */
   skirt: THREE.Object3D;
   torso: THREE.Object3D;
@@ -589,7 +644,10 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
   root.add(body);
   if (s.scale) body.scale.setScalar(s.scale);
   const ghost = !!s.ghost;
-  const bones = buildBody(s, body, { transparent: ghost ? (s.ghostOpacity ?? 0.55) : undefined });
+  const sculpt = ghost ? null : bodyFrame(s.model);
+  const bones = buildBody(s, body, { transparent: ghost ? (s.ghostOpacity ?? 0.55) : undefined, ...(sculpt && { frame: sculpt, sculpted: true }) });
+  if (sculpt) attachBodyModel(s.model!, bones, body, sculptTints(s), { shirt: !!s.bodyMetal, trousers: !!s.legsMetal });
+  const F = bones.frame;
 
   // Held item in the right hand
   const grip = bones.handR;
@@ -621,7 +679,7 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
     // A bow rides in the left hand, with a quiver of arrows on the back.
     weapon = buildBow(s.weapon.kind === 'longbow' ? 0.56 : 0.4, s.weapon.color);
     bones.handL.add(weapon);
-    bones.torso.add(buildQuiver(s.bulk ?? 1, !!s.cape));
+    bones.torso.add(buildQuiver(s.bulk ?? 1, !!s.cape, F));
   } else if (s.weapon?.kind === 'staff') {
     weapon = buildStaff(s.weapon.color);
     staffTip = weapon.getObjectByName('staff-tip') ?? null;
@@ -656,14 +714,27 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
   if (s.cape) {
     const bulk = s.bulk ?? 1;
     cape = new THREE.Group();
-    const top = BODY.hipsY + BODY.waist + BODY.shoulderY;
-    cape.position.set(0, BODY.shoulderY, 0);
+    const T = F.torso;
+    // Over a sculpted body, the top edge sits on its own shoulders.
+    const lift = T ? T.shoulderTop + 0.02 - (F.hipsY + F.waist + F.shoulderY) : 0;
+    const top = F.hipsY + F.waist + F.shoulderY + lift;
+    cape.position.set(0, F.shoulderY + lift, 0);
     bones.torso.add(cape);
     // How far the back of the body reaches at each height (world y), with a little clearance.
     const back: [number, number][] = s.robe !== undefined
       ? [[0.96, 0.068], [0.9, 0.088], [0.8, 0.092], [0.72, 0.096], [0.62, 0.118], [0.45, 0.15], [0.25, 0.172], [0, 0.186]]
       : [[0.96, 0.068], [0.9, 0.088], [0.8, 0.092], [0.72, 0.096], [0.64, 0.105], [0.5, 0.122], [0, 0.124]];
-    const depth = (y: number) => {
+    const depth = (y: number): number => {
+      // A little more room at the shoulders, and more lower down, where the tunic swings.
+      // A little more room at the shoulders, and more lower down, where the tunic swings.
+      if (T) {
+        const below = top - y;
+        const room = 0.014 + 0.016 * THREE.MathUtils.clamp(1 - below / 0.15, 0, 1) + 0.03 * THREE.MathUtils.clamp(below / 0.5, 0, 1);
+        return Math.max(T.back(y) + room, s.robe !== undefined ? robeDepth(y) : 0);
+      }
+      return robeDepth(y);
+    };
+    const robeDepth = (y: number) => {
       for (let i = 1; i < back.length; i++)
         if (y >= back[i][0]) {
           const [y0, d0] = back[i - 1];
@@ -681,14 +752,15 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
       const u = pos.getX(i) * 2; // -1 .. 1 across
       const t = 0.5 - pos.getY(i); // 0 at the shoulders .. 1 at the hem
       // Narrow over the shoulders, widening down the back.
-      const half = (0.17 + 0.045 * Math.sqrt(t)) * Math.sqrt(bulk);
+      const half = T ? F.shoulderX + 0.045 + 0.045 * Math.sqrt(t) : (0.17 + 0.045 * Math.sqrt(t)) * Math.sqrt(bulk);
       const x = u * half;
       // The top edge rides up the back of the neck and drapes down over the shoulders.
       const y = -t * LEN + (1 - t) ** 3 * (0.035 - u * u * 0.055);
       const d = depth(top + y);
       // Hugs the round of the back; near the top the sides wrap forward over the shoulders.
-      const wrap = Math.max(0, 1 - t * 5);
-      const z = -d * (1 - 0.45 * u * u) + u * u * wrap * 0.09 * bulk + Math.sin(u * 7 + 0.5) * 0.006 * t;
+      // (Over a sculpted body only the very top edge, so the cloth below clears the rounded shoulders.)
+      const wrap = Math.max(0, 1 - t * (T ? 10 : 5));
+      const z = -d * (1 - (T ? 0.15 : 0.45) * u * u) + u * u * wrap * 0.09 * bulk + Math.sin(u * 7 + 0.5) * 0.006 * t;
       pos.setXYZ(i, x, y, z);
     }
     cloth.computeVertexNormals();
@@ -699,7 +771,11 @@ export function buildCharacter(style: string | CharacterStyle, seed: number, too
     // A clasp at each collarbone.
     for (const side of [-1, 1]) {
       const clasp = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 6), new THREE.MeshLambertMaterial({ color: 0xd4a73a }));
-      clasp.position.set(side * 0.16 * Math.sqrt(bulk), -0.02, -depth(top) * 0.55 + 0.09 * bulk + 0.004);
+      if (T) {
+        // Where the cloth's top edge crosses the collarbone, just proud of it.
+        const u = (F.shoulderX * 0.7) / (F.shoulderX + 0.045);
+        clasp.position.set(side * F.shoulderX * 0.85, 0.035 - u * u * 0.055 - 0.004, -depth(top) * (1 - 0.15 * u * u) + u * u * 0.09 * bulk + 0.01);
+      } else clasp.position.set(side * 0.16 * Math.sqrt(bulk), -0.02, -depth(top) * 0.55 + 0.09 * bulk + 0.004);
       cape.add(clasp);
     }
   }
@@ -781,7 +857,7 @@ function buildBow(half: number, wood: number): THREE.Group {
 }
 
 /** A leather quiver slung over the right shoulder, a few fletchings showing. */
-function buildQuiver(bulk: number, caped = false): THREE.Group {
+function buildQuiver(bulk: number, caped: boolean, F: BodyFrame): THREE.Group {
   const g = new THREE.Group();
   g.add(part(new THREE.CylinderGeometry(0.045, 0.036, 0.38, 10, 1, true), 0x6b4428));
   g.add(part(new THREE.CylinderGeometry(0.036, 0.036, 0.01, 10).translate(0, -0.19, 0), 0x4e301c));
@@ -794,7 +870,7 @@ function buildQuiver(bulk: number, caped = false): THREE.Group {
     g.add(part(new THREE.BoxGeometry(0.003, 0.06, 0.024).translate(0, 0.25, 0), i % 2 ? 0xd8d2c4 : 0xa83a2a, x, 0, z));
   }
   // Over a cape, it rides on the cloth rather than through it.
-  g.position.set(0.07, BODY.shoulderY - 0.2, -0.1 * bulk - (caped ? 0.035 : 0));
+  g.position.set(0.07, F.shoulderY - 0.2, -0.1 * bulk - (caped ? 0.035 : 0));
   g.rotation.set(-0.12, 0, -0.42);
   return g;
 }
@@ -1829,7 +1905,7 @@ export function animateCharacter(rig: CharacterRig, dt: number, now: number, mov
 
   // Weight shifts from foot to foot at rest, slowly; side to side when walking.
   const shift = Math.sin(t * 0.55) * idle;
-  rig.hips.position.set(0.012 * c * w + 0.014 * shift, BODY.hipsY - (0.008 + 0.034 * s * s) * w - 0.004 * Math.abs(shift) + 0.03 * r * Math.abs(c) - 0.03 * r, 0);
+  rig.hips.position.set(0.012 * c * w + 0.014 * shift, rig.frame.hipsY - (0.008 + 0.034 * s * s) * w - 0.004 * Math.abs(shift) + 0.03 * r * Math.abs(c) - 0.03 * r, 0);
   rig.hips.rotation.set(0, s * 0.14 * w, 0.05 * c * w + 0.035 * shift);
   rig.kneeL.rotation.x += 0.1 * Math.max(0, shift);
   rig.kneeR.rotation.x += 0.1 * Math.max(0, -shift);

@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, WORLD_SEED, type ServerMessage } from '@rpg/shared';
+import { HAIR_STYLES, PROTOCOL_VERSION, WORLD_SEED, type ServerMessage } from '@rpg/shared';
 import { describe, expect, it } from 'vitest';
 import { loadWorld } from '../../shared/test/helpers';
 import { GameHost, type Link } from '../src/GameHost';
@@ -171,5 +171,28 @@ describe('GameHost', () => {
     expect(store.rows.get('u700')?.position.x).toBe(from);
     await h.saveAll();
     expect(store.rows.get('u700')?.position.x).toBe(from + 2);
+  });
+
+  it('keeps names unique online', async () => {
+    const store = new MemoryStore();
+    const h = host(store);
+    const look = { body: 'male', skin: 0, hairStyle: HAIR_STYLES[0], hair: 0, beard: false, shirt: 0, trousers: 0, boots: 0 };
+    const solo = (name: string) => ({ version: 3, name, look, position: { x: 0, y: 0 }, skills: {}, inventory: [], bank: [], quests: {}, createdAt: '', updatedAt: '' });
+    const a = link();
+    await h.receive(h.open(a), join({ token: 'user800', save: solo('Brann') }));
+    // Someone else brings a Brann over: they become Brann2.
+    const b = link();
+    await h.receive(h.open(b), join({ token: 'user801', save: solo('brann') }));
+    expect(b.got.some((m) => m.type === 'gameMessage' && m.text.includes('brann2'))).toBe(true);
+    // A new character can't pick a name that's taken.
+    const c = link();
+    const cc = h.open(c);
+    await h.receive(cc, join({ token: 'user802' }));
+    await h.receive(cc, JSON.stringify({ type: 'setLook', look, name: 'BRANN' }));
+    expect(c.got.at(-1)).toEqual({ type: 'nameTaken', name: 'BRANN' });
+    await h.receive(cc, JSON.stringify({ type: 'setLook', look, name: 'Corwen' }));
+    h.step();
+    const id = (c.got.find((m) => m.type === 'welcome') as { playerId: number }).playerId;
+    expect((h.sim.getEntity(id) as { name: string }).name).toBe('Corwen');
   });
 });

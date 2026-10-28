@@ -13,6 +13,7 @@ import {
   type UiView,
 } from '../protocol/messages';
 import { Rng } from '../rng';
+import { CHAT_GAP, CHAT_RANGE, cleanChat, decentName, filterChat } from './chat';
 import { COURSES, OBSTACLE_KINDS, RUN_DRAIN, energyRestore, failChance, obstacleAt } from './agility';
 import { BOUNTY, bountyLevel, pickTask, pointsFor, taskName } from './bounty';
 import {
@@ -413,12 +414,15 @@ export class Simulation {
         if (!look) return;
         // Characters name themselves once, as they first choose a look.
         const name = msg.name !== undefined && !player.look ? cleanName(msg.name) : null;
+        if (name && !decentName(name)) return this.reject(player.id, "That name isn't allowed. Please pick another.");
         if (name) player.name = name;
         const first = !player.look;
         player.look = look;
         if (!first) this.message(player.id, 'You look in a mirror. Your new look suits you.');
         return;
       }
+      case 'chat':
+        return this.say(player, msg.text);
       case 'setRun':
         if (msg.on && player.energy < RUN_DRAIN) return this.message(player.id, "You're too tired to run.", 'warn');
         player.run = !!msg.on;
@@ -2896,6 +2900,19 @@ export class Simulation {
 
   private message(playerId: EntityId, text: string, kind: GameMessageKind = 'info'): void {
     this.sessions.get(playerId)?.outbox.push({ type: 'gameMessage', text, kind });
+  }
+
+  /** Public chat: tidied, filtered, and heard by everyone within range. */
+  private say(player: PlayerEntity, raw: unknown): void {
+    const text = cleanChat(raw);
+    if (!text) return;
+    if (this.tick < (player.nextChat ?? 0)) return this.message(player.id, "You're talking too fast. Wait a moment.", 'warn');
+    player.nextChat = this.tick + CHAT_GAP;
+    const line: ServerMessage = { type: 'chat', fromId: player.id, from: player.name, text: filterChat(text) };
+    for (const [id, session] of this.sessions) {
+      const p = this.entities.get(id);
+      if (p && Math.max(Math.abs(p.x - player.x), Math.abs(p.y - player.y)) <= CHAT_RANGE) session.outbox.push(line);
+    }
   }
 
   /** Sends a message to every player close enough to see `near`. */

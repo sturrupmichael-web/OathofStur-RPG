@@ -12,7 +12,7 @@ import type { SaveData } from '../sim/save';
 import type { SkillId, SkillXp } from '../sim/skills';
 
 /** Bumped whenever a message shape changes, so client and server can refuse a mismatch. */
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;
 
 // ---------------------------------------------------------------------------
 // Client -> server. Intents only: the simulation validates and decides outcomes.
@@ -31,6 +31,8 @@ export type ClientMessage =
   | { type: 'interact'; targetId: EntityId; action: InteractAction }
   /** Use an item from the pack on something in the world: seeds on a patch, shards on a shrine. */
   | { type: 'useOn'; slot: number; targetId: EntityId }
+  /** Say something out loud, to everyone nearby. */
+  | { type: 'chat'; text: string }
   /** Turn running on or off. */
   | { type: 'setRun'; on: boolean }
   /** Choose how the character looks. A name can be given only the first time. */
@@ -210,4 +212,8 @@ export type ServerMessage =
   | { type: 'saveData'; save: SaveData }
   /** A quest finished: the scroll with what you got. */
   | { type: 'questComplete'; name: string; rewards: string[]; questPoints: number }
-  | { type: 'reject'; reason: string };
+  | { type: 'reject'; reason: string }
+  /** Someone nearby said something (yourself included). */
+  | { type: 'chat'; fromId: EntityId; from: string; text: string }
+  /** The name asked for in setLook belongs to someone else: pick another. */
+  | { type: 'nameTaken'; name: string };

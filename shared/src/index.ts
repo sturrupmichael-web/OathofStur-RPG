@@ -7,6 +7,7 @@ export type { Entity, EntityId, GroundItemEntity, MonsterEntity, ObjectEntity, P
 export * from './sim/items';
 export * from './sim/save';
 export * from './sim/appearance';
+export * from './sim/chat';
 export { EXAMINE, RESOURCE_DATA, requiredLevel } from './sim/gathering';
 export * from './sim/crafting';
 export { WorldGrid } from './sim/grid';

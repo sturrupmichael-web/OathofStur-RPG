@@ -3,7 +3,9 @@ import {
   Simulation,
   type ClientMessage,
   type EntityId,
+  cleanName,
   parseSave,
+  type PlayerEntity,
   type MapData,
   type SaveData,
   type ServerMessage,
@@ -111,7 +113,33 @@ export class GameHost {
       if (save) this.emit(client, { type: 'saveData', save });
       return;
     }
+    // Online, a character's name is theirs alone.
+    if (msg.type === 'setLook' && msg.name !== undefined && !this.player(client)?.look) {
+      const name = cleanName(msg.name);
+      if (name && (await this.nameTaken(name, client))) {
+        this.emit(client, { type: 'nameTaken', name });
+        return;
+      }
+      if (client.playerId === null) return; // left while we looked
+    }
     this.sim.queueIntent(client.playerId, msg);
+  }
+
+  private player(client: Client): PlayerEntity | undefined {
+    const p = client.playerId !== null ? this.sim.getEntity(client.playerId) : undefined;
+    return p?.kind === 'player' ? p : undefined;
+  }
+
+  /** Someone else in the world, or any other stored character, already has this name. */
+  private async nameTaken(name: string, client: Client): Promise<boolean> {
+    const lower = name.toLowerCase();
+    for (const c of this.clients) if (c !== client && this.player(c)?.name.toLowerCase() === lower) return true;
+    try {
+      return await this.opts.store.nameTaken(name, client.account?.id ?? '');
+    } catch (err) {
+      this.log('name check failed', err);
+      return false;
+    }
   }
 
   /** One world tick, then everyone's messages go out. */
@@ -166,9 +194,21 @@ export class GameHost {
 
       client.account = account;
       client.playerId = this.sim.addPlayer(String(msg.name ?? ''), save, this.now(), account.id);
+      // A character brought over from solo may share its name with someone else's: it gets a number.
+      const me = this.player(client)!;
+      let renamed = false;
+      if (me.look && (await this.nameTaken(me.name, client))) {
+        const base = me.name.slice(0, 10).trim();
+        for (let n = 2; n < 100 && !renamed; n++) {
+          const name = `${base}${n}`;
+          if (!(await this.nameTaken(name, client))) [me.name, renamed] = [name, true];
+        }
+      }
+      if (!this.clients.has(client)) return this.leave(client);
       // Stored at once: an import happens only once, and a takeover keeps the live state.
       this.persist(client);
       this.flush(client);
+      if (renamed) this.emit(client, { type: 'gameMessage', kind: 'warn', text: `Someone online is already called that, so here you are ${me.name}.` });
       if (imported) {
         this.emit(client, {
           type: 'gameMessage',

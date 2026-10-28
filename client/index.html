@@ -108,6 +108,10 @@
             <button id="change-look">Change your look</button>
             <button id="fit-room" hidden>Fitting room (testing)</button>
           </div>
+          <h3>Chat</h3>
+          <label class="check-row"><input type="checkbox" id="chat-hide" /> Hide what other players say</label>
+          <p class="muted" id="blocked-status">You haven't blocked anyone. Right-click a player to block them.</p>
+          <div id="blocked-list"></div>
           <h3>Sound</h3>
           <div class="sound-row">
             <button id="sound-toggle" aria-pressed="true">Sound on</button>
@@ -138,7 +142,7 @@
       </aside>
       <footer id="chat">
         <div id="chat-log" aria-live="polite"></div>
-        <input id="chat-input" placeholder="Player chat arrives with multiplayer" disabled />
+        <input id="chat-input" placeholder="Chat is for the online world (⚙ Options, World)" maxlength="80" disabled />
       </footer>
     </div>
     <div id="context-menu" hidden></div>

@@ -8,6 +8,8 @@ export interface SaveStore {
   /** The account's character; null when it has none yet. Throws when the store can't be reached. */
   load(userId: string): Promise<SaveData | null>;
   save(userId: string, data: SaveData): Promise<void>;
+  /** Whether a character other than this account's has the name (any capitals). */
+  nameTaken(name: string, exceptUserId: string): Promise<boolean>;
   /** For the logs at startup. */
   readonly label: string;
 }
@@ -20,6 +22,11 @@ export class MemoryStore implements SaveStore {
   async load(userId: string): Promise<SaveData | null> {
     const row = this.rows.get(userId);
     return row ? (JSON.parse(JSON.stringify(row)) as SaveData) : null;
+  }
+
+  async nameTaken(name: string, exceptUserId: string): Promise<boolean> {
+    for (const [id, row] of this.rows) if (id !== exceptUserId && row.name.toLowerCase() === name.toLowerCase()) return true;
+    return false;
   }
 
   async save(userId: string, data: SaveData): Promise<void> {
@@ -52,6 +59,14 @@ export class SupabaseStore implements SaveStore {
     if (!res.ok) throw new Error(`load ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const rows = (await res.json()) as { data: SaveData }[];
     return rows[0]?.data ?? null;
+  }
+
+  async nameTaken(name: string, exceptUserId: string): Promise<boolean> {
+    // Names are letters, digits, spaces and hyphens (cleanName), so ilike sees no wildcards in them.
+    const q = `select=user_id&limit=1&data->>name=ilike.${encodeURIComponent(name)}${exceptUserId ? `&user_id=neq.${encodeURIComponent(exceptUserId)}` : ''}`;
+    const res = await this.fetchFn(`${this.url}/rest/v1/saves_oath_online?${q}`, { headers: this.headers(), signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`name ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    return ((await res.json()) as unknown[]).length > 0;
   }
 
   async save(userId: string, data: SaveData): Promise<void> {

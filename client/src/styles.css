@@ -740,6 +740,28 @@ body {
   line-height: 1.35;
 }
 
+.msg-chat .chat-from {
+  color: #1f3f8a;
+  font-weight: bold;
+}
+
+.label .say {
+  display: block;
+  margin-bottom: 2px;
+  color: #ffef5a;
+  font-size: 13px;
+  white-space: normal;
+  width: max-content;
+  max-width: 220px;
+  text-align: center;
+}
+
+#blocked-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .msg-warn {
   color: #a3200f;
 }
@@ -1026,6 +1048,18 @@ body {
   align-items: center;
   gap: 10px;
   margin-bottom: 14px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.check-row input {
+  accent-color: var(--gold);
 }
 
 .sound-row input[type='range'] {

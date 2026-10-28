@@ -35,6 +35,7 @@ import { account } from './net/account';
 import { CloudSave, type CloudStatus } from './net/cloudSave';
 import { LocalServer } from './net/LocalServer';
 import { NetworkServer, serverUrl, type NetStatus } from './net/NetworkServer';
+import { setupChat } from './ui/chat';
 import type { ServerConnection } from './net/ServerConnection';
 import { summary } from './net/syncRules';
 import { loadBodyModels } from './render/bodyModels';
@@ -134,6 +135,7 @@ async function start(): Promise<void> {
   const net = mode === 'online' ? new NetworkServer(serverUrl(), () => account.token()) : null;
   const server: ServerConnection = net ?? new LocalServer(map, WORLD_SEED);
   const hud = new Hud();
+  const chat = setupChat(state, hud, server, !!net);
   const viewport = document.getElementById('viewport')!;
   const renderer = new Renderer(viewport, map, grid, state);
   const labels = document.getElementById('labels')!;
@@ -496,6 +498,14 @@ async function start(): Promise<void> {
         options.push({ label: 'Talk-to', target, action: () => server.send({ type: 'interact', targetId: e.id, action: 'talk' }) });
       }
       options.push({ label: 'Walk here', target: e?.kind === 'player' || pick.buildingName ? target : undefined, action: () => walk(pick.tile) });
+      if (e?.kind === 'player' && e.id !== state.playerId) {
+        const name = e.name;
+        options.push(
+          chat.isBlocked(name)
+            ? { label: 'Unblock', target, action: () => chat.setBlocked(name, false) }
+            : { label: 'Block', target, action: () => chat.setBlocked(name, true) },
+        );
+      }
       if (e && e.id !== state.playerId) options.push({ label: 'Examine', target, action: () => server.send({ type: 'examine', targetId: e.id }) });
       hud.showMenu(x, y, options);
     },
@@ -858,7 +868,16 @@ async function start(): Promise<void> {
         label.dataset.id = String(view.data.id);
         labels.appendChild(label);
       }
-      label.textContent = `${view.data.name} (level-${view.data.combatLevel})`;
+      const nameText = `${view.data.name} (level-${view.data.combatLevel})`;
+      const said = chat.saying(view.data.id, view.data.name, now);
+      if (label.dataset.name !== nameText || label.dataset.say !== said) {
+        label.dataset.name = nameText;
+        label.dataset.say = said;
+        const sayEl = document.createElement('span');
+        sayEl.className = 'say';
+        sayEl.textContent = said;
+        label.replaceChildren(...(said ? [sayEl] : []), nameText);
+      }
       const pos = renderer.screenPosition(view.data.id, 1.5, now);
       if (pos) label.style.transform = `translate(${pos.x}px, ${pos.y}px) translate(-50%, -100%)`;
     }
@@ -980,6 +999,13 @@ async function start(): Promise<void> {
   fitRoom.hidden = window.top === window && location.hash !== '#dev';
   fitRoom.addEventListener('click', () => {
     if (!creator.isOpen) void creator.open({ look: me()?.look, first: false, fitting: true });
+  });
+  // Online, someone else already has the name: choose again.
+  state.on('nameTaken', async (name) => {
+    hud.addMessage(`Someone already goes by ${name}. Please pick another name.`, 'warn');
+    if (creator.isOpen) return;
+    const chosen = await creator.open({ look: me()?.look, first: true, name: '' });
+    if (chosen) server.send({ type: 'setLook', ...chosen });
   });
   if (me() && !me()!.look) {
     const chosen = await creator.open({ first: true, name: me()!.name });

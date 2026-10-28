@@ -474,6 +474,16 @@ export class Hud {
     this.chatLog.scrollTop = this.chatLog.scrollHeight;
   }
 
+  /** A line of player chat: the speaker's name, then what they said. */
+  addChat(from: string, said: string): void {
+    const line = document.createElement('div');
+    line.className = 'msg msg-chat';
+    line.append(span(`${from}: `, 'chat-from'), text(said));
+    this.chatLog.appendChild(line);
+    while (this.chatLog.childElementCount > 150) this.chatLog.firstElementChild?.remove();
+    this.chatLog.scrollTop = this.chatLog.scrollHeight;
+  }
+
   showTooltip(x: number, y: number, action: string, target: string): void {
     this.tooltip.replaceChildren(text(action + ' '), span(target, 'tip-target'));
     this.tooltip.style.transform = `translate(${x + 16}px, ${y + 18}px)`;

@@ -126,25 +126,43 @@ export class Renderer {
 
     const roofs = this.buildings.pickables.filter((r) => r.visible);
     const hits = this.raycaster.intersectObjects([...this.entities.pickables, ...this.terrain.pickables, ...roofs], true);
+    // An item's click pad beats anything behind it, except a creature or townsperson standing right there.
+    let pad: { pick: PickResult; distance: number } | null = null;
     for (const hit of hits) {
       if (hit.distance > groundDist + 0.5) break;
-      const building = this.buildings.buildingFromHit(hit);
+      if (pad && hit.distance > pad.distance + 0.6) break;
+      if (this.entities.isItemPad(hit)) {
+        const id = this.entities.entityFromHit(hit);
+        const view = id !== null ? this.state.entities.get(id) : undefined;
+        if (view && !pad) pad = { pick: { tile: { x: view.data.x, y: view.data.y }, entityId: view.data.id }, distance: hit.distance };
+        continue;
+      }
+      const building = pad ? null : this.buildings.buildingFromHit(hit);
       if (building) return { tile: building.entry, entityId: null, buildingName: building.name };
       const entityId = this.entities.entityFromHit(hit);
+      // You never need to click yourself, and you often stand on what you want to pick up.
+      if (entityId !== null && entityId === this.state.playerId) continue;
       if (entityId !== null) {
         const view = this.state.entities.get(entityId);
-        if (view) return { tile: { x: view.data.x, y: view.data.y }, entityId };
+        const person = view && ((view.data.kind === 'monster' && !view.data.dead) || view.data.kind === 'npc');
+        if (view && (!pad || person)) return { tile: { x: view.data.x, y: view.data.y }, entityId };
       }
       const tileOf = hit.object.userData.tileOf as Int32Array | undefined;
-      if (tileOf && hit.instanceId !== undefined) {
+      if (!pad && tileOf && hit.instanceId !== undefined) {
         const i = tileOf[hit.instanceId];
         return { tile: { x: i % this.map.width, y: Math.floor(i / this.map.width) }, entityId: null };
       }
     }
+    if (pad) return pad.pick;
     if (!hasGround) return null;
     const tile = { x: Math.floor(groundHit.x), y: Math.floor(groundHit.z) };
     if (tile.x < 0 || tile.y < 0 || tile.x >= this.map.width || tile.y >= this.map.height) return null;
     return { tile, entityId: null };
+  }
+
+  /** Lights up the dropped item under the cursor, if that's what it is. */
+  highlight(entityId: EntityId | null): void {
+    this.entities.highlight(entityId);
   }
 
   setHover(tile: Point | null): void {

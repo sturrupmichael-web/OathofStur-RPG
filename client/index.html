@@ -67,13 +67,27 @@
           <div id="prayer-bar" title="Prayer points"><div id="prayer-fill"></div><span id="prayer-text"></span></div>
         </div>
         <nav class="tabs">
-          <button class="tab active" data-tab="inventory" title="Inventory">Pack</button>
-          <button class="tab" data-tab="equipment" title="Equipment">Gear</button>
-          <button class="tab" data-tab="skills">Skills</button>
-          <button class="tab" data-tab="quests">Quests</button>
-          <button class="tab" data-tab="prayer">Prayer</button>
-          <button class="tab" data-tab="magic">Magic</button>
-          <button class="tab" data-tab="options" aria-label="Options">⚙</button>
+          <button class="tab active" data-tab="inventory" title="Pack" aria-label="Pack">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7 Q8 3 12 3 Q16 3 16 7" fill="none" stroke="#3d2814" stroke-width="1.6"/><path d="M5 9 Q5 6.5 8 6.5 H16 Q19 6.5 19 9 V19 Q19 21 17 21 H7 Q5 21 5 19 Z" fill="#8a5a30" stroke="#2a1a0c" stroke-width="1.1"/><path d="M5.6 8.5 Q12 12.5 18.4 8.5 V12 Q12 15 5.6 12 Z" fill="#6a4224" stroke="#2a1a0c" stroke-width="0.9"/><rect x="10.4" y="12" width="3.2" height="3.4" rx="0.6" fill="#e8c050" stroke="#5a4010" stroke-width="0.8"/><path d="M7 15.5 V20 M17 15.5 V20" stroke="#5a3a1e" stroke-width="1.2"/></svg>
+          </button>
+          <button class="tab" data-tab="equipment" title="Gear" aria-label="Gear">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20 V11 Q5 3.5 12 3.5 Q19 3.5 19 11 V20 Q15.5 18.5 12 18.5 Q8.5 18.5 5 20 Z" fill="#b8c2cc" stroke="#22262a" stroke-width="1.1"/><path d="M7.5 10.5 H16.5 V12.2 H7.5 Z" fill="#22262a"/><path d="M12 12.2 V18.5" stroke="#22262a" stroke-width="1.6"/><path d="M8 7 Q10 5 12 5" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.2"/><path d="M12 3.5 V1.5" stroke="#c8402a" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <button class="tab" data-tab="skills" title="Skills" aria-label="Skills">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="13" width="4.5" height="8" rx="0.8" fill="#4aa05a" stroke="#14301a" stroke-width="1"/><rect x="9.75" y="8.5" width="4.5" height="12.5" rx="0.8" fill="#e8b830" stroke="#4a3608" stroke-width="1"/><rect x="16" y="4" width="4.5" height="17" rx="0.8" fill="#c8443a" stroke="#401410" stroke-width="1"/><path d="M5 14.5 V19 M11.25 10 V19 M17.5 5.5 V19" stroke="#fff" stroke-opacity=".35" stroke-width="1"/></svg>
+          </button>
+          <button class="tab" data-tab="quests" title="Quests" aria-label="Quests">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 H18 Q20 4 20 6 V18 Q20 20 18 20 H6" fill="#ecdcb0" stroke="#4a3418" stroke-width="1.1"/><path d="M7 4 Q5 4 5 6 V18 Q5 20 7 20 Q9 20 9 18 V6 Q9 4 7 4 Z" fill="#d8c08a" stroke="#4a3418" stroke-width="1.1"/><path d="M11 8 H17 M11 11 H17 M11 14 H15.5" stroke="#6a5030" stroke-width="1.1" stroke-linecap="round"/><circle cx="16.5" cy="17" r="1.7" fill="#c8402a" stroke="#5a1a10" stroke-width="0.7"/></svg>
+          </button>
+          <button class="tab" data-tab="prayer" title="Prayer" aria-label="Prayer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="#9fd4ff" stroke-width="1.4" stroke-opacity=".8"/><path d="M12 3 L13.8 9.6 L20.5 12 L13.8 14.4 L12 21 L10.2 14.4 L3.5 12 L10.2 9.6 Z" fill="#f4f0d8" stroke="#6a6040" stroke-width="0.9" stroke-linejoin="round"/><circle cx="12" cy="12" r="2" fill="#ffe070"/></svg>
+          </button>
+          <button class="tab" data-tab="magic" title="Magic" aria-label="Magic">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.5 2 Q14 7 16.5 12 Q18 15 18.5 17 H5.5 Q7 14 9 10.5 Q11 7 12.5 2 Z" fill="#2b3f9e" stroke="#10163a" stroke-width="1.1" stroke-linejoin="round"/><ellipse cx="12" cy="18.2" rx="9.5" ry="2.8" fill="#2b3f9e" stroke="#10163a" stroke-width="1.1"/><path d="M5.8 16.6 Q12 18.6 18.2 16.6" fill="none" stroke="#d8dcf0" stroke-width="1.4"/><path d="M11.5 8.5 L12.2 10.4 L14.2 10.5 L12.7 11.7 L13.2 13.6 L11.5 12.5 L9.8 13.6 L10.3 11.7 L8.8 10.5 L10.8 10.4 Z" fill="#ffe070"/></svg>
+          </button>
+          <button class="tab" data-tab="options" title="Options" aria-label="Options">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(12 12)"><path d="M-1.6 -9 H1.6 L2.1 -6.4 Q3.5 -5.9 4.6 -5 L7 -6.1 L8.6 -3.4 L6.5 -1.8 Q6.7 0 6.5 1.8 L8.6 3.4 L7 6.1 L4.6 5 Q3.5 5.9 2.1 6.4 L1.6 9 H-1.6 L-2.1 6.4 Q-3.5 5.9 -4.6 5 L-7 6.1 L-8.6 3.4 L-6.5 1.8 Q-6.7 0 -6.5 -1.8 L-8.6 -3.4 L-7 -6.1 L-4.6 -5 Q-3.5 -5.9 -2.1 -6.4 Z" fill="#9a9ca4" stroke="#2a2a2e" stroke-width="1"/><circle r="2.8" fill="#3b3024" stroke="#2a2a2e" stroke-width="1"/></g></svg>
+          </button>
         </nav>
         <section class="panel" id="panel-inventory">
           <div id="inventory-grid"></div>

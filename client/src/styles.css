@@ -343,6 +343,32 @@ body {
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
 }
 
+#net-banner {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  z-index: 31;
+  max-width: calc(100% - 32px);
+  padding: 8px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  text-align: center;
+  background: #d8c9a3;
+  color: #1a1209;
+  border: 3px solid var(--edge);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+}
+
+#net-banner[hidden] {
+  display: none;
+}
+
 #save-choice-title {
   font-size: 17px;
   font-weight: bold;

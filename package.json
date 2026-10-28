@@ -2,12 +2,17 @@
   "name": "oath-of-stur",
   "private": true,
   "type": "module",
-  "workspaces": ["shared", "client"],
+  "workspaces": [
+    "shared",
+    "client",
+    "server"
+  ],
   "scripts": {
     "dev": "npm run dev -w client",
     "build": "npm run build -w client",
     "test": "vitest run",
-    "typecheck": "tsc -p shared && tsc -p shared/test && tsc -p client"
+    "typecheck": "tsc -p shared && tsc -p shared/test && tsc -p client && tsc -p server",
+    "dev:server": "npm run dev -w server"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

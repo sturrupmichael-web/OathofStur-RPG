@@ -13,6 +13,19 @@ npm run typecheck  # game code and tests
 npm run build      # static site in client/dist, deploy anywhere
 ```
 
+### The online world
+
+```sh
+npm run build -w client && npm run build -w server
+npm start -w server   # http://localhost:8080 plays online against this server
+npm run dev:server    # or: server with reload, next to `npm run dev` (Vite joins it on :8080)
+```
+
+The server runs one shared `Simulation` and serves the built client from `client/dist`.
+Pushes to main deploy it to Fly.io (`fly.toml`, `.github/workflows/deploy.yml`, one machine,
+secret `FLY_API_TOKEN`) at https://oath-of-stur.fly.dev. The site's copy of the game starts
+solo and can switch to online under ⚙ World; the fly.dev copy starts online.
+
 GitHub Actions runs the typecheck, tests and build on every push to main and every pull request.
 
 ## Controls
@@ -40,7 +53,7 @@ shared/   simulation, protocol types, map loading, game data (no DOM, no renderi
           resources.json (levels, XP, respawns), recipes.json (smelting, smithing, cooking, fletching),
           shops.json, examine.json
 client/   Three.js rendering, UI, LocalServer
-server/   Node WebSocket server (phase 6)
+server/   Node WebSocket server: GameHost (the shared world), auth (Supabase token check)
 docs/     PLAN.md: phases, message types, map notes
 tools/    vell-reaches.html: the 2D viewer and generator that produced vell-reaches.json
 ```
@@ -52,7 +65,8 @@ tools/    vell-reaches.html: the 2D viewer and generator that produced vell-reac
   randomness comes from its seeded `Rng`.
 - The client talks to a `ServerConnection`. In single-player that is `LocalServer`, which
   runs the simulation in the browser and passes every message through JSON exactly as a
-  socket would. Phase 6 swaps in a `NetworkServer` without touching game logic.
+  socket would. Online it is `NetworkServer`, a WebSocket to the game server, which
+  rejoins by itself after a drop.
 - Maps load through the `MapSource` interface. `JsonMapSource` reads `vell-reaches.json`
   (rows + legend + areas + npcs + skills); a Tiled or LDtk loader can replace it later.
 - The world is 512 x 384 tiles, so only what is near a player is sent to them

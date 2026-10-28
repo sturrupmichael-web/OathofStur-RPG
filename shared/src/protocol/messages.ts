@@ -12,14 +12,15 @@ import type { SaveData } from '../sim/save';
 import type { SkillId, SkillXp } from '../sim/skills';
 
 /** Bumped whenever a message shape changes, so client and server can refuse a mismatch. */
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 
 // ---------------------------------------------------------------------------
 // Client -> server. Intents only: the simulation validates and decides outcomes.
 // ---------------------------------------------------------------------------
 
 export type ClientMessage =
-  | { type: 'join'; name: string; protocolVersion: number; save?: SaveData | null }
+  /** `token` is the Supabase sign-in, sent only to the online server, which checks it with Supabase. */
+  | { type: 'join'; name: string; protocolVersion: number; save?: SaveData | null; token?: string }
   | { type: 'walk'; x: number; y: number }
   /**
    * Use a world object: gather from a tree, rock or fishing spot, take a

@@ -134,6 +134,11 @@ export const account = {
     return false;
   },
 
+  /** The access token, fresh, for joining the online world; null when signed out. */
+  async token(): Promise<string | null> {
+    return (await this.ensure()) ? session!.access_token : null;
+  },
+
   /** Calls the database REST API as this account. */
   async rest<T>(path: string, opts: RequestInit = {}): Promise<Reply<T>> {
     if (!(await this.ensure())) return { ok: false, status: 401 };

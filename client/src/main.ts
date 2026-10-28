@@ -10,6 +10,7 @@ import {
   SELL_RATE,
   SPELL_BY_ID,
   type SpellDef,
+  WORLD_SEED,
   WorldGrid,
   areaAt,
   isBanker,
@@ -33,6 +34,7 @@ import { Sound, type SoundName } from './audio/Sound';
 import { account } from './net/account';
 import { CloudSave, type CloudStatus } from './net/cloudSave';
 import { LocalServer } from './net/LocalServer';
+import { NetworkServer, serverUrl, type NetStatus } from './net/NetworkServer';
 import type { ServerConnection } from './net/ServerConnection';
 import { summary } from './net/syncRules';
 import { loadBodyModels } from './render/bodyModels';
@@ -48,7 +50,6 @@ import { PointerInput } from './ui/PointerInput';
 import { clearLocal, downloadSave, loadLocal, readSaveFile, storeLocal } from './ui/saves';
 import './styles.css';
 
-const WORLD_SEED = 20261025;
 
 /** The sound of setting off over each kind of agility obstacle. */
 const CROSS_SOUNDS: Record<string, SoundName> = {
@@ -86,6 +87,35 @@ function chooseSave(local: SaveData, cloud: SaveData): Promise<'local' | 'cloud'
 
 const cloud = new CloudSave();
 
+/**
+ * Solo runs the world in this browser; online joins the shared world on the game
+ * server. The server's own copy of the game starts online, the site starts solo,
+ * and the Options tab switches. "Play solo" after a failed connect lasts one visit.
+ */
+type WorldMode = 'online' | 'solo';
+const WORLD_KEY = 'oathofstur.world.v1';
+function worldMode(): WorldMode {
+  try {
+    if (sessionStorage.getItem(WORLD_KEY) === 'solo') return 'solo';
+    const saved = localStorage.getItem(WORLD_KEY);
+    if (saved === 'online' || saved === 'solo') return saved;
+  } catch {
+    // storage blocked: use the default
+  }
+  return location.hostname.endsWith('.fly.dev') || location.port === '8080' ? 'online' : 'solo';
+}
+function setWorldMode(mode: WorldMode, justThisVisit = false): void {
+  try {
+    if (justThisVisit) sessionStorage.setItem(WORLD_KEY, mode);
+    else {
+      sessionStorage.removeItem(WORLD_KEY);
+      localStorage.setItem(WORLD_KEY, mode);
+    }
+  } catch {
+    // storage blocked: nothing to remember it in
+  }
+}
+
 async function start(): Promise<void> {
   // Back from Google with a sign-in, or not; then which character to play.
   account.init();
@@ -99,7 +129,10 @@ async function start(): Promise<void> {
   const grid = new WorldGrid(map);
 
   const state = new ClientState();
-  const server: ServerConnection = new LocalServer(map, WORLD_SEED);
+  // The claude.ai preview frame can't open connections to the game server, so it stays solo.
+  const mode: WorldMode = window.top === window ? worldMode() : 'solo';
+  const net = mode === 'online' ? new NetworkServer(serverUrl(), () => account.token()) : null;
+  const server: ServerConnection = net ?? new LocalServer(map, WORLD_SEED);
   const hud = new Hud();
   const viewport = document.getElementById('viewport')!;
   const renderer = new Renderer(viewport, map, grid, state);
@@ -639,7 +672,7 @@ async function start(): Promise<void> {
       location.reload();
     }
   });
-  setInterval(requestSave, 30_000);
+  setInterval(requestSave, net ? 10_000 : 30_000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') requestSave();
   });
@@ -844,7 +877,64 @@ async function start(): Promise<void> {
   // Test hook for automated browser checks: only with #debug in the address.
   if (location.hash === '#debug') Object.assign(window, { __oath: { state, renderer, send: (m: Parameters<ServerConnection['send']>[0]) => server.send(m) } });
 
-  await server.connect('Wanderer', startSave);
+  // --- Online or solo ----------------------------------------------------------------
+  const banner = document.getElementById('net-banner')!;
+  const bannerText = document.getElementById('net-text')!;
+  const bannerSolo = document.getElementById('net-solo') as HTMLButtonElement;
+  const bannerRetry = document.getElementById('net-retry') as HTMLButtonElement;
+  const showBanner = (text: string | null, buttons = false) => {
+    banner.hidden = text === null;
+    bannerText.textContent = text ?? '';
+    bannerSolo.hidden = bannerRetry.hidden = !buttons;
+  };
+  bannerSolo.onclick = () => {
+    setWorldMode('solo', true);
+    location.reload();
+  };
+  bannerRetry.onclick = () => location.reload();
+  const worldStatus = document.getElementById('world-status')!;
+  const worldOnline = document.getElementById('world-online') as HTMLButtonElement;
+  const worldSolo = document.getElementById('world-solo') as HTMLButtonElement;
+  worldStatus.textContent =
+    window.top !== window
+      ? 'The online world works on the game page, not in this preview.'
+      : net
+        ? 'You are in the online world (test server). Other players you see are real people.'
+        : 'You are playing solo: the world runs in this browser. Your character comes with you if you go online.';
+  worldOnline.hidden = !!net || window.top !== window;
+  worldSolo.hidden = !net;
+  // Saved first, so the character arrives in the other world as it is now.
+  let switching = false;
+  const switchWorld = (to: WorldMode) => {
+    if (switching) return;
+    switching = true;
+    setWorldMode(to);
+    state.on('saveData', () => location.reload());
+    requestSave();
+    setTimeout(() => location.reload(), 3000);
+  };
+  worldOnline.addEventListener('click', () => switchWorld('online'));
+  worldSolo.addEventListener('click', () => switchWorld('solo'));
+  if (net) {
+    net.onStatus = (status: NetStatus) => {
+      if (status.kind === 'online') showBanner(null);
+      else if (status.kind === 'reconnecting') showBanner(status.attempt > 2 ? 'Still trying to reach the online world...' : 'Connection lost. Reconnecting...');
+      else {
+        savingEnabled = false; // the server let go of this character; don't save over it from here
+        showBanner(status.reason, true);
+      }
+    };
+    showBanner('Joining the online world...');
+    try {
+      await net.connect('Wanderer', startSave);
+      showBanner(null);
+    } catch (err) {
+      showBanner(`${err instanceof Error ? err.message : String(err)} You can play solo for now.`, true);
+      return;
+    }
+  } else {
+    await server.connect('Wanderer', startSave);
+  }
 
   // A new character, or one made before looks could be chosen, picks a look (and a name) first.
   const creator = new Creator();

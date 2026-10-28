@@ -142,6 +142,8 @@ type HitSpell = { element: string; tier: number };
 export interface SimulationOptions {
   map: MapData;
   seed: number;
+  /** Told when an intent throws; the world carries on without it. */
+  onError?: (err: unknown, msg: ClientMessage) => void;
 }
 
 /** Per-connected-player bookkeeping for outgoing messages and state diffs. */
@@ -169,8 +171,11 @@ export class Simulation {
   private intents: { playerId: EntityId; msg: ClientMessage }[] = [];
   private nextId = 1;
 
-  constructor({ map, seed }: SimulationOptions) {
+  private readonly onError: SimulationOptions['onError'];
+
+  constructor({ map, seed, onError }: SimulationOptions) {
     this.map = map;
+    this.onError = onError;
     this.grid = new WorldGrid(map);
     this.rng = new Rng(seed);
     this.spawnStaticObjects();
@@ -300,7 +305,14 @@ export class Simulation {
     this.tick++;
     const intents = this.intents;
     this.intents = [];
-    for (const { playerId, msg } of intents) this.handleIntent(playerId, msg);
+    for (const { playerId, msg } of intents) {
+      // One malformed intent from a client mustn't stop the world for everyone else.
+      try {
+        this.handleIntent(playerId, msg);
+      } catch (err) {
+        this.onError?.(err, msg);
+      }
+    }
 
     for (const e of this.entities.values()) {
       if (e.kind === 'player' && e.deadUntil === undefined) this.movePlayer(e);

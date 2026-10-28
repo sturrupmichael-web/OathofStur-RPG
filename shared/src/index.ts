@@ -2,6 +2,7 @@ export * from './map/types';
 export { JsonMapSource, areaAt, slug, type JsonMapFile } from './map/JsonMapSource';
 export * from './protocol/messages';
 export { Rng } from './rng';
+export { WORLD_SEED } from './world';
 export type { Entity, EntityId, GroundItemEntity, MonsterEntity, ObjectEntity, PlayerEntity } from './sim/entities';
 export * from './sim/items';
 export * from './sim/save';

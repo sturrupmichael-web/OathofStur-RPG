@@ -32,8 +32,6 @@ const fit = (hair: Partial<HeadFit>, hats: Partial<Record<Headwear, Partial<Head
   hair: { ...FIT0, ...hair },
   hats: Object.fromEntries(HEADWEAR.map((h) => [h, { ...FIT0, ...hats[h] }])) as Record<Headwear, HeadFit>,
 });
-/** The same fit for every kind of headwear. */
-const allHats = (f: Partial<HeadFit>) => Object.fromEntries(HEADWEAR.map((h) => [h, f]));
 
 export type Region = (typeof REGIONS)[number];
 
@@ -61,7 +59,13 @@ const SOURCES: Record<BodyType, Source> = {
     mask: maleMask,
     scale: S,
     frame: {
-      fit: fit({ y: 0.027, size: 0.805, d: 1.2 }, allHats({ y: 0.06, z: 0.009, size: 0.7, tilt: 0.01 })),
+      fit: fit({ y: 0.027, size: 0.805, d: 1.2 }, {
+        helm: { y: 0.01, z: -0.001, size: 0.86, d: 1.11, tilt: 0.01 },
+        wizard: { y: 0.024, z: 0.009, size: 0.7, tilt: 0.01 },
+        chef: { y: 0.053, z: -0.01, size: 0.7, tilt: -0.09 },
+        hood: { y: 0.011, z: -0.001, size: 0.885, d: 1.2, tilt: 0.01 },
+        cap: { y: 0.033, z: -0.006, size: 0.815, tilt: 0.01 },
+      }),
       hipsY: 0.46 * S,
       hipX: 0.065 * S,
       hipJoint: -0.03 * S,
@@ -94,7 +98,13 @@ const SOURCES: Record<BodyType, Source> = {
     mask: femaleMask,
     scale: S,
     frame: {
-      fit: fit({ y: 0.022, z: -0.007, size: 0.815, d: 1.2 }, allHats({ y: 0.02, size: 0.91, d: 1.065 })),
+      fit: fit({ y: 0.022, z: -0.007, size: 0.815, d: 1.2 }, {
+        helm: { y: 0.02, z: -0.004, size: 0.91, d: 1.09 },
+        wizard: { y: 0.02, size: 0.735, d: 1.065 },
+        chef: { y: 0.02, d: 1.065, tilt: -0.15 },
+        hood: { y: 0.02, z: -0.006, size: 0.94, d: 1.065, tilt: 0.18 },
+        cap: { y: 0.022, z: -0.013, size: 0.86, d: 1.2 },
+      }),
       hipsY: 0.45 * S,
       hipX: 0.056 * S,
       hipJoint: -0.03 * S,

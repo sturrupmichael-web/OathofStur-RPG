@@ -91,6 +91,21 @@ if (set === 'monsters') {
     const hood = buildCharacter({ ...styleForLook(look), hat: 'hood', hatColor: 0x4a3a2a, cape: 0x4a3a2a }, entries.length, true);
     entries.push({ name: `${body}_hood`, root: hood.root, human: hood });
   }
+} else if (set === 'hats') {
+  // Every hat and helm over a few hair styles, to check hair stays hidden under them (?hair=bun,long).
+  const hats: [string, Partial<ReturnType<typeof styleForLook>>][] = [
+    ['helm', { helm: 0xb4bec8 }],
+    ['wizard', { hat: 'wizard', hatColor: 0x2c3f8f, trim: 0xd8d8e0 }],
+    ['chef', { hat: 'chef', hatColor: 0xffffff }],
+    ['hood', { hat: 'hood', hatColor: 0x4a3a2a }],
+    ['cap', { hat: 'cap', hatColor: 0x8a3a2a }],
+  ];
+  for (const body of ['female', 'male'] as const)
+    for (const hairStyle of (params.get('hair') ?? 'spiky').split(',') as Appearance['hairStyle'][])
+      for (const [name, wear] of hats) {
+        const rig = buildCharacter({ ...styleForLook({ ...DEFAULT_APPEARANCE, body, hairStyle, hair: 4 }), ...wear }, entries.length, true);
+        entries.push({ name: `${body}_${hairStyle}_${name}`, root: rig.root, human: rig });
+      }
 } else if (set === 'townsfolk') {
   for (let i = 0; i < 12; i++) {
     const rig = buildCharacter(townsfolkStyle(i / 12 + 0.013), i);

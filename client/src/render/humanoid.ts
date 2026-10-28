@@ -126,6 +126,7 @@ function headShell(
   keep: (u: THREE.Vector3) => boolean,
   shape?: (u: THREE.Vector3, p: THREE.Vector3) => void,
   point: (u: THREE.Vector3, grow: number) => THREE.Vector3 = headPoint,
+  deep?: (u: THREE.Vector3) => boolean,
 ): THREE.BufferGeometry {
   // Finer over a sculpted head, whose shape has more to follow.
   const fine = point !== headPoint;
@@ -133,7 +134,8 @@ function headShell(
     const u = v.clone();
     const shown = keep(u);
     // Hidden parts tuck inside the head, deeper below the jaw where a slim neck would let them show.
-    const p = point(u, shown ? grow : 0.86 * Math.max(0.45, Math.min(1, 1 + (u.y + 0.1) * 1.5)));
+    // (`deep` parts, under a hat, go further in still, well clear of it.)
+    const p = point(u, shown ? grow : deep?.(u) ? 0.3 : 0.86 * Math.max(0.45, Math.min(1, 1 + (u.y + 0.1) * 1.5)));
     if (shown && shape) shape(u, p);
     v.copy(p);
   });
@@ -158,7 +160,8 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
   // A sculpted face has its eyes and brows higher up the head, so a wizard's brim sits higher to clear them.
   const WIZ_LIFT = 0.025;
   const fp = (ux: number, uy: number, lift = 0) => hp(new THREE.Vector3(ux, uy, Math.sqrt(Math.max(0, 1 - ux * ux - uy * uy)))).add(new THREE.Vector3(0, 0, lift));
-  const shell = (grow: number, keep: (u: THREE.Vector3) => boolean, shape?: (u: THREE.Vector3, p: THREE.Vector3) => void) => headShell(grow, keep, shape, hp);
+  const shell = (grow: number, keep: (u: THREE.Vector3) => boolean, shape?: (u: THREE.Vector3, p: THREE.Vector3) => void, deep?: (u: THREE.Vector3) => boolean) =>
+    headShell(grow, keep, shape, hp, deep);
   const skin = s.skin ?? SKIN;
   const bulk = s.bulk ?? 1;
   const belly = s.belly ?? 0;
@@ -511,7 +514,17 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     };
   };
   fitTo(fits?.hair);
-  const bald = s.hairStyle === 'none' || s.hair === undefined;
+  // On a sculpted head, hair under a hat or helm is left out (fitted separately, it could poke through).
+  // A hood hides all of it; the others hide what they sit over.
+  const covered = (u: THREE.Vector3): boolean => {
+    if (!R) return false;
+    if (s.helm !== undefined && u.y > -0.25) return true;
+    if (s.hat === 'wizard') return hp(u).y > (0.04 + WIZ_LIFT) * hs.y;
+    if (s.hat === 'cap') return u.y > 0.22 - u.z * 0.1;
+    if (s.hat === 'chef') return u.y > 0.55;
+    return false;
+  };
+  const bald = s.hairStyle === 'none' || s.hair === undefined || (!!R && s.hat === 'hood');
   if (!bald) {
     // Hairline: high over the forehead, over the ears, low at the nape.
     const line = (u: THREE.Vector3) => (u.z > 0 ? 0.08 + 0.42 * Math.pow(u.z, 1.3) : 0.08 + 0.62 * u.z);
@@ -522,14 +535,13 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     if (sheet) b.doubleSided();
     b.add(
       atHead(
-        // Under a wizard's hat on a sculpted head, hair shows only below the brim.
-        shell(1.08, (u) => (u.y > line(u) || hangsAt(u)) && !(R && s.hat === 'wizard' && hp(u).y > (0.04 + WIZ_LIFT) * hs.y), (u, p) => {
+        shell(1.08, (u) => (u.y > line(u) || hangsAt(u)) && !covered(u.clone().normalize()), (u, p) => {
           if (!hangsAt(u)) return;
           const t = (0.05 - u.y) / 0.97;
           const round = hp(new THREE.Vector3(u.x, 0, u.z), 1.08 + 0.3 * t);
           // Shorter toward the sides, so the ends curve round.
           p.set(round.x, 0.05 * hs.y - t * fall * (1 - 0.35 * Math.abs(u.x) / Math.max(0.3, Math.hypot(u.x, u.z))), round.z - 0.01 * t);
-        }),
+        }, (u) => covered(u.clone().normalize())),
       ),
       (p) => shade(hairColor, 0.9 + 0.1 * clamp01((p.y - headC.y) / 0.08 + 0.5)),
       (p) => (p.y < headC.y - 0.06 ? chain(p.y, hangs, 0.06) : [[head, 1]]),
@@ -547,14 +559,14 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
       );
       b.doubleSided(false);
     }
-    if (s.hairStyle === 'bun') {
+    if (s.hairStyle === 'bun' && !covered(new THREE.Vector3(0, 0.62, -0.78).normalize())) {
       const dir = new THREE.Vector3(0, 0.62, -0.78).normalize();
       onHead(blob(0.038, 0.034, 0.034, 12), hp(dir).addScaledVector(dir, 0.022 * hs.y), hairColor);
     }
     if (s.hairStyle === 'ponytail') {
       // Tied at the back of the crown, hanging to between the shoulders.
       const knot = new THREE.Vector3(0, 0.36, -0.93).normalize();
-      onHead(blob(0.022, 0.02, 0.02, 10), hp(knot).addScaledVector(knot, 0.01), shade(hairColor, 0.8));
+      if (!covered(knot)) onHead(blob(0.022, 0.02, 0.02, 10), hp(knot).addScaledVector(knot, 0.01), shade(hairColor, 0.8));
       const tail: [number, number, number][] = [
         [headC.y + 0.04 * hs.y, 0.024, -0.095 * hs.z],
         [headC.y - 0.01 * hs.y, 0.028, -0.104 * hs.z],
@@ -572,6 +584,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
       const up = new THREE.Vector3(0, 1, 0);
       for (const [ux, uy, uz] of SPIKES) {
         const dir = new THREE.Vector3(ux, uy, uz).normalize();
+        if (covered(dir)) continue;
         const cone = new THREE.ConeGeometry(0.019, 0.05, 6).translate(0, 0.02, 0);
         cone.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up, dir));
         const at = hp(dir, 1.02);

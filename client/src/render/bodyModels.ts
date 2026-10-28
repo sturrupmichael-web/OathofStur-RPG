@@ -56,7 +56,7 @@ const SOURCES: Record<BodyType, Source> = {
     mask: maleMask,
     scale: S,
     frame: {
-      fit: fit({ y: 0.027, size: 0.805, d: 1.2 }),
+      fit: fit({ y: 0.027, size: 0.805, d: 1.2 }, { y: 0.06, z: 0.009, size: 0.7, tilt: 0.01 }),
       hipsY: 0.46 * S,
       hipX: 0.065 * S,
       hipJoint: -0.03 * S,
@@ -89,7 +89,7 @@ const SOURCES: Record<BodyType, Source> = {
     mask: femaleMask,
     scale: S,
     frame: {
-      fit: fit({ y: 0.022, z: -0.007, size: 0.815, d: 1.2 }),
+      fit: fit({ y: 0.022, z: -0.007, size: 0.815, d: 1.2 }, { y: 0.02, size: 0.91, d: 1.065 }),
       hipsY: 0.45 * S,
       hipX: 0.056 * S,
       hipJoint: -0.03 * S,

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { EntityId, MapData, Point, WorldGrid } from '@rpg/shared';
 import type { ClientState } from '../state/ClientState';
 import { CameraRig } from './CameraRig';
-import { freeze } from './batch';
+import { freeze, mergeParts } from './batch';
 import { BuildingLayer, detectBuildings } from './buildings';
 import { EntityLayer } from './EntityLayer';
 import { buildTileColors, classifyAreas, tileInfo, type TileInfo } from './palette';
@@ -30,7 +30,7 @@ const STEADY_FRAME = 17.4;
 /** Lowest share of the full resolution the adaptive step goes to. */
 const MIN_SCALE = 0.6;
 
-/** Widest the sun's shadows reach from the camera's centre, in tiles. */
+/** Widest the sun's shadows reach either side of the middle of the screen, in tiles. */
 const SHADOW_REACH = 28;
 
 export interface PickResult {
@@ -69,6 +69,9 @@ export class Renderer {
   private lastFrameAt = 0;
   private checkedAt = 0;
   private steadyChecks = 0;
+  /** Frame time just before the last step down, to see whether it helped. */
+  private steppedFrom: number | null = null;
+  private noHelpUntil = 0;
 
   constructor(
     private readonly container: HTMLElement,
@@ -99,8 +102,11 @@ export class Renderer {
     this.scene.add(this.terrain.group);
     this.buildings = new BuildingLayer(map, grid, this.info, buildings, this.heightmap);
     this.scene.add(this.buildings.group);
+    mergeParts(this.buildings.group, { keep: [...this.buildings.moving, ...this.buildings.roofGroups], byArea: true });
+    // Roofs fade through their own materials, so their parts merge only with parts of the same material.
+    for (const roof of this.buildings.roofGroups) mergeParts(roof, { keep: this.buildings.moving, ownMaterials: true });
     freeze(this.terrain.group);
-    freeze(this.buildings.group, this.buildings.moving);
+    freeze(this.buildings.group);
     this.applyQuality();
     this.scenery = new SceneryChunks(map, grid, this.info, areas, this.tileColors, this.heightmap);
     this.scenery.update(map.spawn);
@@ -164,7 +170,19 @@ export class Renderer {
     this.frameMs += (gap - this.frameMs) * 0.05;
     if (!QUALITY[this.quality].adaptive || now - this.checkedAt < 1000) return;
     this.checkedAt = now;
-    if (this.frameMs > SLOW_FRAME && this.scale > MIN_SCALE) {
+    // A step down that didn't help (the limit is elsewhere, not pixels) is undone, and not tried again for a while.
+    if (this.steppedFrom !== null) {
+      const helped = this.frameMs < this.steppedFrom * 0.93;
+      this.steppedFrom = null;
+      if (!helped) {
+        this.scale = Math.min(1, this.scale + 0.1);
+        this.webgl.setPixelRatio(this.pixelRatio());
+        this.noHelpUntil = now + 60000;
+        return;
+      }
+    }
+    if (this.frameMs > SLOW_FRAME && this.scale > MIN_SCALE && now > this.noHelpUntil) {
+      this.steppedFrom = this.frameMs;
       this.scale = Math.max(MIN_SCALE, this.scale - 0.1);
       this.steadyChecks = 0;
       this.webgl.setPixelRatio(this.pixelRatio());
@@ -305,14 +323,7 @@ export class Renderer {
     const t = this.rig.target;
     this.sun.position.set(t.x - 30, t.y + 26, t.z + 14); // low sun so slopes cast light and shade
     this.sun.target.position.copy(t);
-    // Shadows cover what the camera sees and a margin for long shadows cast in from
-    // off screen: zoomed in, fewer things cast and the same map gives crisper edges.
-    const reach = Math.min(SHADOW_REACH, this.rig.groundReach + 6);
-    const sc = this.sun.shadow.camera;
-    if (sc.right !== reach) {
-      Object.assign(sc, { left: -reach, right: reach, top: reach, bottom: -reach });
-      sc.updateProjectionMatrix();
-    }
+    this.fitShadow();
 
     const dest = this.state.self?.destination;
     this.destinationMarker.visible = !!dest;
@@ -334,6 +345,52 @@ export class Renderer {
     this.entities.update(now);
     this.webgl.render(this.scene, this.rig.camera);
   }
+
+  /**
+   * Fits the sun's shadow box to the ground on screen. A thing casts a shadow
+   * onto a spot only if it lies between that spot and the sun, which is the
+   * same place in the sun's view, so a box round the visible ground (seen
+   * from the sun) keeps every shadow on screen and leaves out the many
+   * things whose shadows fall off it. It also spends the shadow map on less
+   * ground, so edges come out crisper.
+   */
+  private fitShadow(): void {
+    const cam = this.rig.camera;
+    cam.updateMatrixWorld();
+    const sc = this.sun.shadow.camera;
+    sc.position.copy(this.sun.position);
+    sc.lookAt(this.sun.target.position);
+    sc.updateMatrixWorld();
+    const forward = cam.getWorldDirection(this.fitDir);
+    const min = this.fitMin.set(Infinity, Infinity);
+    const max = this.fitMax.set(-Infinity, -Infinity);
+    const p = this.fitPoint;
+    const ground = this.rig.target.y;
+    // The screen's corners on the ground, taken a little below and above the
+    // ground under the player, so hills and hollows on screen are covered too.
+    for (const level of [ground - 3, ground + 5])
+      for (const [x, y] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        p.set(x, y, -1).unproject(cam);
+        p.addScaledVector(forward, (level - p.y) / forward.y);
+        p.applyMatrix4(sc.matrixWorldInverse);
+        min.min(this.fitXY.set(p.x, p.y));
+        max.max(this.fitXY.set(p.x, p.y));
+      }
+    const margin = 2;
+    const half = (lo: number, hi: number) => Math.min(SHADOW_REACH, (hi - lo) / 2 + margin);
+    const cx = (min.x + max.x) / 2;
+    const cy = (min.y + max.y) / 2;
+    const hx = half(min.x, max.x);
+    const hy = half(min.y, max.y);
+    Object.assign(sc, { left: cx - hx, right: cx + hx, bottom: cy - hy, top: cy + hy });
+    sc.updateProjectionMatrix();
+  }
+
+  private readonly fitDir = new THREE.Vector3();
+  private readonly fitPoint = new THREE.Vector3();
+  private readonly fitMin = new THREE.Vector2();
+  private readonly fitMax = new THREE.Vector2();
+  private readonly fitXY = new THREE.Vector2();
 
   private resize(): void {
     const w = this.container.clientWidth;

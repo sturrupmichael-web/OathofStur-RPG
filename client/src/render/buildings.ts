@@ -63,6 +63,8 @@ export function findWallTowers(map: MapData, info: TileInfo): WallTower[] {
 }
 /** Real point lights, moved to the nearest light spots each frame. */
 const LIGHT_POOL = 6;
+/** Flames and chimney smoke animate within this many tiles (across plus along) of the player. */
+const ANIMATE_NEAR = 70;
 
 export type BuildingKind = 'bank' | 'store' | 'smithy' | 'chapel' | 'inn' | 'keep' | 'library' | 'guildhall' | 'windmill' | 'house';
 
@@ -658,7 +660,12 @@ export class BuildingLayer {
     this.lights.forEach((light, i) => (light.visible = i < count));
   }
 
-  /** Everything here that moves after it's built: sails, flames, smoke and the lights that hop between rooms. */
+  /** Roofs, which fade as the player walks in; their parts must stay their own. */
+  get roofGroups(): THREE.Object3D[] {
+    return this.roofs.map((r) => r.group);
+  }
+
+  /** Everything here that moves after it's built (sails, flames, smoke, the lights that hop between rooms); update() re-places them itself. */
   get moving(): THREE.Object3D[] {
     return [...this.sails, ...this.flames.map((f) => f.mesh), ...this.smoke.flatMap((s) => s.puffs), ...this.lights];
   }
@@ -693,18 +700,29 @@ export class BuildingLayer {
         light.intensity = n && n.d < 24 ? n.spot.intensity : 0;
         if (n) light.position.copy(n.spot.pos);
         if (n) light.color.setHex(n.spot.color);
+        light.updateMatrix();
       });
     }
-    for (const sail of this.sails) sail.rotation.z -= dt * 0.7;
+    // Everything here is frozen in place (see Renderer), so what moves is re-placed by hand,
+    // and only near the player: flames and smoke across the map would be work nobody sees.
+    const near = (x: number, z: number) => !player || Math.abs(x - player.x) + Math.abs(z - player.y) < ANIMATE_NEAR;
+    for (const sail of this.sails) {
+      sail.rotation.z -= dt * 0.7;
+      sail.updateMatrix();
+    }
     for (const f of this.flames) {
+      if (!near(f.mesh.position.x, f.mesh.position.z)) continue;
       const s = 1 + Math.sin(now * 0.018 + f.phase) * 0.12 + Math.sin(now * 0.041 + f.phase * 2) * 0.08;
       f.mesh.scale.set(1, s, 1);
+      f.mesh.updateMatrix();
     }
     for (const s of this.smoke) {
+      if (!near(s.origin.x, s.origin.z)) continue;
       s.puffs.forEach((p, i) => {
         const t = (now / 4200 + i / s.puffs.length) % 1;
         p.position.set(s.origin.x + Math.sin(t * 5 + i) * 0.15 + t * 0.5, s.origin.y + t * 2.4, s.origin.z + t * 0.2);
         p.scale.setScalar(0.12 + t * 0.35);
+        p.updateMatrix();
         (p.material as THREE.MeshLambertMaterial).opacity = (1 - t) * 0.55 * Math.min(1, s.roof.opacity + 0.3);
       });
     }

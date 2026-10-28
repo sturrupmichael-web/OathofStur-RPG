@@ -259,8 +259,7 @@ export class SkinBuilder {
       mesh.castShadow = opts.shadows !== false && opts.transparent === undefined && key !== 'glow';
       // A single sheet shadows itself in stripes, so open cloth only casts.
       mesh.receiveShadow = !key.endsWith('2');
-      // Bones move the body around a lot (dying, flying); bounds from the bind pose would cull it wrongly.
-      mesh.frustumCulled = false;
+      looseBounds(mesh);
       parent.add(mesh);
       meshes.push(mesh);
     }
@@ -350,4 +349,17 @@ export function warp(geo: THREE.BufferGeometry, fn: (p: THREE.Vector3) => void):
 /** Shorthand for a ring. */
 export function ring(x: number, y: number, z: number, rx: number, rz: number, color: number, w: Weights): Ring {
   return { c: new THREE.Vector3(x, y, z), rx, rz, color, w };
+}
+
+/**
+ * Lets the camera skip a skinned mesh that's off screen. Bones carry the body
+ * well away from its bind pose (dying, flying, a drake rearing), so the bind
+ * pose's bounds are padded generously rather than skinned every frame.
+ */
+export function looseBounds(mesh: THREE.SkinnedMesh): void {
+  const geo = mesh.geometry;
+  if (!geo.boundingSphere) geo.computeBoundingSphere();
+  const sphere = geo.boundingSphere!.clone();
+  sphere.radius = sphere.radius * 1.6 + 1;
+  mesh.boundingSphere = sphere;
 }

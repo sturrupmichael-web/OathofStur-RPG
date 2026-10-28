@@ -40,7 +40,7 @@ import type { ServerConnection } from './net/ServerConnection';
 import { summary } from './net/syncRules';
 import { loadBodyModels } from './render/bodyModels';
 import { missileFlight } from './render/EntityLayer';
-import { Renderer, type PickResult } from './render/Renderer';
+import { Renderer, type PickResult, type Quality } from './render/Renderer';
 import { ClientState } from './state/ClientState';
 import { CombatOverlay } from './ui/CombatOverlay';
 import { Creator } from './ui/Creator';
@@ -96,6 +96,32 @@ const cloud = new CloudSave();
  */
 type WorldMode = 'online' | 'solo';
 const WORLD_KEY = 'oathofstur.world.v1';
+const GRAPHICS_KEY = 'oathofstur.graphics.v1';
+
+const GRAPHICS_NOTES: Record<Quality, string> = {
+  high: 'Full detail: sharpest picture and soft shadows.',
+  balanced: 'Lighter on the graphics card: slightly softer picture and simpler shadows.',
+  low: 'For older computers and phones: no shadows and no edge smoothing.',
+};
+
+/** Graphics choices kept in this browser. */
+function loadGraphics(): { quality: Quality; fps: boolean } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(GRAPHICS_KEY) ?? 'null') as { quality?: string; fps?: boolean } | null;
+    const quality = saved?.quality && saved.quality in GRAPHICS_NOTES ? (saved.quality as Quality) : 'high';
+    return { quality, fps: !!saved?.fps };
+  } catch {
+    return { quality: 'high', fps: false };
+  }
+}
+
+function saveGraphics(g: { quality: Quality; fps: boolean }): void {
+  try {
+    localStorage.setItem(GRAPHICS_KEY, JSON.stringify(g));
+  } catch {
+    // Private windows can refuse storage; the choice still holds for this visit.
+  }
+}
 function worldMode(): WorldMode {
   try {
     if (sessionStorage.getItem(WORLD_KEY) === 'solo') return 'solo';
@@ -138,7 +164,7 @@ async function start(): Promise<void> {
   const hud = new Hud();
   const chat = setupChat(state, hud, server, !!net);
   const viewport = document.getElementById('viewport')!;
-  const renderer = new Renderer(viewport, map, grid, state);
+  const renderer = new Renderer(viewport, map, grid, state, loadGraphics().quality);
   const labels = document.getElementById('labels')!;
   const regionLabel = document.getElementById('region')!;
 
@@ -166,6 +192,35 @@ async function start(): Promise<void> {
     talkAnimations(self.ui);
   });
   state.on('questComplete', ({ name, rewards, questPoints }) => hud.showQuestComplete(name, rewards, questPoints));
+
+  // --- Graphics ---------------------------------------------------------------
+  const graphics = loadGraphics();
+  // Edge smoothing is fixed when the game loads (on for High and Balanced).
+  const loadedSmooth = graphics.quality !== 'low';
+  const graphicsNote = document.getElementById('graphics-note')!;
+  const fpsBox = document.getElementById('fps')!;
+  const showFps = document.getElementById('show-fps') as HTMLInputElement;
+  const graphicsButtons = [...document.querySelectorAll<HTMLButtonElement>('#graphics button')];
+  const showGraphics = () => {
+    for (const b of graphicsButtons) b.setAttribute('aria-pressed', String(b.dataset.quality === renderer.graphics));
+    const smoothLater = (renderer.graphics !== 'low') !== loadedSmooth;
+    graphicsNote.textContent = GRAPHICS_NOTES[renderer.graphics] + (smoothLater ? ' Edge smoothing changes next time the game loads.' : '');
+    showFps.checked = graphics.fps;
+    fpsBox.hidden = !graphics.fps;
+  };
+  for (const b of graphicsButtons)
+    b.addEventListener('click', () => {
+      graphics.quality = b.dataset.quality as Quality;
+      renderer.setQuality(graphics.quality);
+      saveGraphics(graphics);
+      showGraphics();
+    });
+  showFps.addEventListener('change', () => {
+    graphics.fps = showFps.checked;
+    saveGraphics(graphics);
+    showGraphics();
+  });
+  showGraphics();
 
   // --- Sound ------------------------------------------------------------------
   const sound = new Sound();
@@ -839,6 +894,10 @@ async function start(): Promise<void> {
 
   // --- Frame loop --------------------------------------------------------------
   let last = performance.now();
+  const frameTimes: number[] = [];
+  let fpsShownAt = 0;
+  let lastHoverKey: string | null = null;
+  let lastHoverAt = 0;
   const frame = (now: number) => {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
@@ -852,6 +911,15 @@ async function start(): Promise<void> {
     if (held.has('out')) renderer.rig.zoomBy(1 - 1.0 * dt);
 
     renderer.frame(now);
+    if (graphics.fps) {
+      frameTimes.push(now);
+      while (frameTimes.length && frameTimes[0] < now - 1000) frameTimes.shift();
+      if (now - fpsShownAt > 500) {
+        fpsShownAt = now;
+        const { calls, triangles } = renderer.stats;
+        fpsBox.textContent = `${frameTimes.length} fps · ${calls} draws · ${Math.round(triangles / 1000)}k tris`;
+      }
+    }
     combat.update(now);
     minimap.draw(now);
     worldMap.draw();
@@ -859,7 +927,12 @@ async function start(): Promise<void> {
     const here = me ? (areaAt(map, me.x, me.y)?.name ?? '') : '';
     if (regionLabel.textContent !== here) regionLabel.textContent = here;
 
-    if (pointer && !hud.menuOpen) {
+    // What's under the cursor is looked up as soon as the cursor moves, and a
+    // few times a second otherwise, for the camera drifting or whatever walks underneath it.
+    const hoverKey = pointer && `${pointer.x},${pointer.y}`;
+    if (pointer && !hud.menuOpen && (hoverKey !== lastHoverKey || now - lastHoverAt > 120)) {
+      lastHoverKey = hoverKey;
+      lastHoverAt = now;
       const rect = canvas.getBoundingClientRect();
       const pick = renderer.pick(pointer.x + rect.left, pointer.y + rect.top);
       renderer.setHover(pick?.tile ?? null);
@@ -868,7 +941,8 @@ async function start(): Promise<void> {
         const { action, target } = describe(pick);
         hud.showTooltip(pointer.x, pointer.y, action, target);
       } else hud.hideTooltip();
-    } else if (!hud.menuOpen) {
+    } else if (!pointer && !hud.menuOpen) {
+      lastHoverKey = null;
       renderer.setHover(null);
       renderer.highlight(null);
       hud.hideTooltip();

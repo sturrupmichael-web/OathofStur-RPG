@@ -19,3 +19,5 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run build -w server
+      # The bundled server must start and answer, as it will on Fly.io.
+      - run: (PORT=8099 node server/dist/main.js &) && sleep 3 && curl -sf localhost:8099/health

@@ -9,6 +9,22 @@ import { SceneryChunks } from './sceneryChunks';
 import { buildHeightmap, type Heightmap } from './heightmap';
 import { buildTerrain, type TerrainLayer } from './terrain';
 
+/**
+ * How much work each frame asks of the graphics card. High is the full look;
+ * Balanced draws at a lower resolution on sharp screens with simpler shadow
+ * edges; Low drops shadows and smoothing for older laptops and phones.
+ */
+export type Quality = 'high' | 'balanced' | 'low';
+
+const QUALITY: Record<Quality, { pixelRatio: number; shadows: boolean; shadowSize: number; soft: boolean; antialias: boolean }> = {
+  high: { pixelRatio: 2, shadows: true, shadowSize: 2048, soft: true, antialias: true },
+  balanced: { pixelRatio: 1.25, shadows: true, shadowSize: 1024, soft: false, antialias: true },
+  low: { pixelRatio: 1, shadows: false, shadowSize: 1024, soft: false, antialias: false },
+};
+
+/** Widest the sun's shadows reach from the camera's centre, in tiles. */
+const SHADOW_REACH = 28;
+
 export interface PickResult {
   tile: Point;
   entityId: EntityId | null;
@@ -36,28 +52,29 @@ export class Renderer {
   private readonly clickPulse: THREE.Mesh;
   private clickPulseAt = -Infinity;
   private hasSnapped = false;
+  private size = { w: 1, h: 1 };
+  private quality: Quality;
 
   constructor(
     private readonly container: HTMLElement,
     private readonly map: MapData,
     grid: WorldGrid,
     private readonly state: ClientState,
+    quality: Quality = 'high',
   ) {
-    this.webgl = new THREE.WebGLRenderer({ antialias: true });
-    this.webgl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.webgl.shadowMap.enabled = true;
-    this.webgl.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.quality = quality;
+    // Smoothing can only be chosen as the canvas is made, so a change to it waits for the next visit.
+    this.webgl = new THREE.WebGLRenderer({ antialias: QUALITY[quality].antialias });
     container.appendChild(this.webgl.domElement);
 
     this.scene.background = new THREE.Color(0x1b2430);
     this.scene.fog = new THREE.Fog(0x1b2430, 120, 220);
     this.scene.add(new THREE.HemisphereLight(0xdfefff, 0x4a4030, 0.85));
     this.sun = new THREE.DirectionalLight(0xfff1d6, 2.1);
-    this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(this.sun.shadow.camera, { left: -28, right: 28, top: 28, bottom: -28, near: 1, far: 120 });
+    Object.assign(this.sun.shadow.camera, { left: -SHADOW_REACH, right: SHADOW_REACH, top: SHADOW_REACH, bottom: -SHADOW_REACH, near: 1, far: 120 });
     this.sun.shadow.bias = -0.0008;
     this.scene.add(this.sun, this.sun.target);
+    this.applyQuality();
 
     this.info = tileInfo(map);
     const areas = classifyAreas(map, grid, this.info);
@@ -99,6 +116,39 @@ export class Renderer {
 
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
+  }
+
+  get graphics(): Quality {
+    return this.quality;
+  }
+
+  /** Switches graphics quality at once (all but smoothing, which needs a reload). */
+  setQuality(quality: Quality): void {
+    if (quality === this.quality) return;
+    this.quality = quality;
+    this.applyQuality();
+  }
+
+  private applyQuality(): void {
+    const q = QUALITY[this.quality];
+    this.webgl.setPixelRatio(Math.min(window.devicePixelRatio, q.pixelRatio));
+    const type = q.soft ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    const changed = this.webgl.shadowMap.enabled !== q.shadows || this.webgl.shadowMap.type !== type;
+    this.webgl.shadowMap.enabled = q.shadows;
+    this.webgl.shadowMap.type = type;
+    this.sun.castShadow = q.shadows;
+    if (this.sun.shadow.mapSize.x !== q.shadowSize) {
+      this.sun.shadow.mapSize.set(q.shadowSize, q.shadowSize);
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+    }
+    // Shaders are built for one kind of shadow; rebuild them for the new one.
+    if (changed)
+      this.scene.traverse((o) => {
+        const m = (o as THREE.Mesh).material;
+        for (const mat of Array.isArray(m) ? m : m ? [m] : []) mat.needsUpdate = true;
+      });
+    if (this.container.clientWidth) this.resize();
   }
 
   /** Draw calls and triangles for the last frame, for performance checks. */
@@ -188,8 +238,9 @@ export class Renderer {
     if (!view) return null;
     const p = this.state.renderPosition(view, now);
     const v = new THREE.Vector3(p.x + 0.5, height + this.heightmap.groundAt(p.x + 0.5, p.y + 0.5), p.y + 0.5).project(this.rig.camera);
-    const rect = this.canvas.getBoundingClientRect();
-    return { x: ((v.x + 1) / 2) * rect.width, y: ((1 - v.y) / 2) * rect.height };
+    // The size kept from the last resize: measuring the canvas here would make the browser lay
+    // out the page again for every label moved since the last one.
+    return { x: ((v.x + 1) / 2) * this.size.w, y: ((1 - v.y) / 2) * this.size.h };
   }
 
   frame(now: number): void {
@@ -202,6 +253,14 @@ export class Renderer {
     const t = this.rig.target;
     this.sun.position.set(t.x - 30, t.y + 26, t.z + 14); // low sun so slopes cast light and shade
     this.sun.target.position.copy(t);
+    // Shadows cover what the camera sees and a margin for long shadows cast in from
+    // off screen: zoomed in, fewer things cast and the same map gives crisper edges.
+    const reach = Math.min(SHADOW_REACH, this.rig.groundReach + 6);
+    const sc = this.sun.shadow.camera;
+    if (sc.right !== reach) {
+      Object.assign(sc, { left: -reach, right: reach, top: reach, bottom: -reach });
+      sc.updateProjectionMatrix();
+    }
 
     const dest = this.state.self?.destination;
     this.destinationMarker.visible = !!dest;
@@ -227,6 +286,7 @@ export class Renderer {
   private resize(): void {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
+    this.size = { w, h };
     this.webgl.setSize(w, h);
     this.rig.resize(w, h);
   }

@@ -8,6 +8,7 @@ import { Effects } from './effects';
 import { buildFurniture } from './furniture';
 import { FLICKER, GATE_LEAF, RESOURCE_STYLES, buildStation, type PartStyle } from './models';
 import { buildGroundItem } from './itemModels';
+import { areaOf } from './batch';
 import type { Heightmap } from './heightmap';
 import { GLYPH_COLOURS, ROPE, buildObstacle, buildPatch } from './skillModels';
 import { hash2, shade, type TileInfo } from './palette';
@@ -44,7 +45,11 @@ function outfitKey(data: PublicEntity): string {
 
 export class EntityLayer {
   readonly group = new THREE.Group();
+  /** Resource pools by model and AREA square (see poolKey), made when first needed. */
   private readonly pools = new Map<string, ResourcePool>();
+  private readonly capacity = new Map<string, number>();
+  /** One material per part of each resource model, shared by its pools. */
+  private readonly resourceMaterials = new Map<string, THREE.MeshLambertMaterial[]>();
   private readonly meshes = new Map<EntityId, THREE.Object3D>();
   private readonly facing = new Map<EntityId, number>();
   private readonly flickers: THREE.Object3D[] = [];
@@ -73,36 +78,12 @@ export class EntityLayer {
     private readonly info: TileInfo,
   ) {
     this.group.add(this.effects.group);
-    const counts = new Map<string, number>();
+    // Pools are per kind and per AREA square, sized from the map's own placements.
     for (const p of map.placements) {
-      const key = resourceModel(p.defKey, p.x, p.y);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    for (const [key, styles] of Object.entries(RESOURCE_STYLES)) {
-      // Any tree can become a stump, so stump pools are sized for a busy forest.
-      const capacity = key.endsWith('_stump') ? 64 : (counts.get(key) ?? 0) + 8;
-      const pool: ResourcePool = { parts: [], slotOf: new Map(), entityAt: [], free: [], ripple: false };
-      for (const style of styles) {
-        const material = new THREE.MeshLambertMaterial({
-          color: 0xffffff,
-          map: style.map?.() ?? null,
-          emissive: style.emissive ?? 0x000000,
-          flatShading: true,
-          transparent: !!style.transparent,
-          opacity: style.transparent ? 0.75 : 1,
-        });
-        const mesh = new THREE.InstancedMesh(style.geometry, material, capacity);
-        mesh.count = 0;
-        mesh.castShadow = !style.ripple;
-        mesh.receiveShadow = true;
-        mesh.userData.pool = pool;
-        mesh.frustumCulled = false;
-        pool.parts.push({ style, mesh });
-        if (style.ripple) pool.ripple = true;
-        this.group.add(mesh);
+      for (const key of [resourceModel(p.defKey, p.x, p.y), `${p.defKey}_stump`]) {
+        const k = poolKey(key, p.x, p.y);
+        this.capacity.set(k, (this.capacity.get(k) ?? 0) + 1);
       }
-      for (let i = capacity - 1; i >= 0; i--) pool.free.push(i);
-      this.pools.set(key, pool);
     }
 
     state.on('added', (v) => this.add(v));
@@ -205,17 +186,60 @@ export class EntityLayer {
     });
   }
 
+  /**
+   * The pool for a resource model in the square at (x, y). Cutting pools by
+   * square lets the camera skip the trees and rocks it can't see.
+   */
+  private poolFor(model: string, x: number, y: number): ResourcePool | undefined {
+    const styles = RESOURCE_STYLES[model];
+    if (!styles) return undefined;
+    const key = poolKey(model, x, y);
+    let pool = this.pools.get(key);
+    if (pool) return pool;
+    let materials = this.resourceMaterials.get(model);
+    if (!materials) {
+      materials = styles.map(
+        (style) =>
+          new THREE.MeshLambertMaterial({
+            color: 0xffffff,
+            map: style.map?.() ?? null,
+            emissive: style.emissive ?? 0x000000,
+            flatShading: true,
+            transparent: !!style.transparent,
+            opacity: style.transparent ? 0.75 : 1,
+          }),
+      );
+      this.resourceMaterials.set(model, materials);
+    }
+    // A few spare slots for anything that grows where the map didn't place it.
+    const capacity = (this.capacity.get(key) ?? 0) + 8;
+    pool = { parts: [], slotOf: new Map(), entityAt: [], free: [], ripple: false };
+    styles.forEach((style, k) => {
+      const mesh = new THREE.InstancedMesh(style.geometry, materials[k], capacity);
+      mesh.count = 0;
+      mesh.castShadow = !style.ripple;
+      mesh.receiveShadow = true;
+      mesh.userData.pool = pool;
+      pool!.parts.push({ style, mesh });
+      if (style.ripple) pool!.ripple = true;
+      this.group.add(mesh);
+    });
+    for (let i = capacity - 1; i >= 0; i--) pool.free.push(i);
+    this.pools.set(key, pool);
+    return pool;
+  }
+
   private add(view: EntityView): void {
     const { data } = view;
-    const poolKey = data.depleted ? `${data.defKey}_stump` : data.defKey && resourceModel(data.defKey, data.x, data.y);
-    if (data.kind === 'resource' && poolKey && this.pools.has(poolKey)) {
-      const pool = this.pools.get(poolKey)!;
+    const model = data.depleted ? `${data.defKey}_stump` : data.defKey && resourceModel(data.defKey, data.x, data.y);
+    const pool = data.kind === 'resource' && model ? this.poolFor(model, data.x, data.y) : undefined;
+    if (pool) {
       const slot = pool.free.pop();
       if (slot === undefined) return;
       pool.slotOf.set(data.id, slot);
       pool.entityAt[slot] = data.id;
       this.writeResource(pool, slot, data.x, data.y, 0, data.size);
-      for (const { mesh } of pool.parts) mesh.boundingSphere = null; // recomputed on next raycast
+      for (const { mesh } of pool.parts) mesh.boundingSphere = null; // recomputed for the next cull or raycast
       return;
     }
     let obj: THREE.Object3D;
@@ -527,6 +551,11 @@ function shortestAngle(from: number, to: number): number {
   if (d > Math.PI) d -= Math.PI * 2;
   if (d < -Math.PI) d += Math.PI * 2;
   return d;
+}
+
+/** A resource pool's name: its model and the AREA square it covers. */
+function poolKey(model: string, x: number, y: number): string {
+  return `${model}@${areaOf(x, y)}`;
 }
 
 /**

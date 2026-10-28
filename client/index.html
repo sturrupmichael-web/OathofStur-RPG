@@ -8,6 +8,7 @@
   <body>
     <div id="app">
       <main id="viewport">
+        <div id="fps" hidden></div>
         <div id="labels"></div>
         <div id="combat-layer"></div>
         <div id="tooltip" hidden></div>
@@ -131,6 +132,14 @@
             <button id="sound-toggle" aria-pressed="true">Sound on</button>
             <input id="sound-volume" type="range" min="0" max="100" value="70" aria-label="Volume" />
           </div>
+          <h3>Graphics</h3>
+          <div class="option-buttons graphics-row" id="graphics">
+            <button data-quality="high" aria-pressed="false">High</button>
+            <button data-quality="balanced" aria-pressed="false">Balanced</button>
+            <button data-quality="low" aria-pressed="false">Low</button>
+          </div>
+          <p class="muted" id="graphics-note"></p>
+          <label class="check-row"><input type="checkbox" id="show-fps" /> Show frame rate</label>
           <h3>World</h3>
           <p class="muted" id="world-status"></p>
           <div class="option-buttons">

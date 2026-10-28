@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { shared } from './dispose';
+import { looseBounds } from './skin';
 import { loadGlb } from './loadGlb';
 import brineSlugGlb from './models/brine_slug.glb?inline';
 import caveCreeperGlb from './models/cave_creeper.glb?inline';
@@ -132,7 +133,7 @@ function attach(rig: CreatureRig, parts: THREE.Mesh[]): void {
   const p = ready.get(rig.kind)!;
   const mesh = new THREE.SkinnedMesh(p.geometry, p.material);
   mesh.castShadow = true;
-  mesh.frustumCulled = false;
+  looseBounds(mesh);
   rig.root.add(mesh);
   mesh.bind(new THREE.Skeleton(bones(rig) as THREE.Bone[], p.inverses.map((m) => m.clone())), new THREE.Matrix4());
   for (const part of parts) part.visible = false;

@@ -56,11 +56,61 @@ export class Batcher {
       });
       mesh.castShadow = e.cast;
       mesh.receiveShadow = e.receive;
-      mesh.computeBoundingSphere();
-      group.add(mesh);
+      group.add(...splitByArea(mesh));
     }
     return group;
   }
+}
+
+/**
+ * Tiles per side of the squares that world-wide meshes are cut into. The
+ * camera skips a square it can't see, so a big map costs what's on screen,
+ * not everything in it.
+ */
+export const AREA = 32;
+
+/** Which AREA square a world point is in, as one number. */
+export function areaOf(x: number, z: number): number {
+  return Math.floor(z / AREA) * 4096 + Math.floor(x / AREA);
+}
+
+/**
+ * Cuts an InstancedMesh spread over the map into one per AREA square, so
+ * each can be culled on its own. Per-instance `tileOf` (for picking) goes
+ * with its instance. The parts share the geometry and material.
+ */
+export function splitByArea(mesh: THREE.InstancedMesh): THREE.InstancedMesh[] {
+  const m = mesh.instanceMatrix.array;
+  const buckets = new Map<number, number[]>();
+  for (let i = 0; i < mesh.count; i++) {
+    const key = areaOf(m[i * 16 + 12], m[i * 16 + 14]);
+    let list = buckets.get(key);
+    if (!list) buckets.set(key, (list = []));
+    list.push(i);
+  }
+  if (buckets.size <= 1) {
+    mesh.computeBoundingSphere();
+    return [mesh];
+  }
+  const tileOf = mesh.userData.tileOf as Int32Array | undefined;
+  const colors = mesh.instanceColor?.array;
+  const parts: THREE.InstancedMesh[] = [];
+  for (const list of buckets.values()) {
+    const part = new THREE.InstancedMesh(mesh.geometry, mesh.material, list.length);
+    part.castShadow = mesh.castShadow;
+    part.receiveShadow = mesh.receiveShadow;
+    part.name = mesh.name;
+    part.userData = { ...mesh.userData };
+    if (tileOf) part.userData.tileOf = Int32Array.from(list, (i) => tileOf[i]);
+    list.forEach((i, k) => {
+      part.instanceMatrix.array.set(m.subarray(i * 16, i * 16 + 16), k * 16);
+      if (colors) part.setColorAt(k, new THREE.Color().fromArray(colors, i * 3));
+    });
+    part.computeBoundingSphere();
+    parts.push(part);
+  }
+  mesh.dispose();
+  return parts;
 }
 
 /**

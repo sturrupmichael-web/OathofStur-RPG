@@ -33,6 +33,7 @@ const SURFACE_BY_KEY: Record<string, 'grass' | 'road' | 'dirt' | 'planks' | 'sto
   agility_obstacle: 'dirt',
   farming_patch: 'dirt',
 };
+import { areaOf, splitByArea } from './batch';
 import { blendedGroundMaterial, buildTileTexture, type Layer } from './groundBlend';
 import { textures } from './textures';
 
@@ -62,24 +63,24 @@ function pushInstance(mesh: THREE.InstancedMesh, matrix: THREE.Matrix4, color: n
   (mesh.userData.tileOf as Int32Array)[i] = tile;
 }
 
-function finish(mesh: THREE.InstancedMesh, shadows: { cast?: boolean; receive?: boolean }): THREE.InstancedMesh {
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+function finish(mesh: THREE.InstancedMesh, shadows: { cast?: boolean; receive?: boolean }): THREE.InstancedMesh[] {
   mesh.castShadow = !!shadows.cast;
   mesh.receiveShadow = !!shadows.receive;
-  mesh.computeBoundingSphere();
-  return mesh;
+  return splitByArea(mesh);
 }
 
-/** Accumulates textured, vertex-coloured quads for one ground surface. */
+/**
+ * Accumulates textured, vertex-coloured quads for one ground surface, kept
+ * apart by AREA square so the camera only draws the squares it can see.
+ */
 class SurfaceBuilder {
-  private positions: number[] = [];
-  private normals: number[] = [];
-  private uvs: number[] = [];
-  private colors: number[] = [];
+  private readonly areas = new Map<number, { positions: number[]; normals: number[]; uvs: number[]; colors: number[] }>();
 
   /** Quad corners in order NW, NE, SW, SE. `color` may give one colour per corner. */
   quad(p: [number, number, number][], n: [number, number, number][], color: number | number[], turn: number): void {
+    const key = areaOf(Math.min(p[0][0], p[3][0]), Math.min(p[0][2], p[3][2]));
+    let area = this.areas.get(key);
+    if (!area) this.areas.set(key, (area = { positions: [], normals: [], uvs: [], colors: [] }));
     const cs = (Array.isArray(color) ? color : [color, color, color, color]).map((c) => new THREE.Color(c));
     const baseUv: [number, number][] = [
       [0, 1],
@@ -94,23 +95,26 @@ class SurfaceBuilder {
       return [uu, vv];
     });
     for (const k of [0, 2, 1, 1, 2, 3]) {
-      this.positions.push(...p[k]);
-      this.normals.push(...n[k]);
-      this.uvs.push(...uv[k]);
-      this.colors.push(cs[k].r, cs[k].g, cs[k].b);
+      area.positions.push(...p[k]);
+      area.normals.push(...n[k]);
+      area.uvs.push(...uv[k]);
+      area.colors.push(cs[k].r, cs[k].g, cs[k].b);
     }
   }
 
-  build(material: THREE.Material): THREE.Mesh {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
-    geo.setAttribute('normal', new THREE.Float32BufferAttribute(this.normals, 3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(this.uvs, 2));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
-    geo.computeBoundingSphere();
-    const mesh = new THREE.Mesh(geo, material);
-    mesh.receiveShadow = true;
-    return mesh;
+  /** One mesh per AREA square, all sharing the material. */
+  build(material: THREE.Material): THREE.Mesh[] {
+    return [...this.areas.values()].map((a) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(a.positions, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(a.normals, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(a.uvs, 2));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(a.colors, 3));
+      geo.computeBoundingSphere();
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.receiveShadow = true;
+      return mesh;
+    });
   }
 }
 
@@ -311,18 +315,16 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
 
   const tiles = buildTileTexture(map, (i) => tintOf[i], (i) => layerOf[i]);
   const ground = [
-    natural.build(blendedGroundMaterial(tiles, map.width, map.height)),
-    surfaces.road.build(groundMaterial(textures.cobble())),
-    surfaces.planks.build(groundMaterial(textures.planks())),
-    surfaces.bed.build(groundMaterial(textures.dirt())),
-    deck.build(groundMaterial(textures.planks())),
+    ...natural.build(blendedGroundMaterial(tiles, map.width, map.height)),
+    ...surfaces.road.build(groundMaterial(textures.cobble())),
+    ...surfaces.planks.build(groundMaterial(textures.planks())),
+    ...surfaces.bed.build(groundMaterial(textures.dirt())),
+    ...deck.build(groundMaterial(textures.planks())),
   ];
   const skirtMaterial = groundMaterial(textures.rock());
   skirtMaterial.side = THREE.DoubleSide;
-  group.add(...ground, skirt.build(skirtMaterial));
-  const waterMesh = water.build(new THREE.MeshLambertMaterial({ color: 0xffffff, map: waterTexture, vertexColors: true, transparent: true, opacity: 0.85 }));
-  waterMesh.receiveShadow = true;
-  group.add(waterMesh);
+  group.add(...ground, ...skirt.build(skirtMaterial));
+  group.add(...water.build(new THREE.MeshLambertMaterial({ color: 0xffffff, map: waterTexture, vertexColors: true, transparent: true, opacity: 0.85 })));
 
   // Raised features. Each extends well below its tile so slopes never show a gap.
   const box = new THREE.BoxGeometry(1, 1, 1);
@@ -430,16 +432,10 @@ export function buildTerrain(map: MapData, info: TileInfo, tileColors: number[],
     }
   }
 
-  group.add(
-    finish(walls, { cast: true, receive: true }),
-    finish(posts, { cast: true }),
-    finish(rails, { cast: true }),
-    finish(stakes, { cast: true, receive: true }),
-    finish(tips, { cast: true, receive: true }),
-    finish(grate, { receive: true }),
-  );
+  const tall = [...finish(walls, { cast: true, receive: true }), ...finish(stakes, { cast: true, receive: true }), ...finish(tips, { cast: true, receive: true })];
+  group.add(...tall, ...finish(posts, { cast: true }), ...finish(rails, { cast: true }), ...finish(grate, { receive: true }));
 
-  return { group, ground, pickables: [walls, stakes, tips], waterTexture };
+  return { group, ground, pickables: tall, waterTexture };
 }
 
 /** Round iron sewer grate. */

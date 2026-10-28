@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { BodyType } from '@rpg/shared';
 import { shared } from './dispose';
+import { looseBounds } from './skin';
 import { loadGlb } from './loadGlb';
 import { HEADWEAR, type BodyBones, type BodyFrame, type HeadFit, type Headwear } from './humanoid';
 import femaleGlb from './models/body_female.glb?inline';
@@ -189,7 +190,7 @@ export function attachBodyModel(kind: BodyType, bones: BodyBones, parent: THREE.
   const mesh = new THREE.SkinnedMesh(p.geometry, tintMaterial(kind, p, tints, metal));
   mesh.castShadow = true;
   mesh.receiveShadow = true;
-  mesh.frustumCulled = false;
+  looseBounds(mesh);
   parent.add(mesh);
   mesh.updateMatrixWorld(true);
   mesh.bind(new THREE.Skeleton(list), mesh.matrixWorld);

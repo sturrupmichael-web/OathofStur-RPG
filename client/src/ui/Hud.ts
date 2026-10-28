@@ -27,6 +27,7 @@ import {
   type UiView,
 } from '@rpg/shared';
 import { itemIcon } from './itemIcons';
+import { PHONE } from '../layout';
 
 export interface MenuOption {
   label: string;
@@ -728,7 +729,12 @@ export class Hud {
     const buttons = document.querySelectorAll<HTMLButtonElement>('.tab');
     const app = el('app');
     // On phones the panels are a sheet: tapping the open tab again closes it.
-    if (window.matchMedia('(max-width: 720px)').matches) app.classList.add('sheet-closed');
+    // Turning a tablet or a window into a phone shape starts with the sheet closed too.
+    const phone = window.matchMedia(PHONE);
+    if (phone.matches) app.classList.add('sheet-closed');
+    phone.addEventListener('change', () => {
+      if (phone.matches) app.classList.add('sheet-closed');
+    });
     buttons.forEach((b) =>
       b.addEventListener('click', () => {
         if (b.classList.contains('active')) {

@@ -1150,8 +1150,9 @@ body {
   }
 }
 
-/* Phones: the game fills the screen; minimap, chat and panels float over it. */
-@media (max-width: 720px) {
+/* Phones held upright: the game fills the screen; minimap, chat and panels float over it.
+   A phone on its side gets its own layout at the end of this file. */
+@media (max-width: 720px) and (orientation: portrait), (max-width: 720px) and (min-height: 501px) {
   #dialogue {
     bottom: calc(150px + env(safe-area-inset-bottom, 0px));
   }
@@ -1716,7 +1717,7 @@ body {
 
 /* Phone layout for the minimap buttons and the bars in the player card. This sits after
    their base rules so it wins: run energy and Map go in a row under the minimap. */
-@media (max-width: 720px) {
+@media (max-width: 720px) and (orientation: portrait), (max-width: 720px) and (min-height: 501px) {
   #run-orb,
   #worldmap-open {
     position: fixed;
@@ -2118,4 +2119,225 @@ body {
   border: none;
   text-decoration: underline;
   cursor: pointer;
+}
+
+/* --- Phone on its side ------------------------------------------------------
+   A short, wide screen: the game fills it, the tabs stand in a column on the
+   right edge and a tab opens its panel as a sheet beside them. The minimap,
+   run and Map sit top right, chat bottom left, camera buttons in a row. */
+@media (orientation: landscape) and (max-height: 500px) {
+  :root {
+    --tabs-w: calc(50px + env(safe-area-inset-right, 0px));
+    --sheet-w: 300px;
+  }
+
+  #app {
+    display: block;
+    position: relative;
+  }
+
+  #viewport {
+    position: absolute;
+    inset: 0;
+  }
+
+  #side {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  #side > * {
+    pointer-events: auto;
+  }
+
+  .tabs {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--tabs-w);
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(7, 1fr);
+    gap: 0;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) 0;
+    background: var(--panel);
+    border-left: 3px solid var(--edge);
+  }
+
+  .tab {
+    padding: 0;
+    border-radius: 0;
+    border-width: 0 0 1px;
+  }
+
+  .tab.active {
+    box-shadow: inset 2px 0 0 var(--gold);
+  }
+
+  .panel {
+    position: absolute;
+    top: 0;
+    right: var(--tabs-w);
+    bottom: 0;
+    width: min(var(--sheet-w), calc(100% - var(--tabs-w) - 40px));
+    overflow-y: auto;
+    touch-action: pan-y;
+    border-width: 0 0 0 3px;
+    padding: max(10px, env(safe-area-inset-top, 0px)) 10px max(10px, env(safe-area-inset-bottom, 0px));
+  }
+
+  #app.sheet-closed .panel {
+    display: none;
+  }
+
+  #app.sheet-closed .tab.active {
+    color: var(--muted);
+    background: var(--panel-dark);
+    box-shadow: none;
+  }
+
+  #app.sheet-closed .tab.active svg {
+    opacity: 0.75;
+    filter: saturate(0.7);
+  }
+
+  #inventory-grid {
+    max-width: 260px;
+    margin: 0 auto;
+  }
+
+  #equipment-grid {
+    max-width: 220px;
+    margin: 0 auto;
+  }
+
+  #minimap {
+    position: absolute;
+    top: calc(6px + env(safe-area-inset-top, 0px));
+    right: calc(var(--tabs-w) + 8px);
+    width: 116px;
+    opacity: 0.95;
+  }
+
+  #run-orb,
+  #worldmap-open {
+    position: absolute;
+    left: auto;
+    bottom: auto;
+    top: calc(128px + env(safe-area-inset-top, 0px));
+    width: 55px;
+    min-height: 30px;
+    justify-content: center;
+    padding: 3px 6px;
+    font-size: 13px;
+    border-radius: 10px;
+  }
+
+  #run-orb {
+    right: calc(var(--tabs-w) + 69px);
+  }
+
+  #worldmap-open {
+    right: calc(var(--tabs-w) + 8px);
+  }
+
+  #player-card {
+    position: absolute;
+    top: calc(6px + env(safe-area-inset-top, 0px));
+    left: calc(6px + env(safe-area-inset-left, 0px));
+    flex-direction: column;
+    gap: 2px;
+    padding: 5px 9px;
+    background: rgba(42, 35, 27, 0.8);
+    border: 2px solid var(--edge);
+    border-radius: 6px;
+    font-size: 12px;
+  }
+
+  #hp-bar,
+  #prayer-bar {
+    flex-basis: auto;
+    width: 100%;
+    min-width: 110px;
+  }
+
+  #chat {
+    position: absolute;
+    left: calc(6px + env(safe-area-inset-left, 0px));
+    right: calc(var(--tabs-w) + 248px);
+    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    height: 70px;
+    max-width: 380px;
+    background: rgba(216, 201, 163, 0.82);
+    border: 2px solid var(--edge);
+    border-radius: 6px;
+    pointer-events: none;
+  }
+
+  /* With a panel open the chat stops short of it. */
+  #app:not(.sheet-closed) #chat {
+    right: calc(var(--tabs-w) + var(--sheet-w) + 8px);
+  }
+
+  #chat-log {
+    font-size: 12px;
+    padding: 3px 8px;
+  }
+
+  #chat-input {
+    display: none;
+  }
+
+  #camera-buttons {
+    flex-direction: row;
+    right: calc(var(--tabs-w) + 8px);
+    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+
+  #camera-buttons button {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+
+  #controls-hint {
+    top: auto;
+    left: calc(10px + env(safe-area-inset-left, 0px));
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+    font-size: 11px;
+  }
+
+  #dialogue {
+    left: calc(50% - var(--tabs-w) / 2);
+    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    width: min(540px, calc(100% - var(--tabs-w) - 24px));
+    max-height: calc(100% - 20px);
+    overflow-y: auto;
+  }
+
+  #boss-bar {
+    top: calc(6px + env(safe-area-inset-top, 0px));
+    left: calc(50% - var(--tabs-w) / 2);
+    width: min(300px, calc(100% - 420px));
+  }
+
+  #worldmap {
+    right: calc(var(--tabs-w) + 8px);
+  }
+
+  #worldmap-skills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    touch-action: pan-x;
+  }
+
+  #window {
+    left: calc(50% - var(--tabs-w) / 2);
+    max-height: calc(100% - 12px);
+  }
 }

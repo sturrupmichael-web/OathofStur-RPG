@@ -45,3 +45,17 @@ save, delete, read while signed out). Each step says whether it should work or f
 createdb t
 psql -d t -f local-test/fake-supabase.sql -f 001_oath.sql -f local-test/check.sql
 ```
+
+## Backups of online characters
+
+`.github/workflows/backup.yml` runs every night (and on demand from the Actions tab). It copies
+every row of `saves_oath_online`, encrypts it with the `SUPABASE_SECRET_KEY` secret, and keeps
+it for 30 days as the run's `oath-online-backup` artifact (the repo is public, hence the
+encryption). To read one, download it and run:
+
+```sh
+openssl enc -d -aes-256-cbc -pbkdf2 -in oath-online-DATE.json.gz.enc -pass pass:'THE_SECRET_KEY' | gunzip > characters.json
+```
+
+`characters.json` is a list of rows (`user_id`, `data`, `updated_at`); upsert the ones to put
+back through the SQL editor or the REST API. A backup made with an older secret key needs that key.

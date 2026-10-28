@@ -939,7 +939,7 @@ async function start(): Promise<void> {
     window.top !== window
       ? 'The online world works on the game page, not in this preview.'
       : net
-        ? 'You are in the online world (test server). Other players you see are real people.'
+        ? 'You are in the online world. Other players you see are real people. Your character is kept on the server.'
         : 'You are playing solo: the world runs in this browser. Your character comes with you if you go online.';
   worldOnline.hidden = !!net || window.top !== window;
   worldSolo.hidden = !net;
@@ -982,6 +982,7 @@ async function start(): Promise<void> {
     }
   } else {
     await server.connect('Wanderer', startSave);
+    if (window.top === window) hud.addMessage('New: play with other people in the online world. ⚙ Options, World, Play online.', 'quest');
   }
 
   // A new character, or one made before looks could be chosen, picks a look (and a name) first.

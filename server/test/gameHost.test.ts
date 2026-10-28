@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { HAIR_STYLES, PROTOCOL_VERSION, WORLD_SEED, type ServerMessage } from '@rpg/shared';
 import { describe, expect, it } from 'vitest';
 import { loadWorld } from '../../shared/test/helpers';
@@ -24,7 +25,8 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 
 describe('GameHost', () => {
   // Any token "userN" is a valid account with id "uN"; anything else isn't.
-  const verify = async (t: string) => (/^user\d+$/.test(t) ? { id: t.replace('user', 'u'), email: '' } : null);
+  // Any token "userN" is a valid account with id "uN"; "mod" is a moderator.
+  const verify = async (t: string) => (t === 'mod' ? { id: 'm1', email: 'mod@example.com' } : /^user\d+$/.test(t) ? { id: t.replace('user', 'u'), email: '' } : null);
   const host = (store = new MemoryStore()) => new GameHost({ map, seed: WORLD_SEED, verify, store, maxPlayers: 3, log: () => {} });
 
   it('puts two players in one world, each seeing the other', async () => {
@@ -194,5 +196,50 @@ describe('GameHost', () => {
     h.step();
     const id = (c.got.find((m) => m.type === 'welcome') as { playerId: number }).playerId;
     expect((h.sim.getEntity(id) as { name: string }).name).toBe('Corwen');
+  });
+
+  it('gives moderators kick, mute and ban, which last across visits', async () => {
+    process.env.ADMIN_EMAIL_SHA256 = createHash('sha256').update('mod@example.com').digest('hex');
+    const store = new MemoryStore();
+    const h = host(store);
+    const look = { body: 'male', skin: 0, hairStyle: HAIR_STYLES[0], hair: 0, beard: false, shirt: 0, trousers: 0, boots: 0 };
+    const solo = (name: string) => ({ version: 3, name, look, position: { x: 0, y: 0 }, skills: {}, inventory: [], bank: [], quests: {}, createdAt: '', updatedAt: '' });
+    const mod = link();
+    const cm = h.open(mod);
+    await h.receive(cm, join({ token: 'mod', save: solo('Warden') }));
+    const pest = link();
+    const cp = h.open(pest);
+    await h.receive(cp, join({ token: 'user950', save: solo('Pest') }));
+    const said = (l: ReturnType<typeof link>, text: string) => l.got.some((m) => (m.type === 'gameMessage' || m.type === 'reject') && ('text' in m ? m.text : m.reason).includes(text));
+
+    // Players can't use the commands.
+    await h.receive(cp, JSON.stringify({ type: 'chat', text: '::ban Warden' }));
+    expect(said(pest, 'no such command')).toBe(true);
+
+    await h.receive(cm, JSON.stringify({ type: 'chat', text: '::mute Pest 10' }));
+    expect(said(pest, 'muted you')).toBe(true);
+    await h.receive(cp, JSON.stringify({ type: 'chat', text: 'spam spam' }));
+    h.step();
+    expect(mod.got.some((m) => m.type === 'chat')).toBe(false);
+    expect(said(pest, "You're muted")).toBe(true);
+
+    await h.receive(cm, JSON.stringify({ type: 'chat', text: '::ban Pest' }));
+    expect(pest.closed).toBe(4000);
+    expect(said(pest, 'banned')).toBe(true);
+    await settle();
+    // Back again later: still banned.
+    const again = link();
+    await h.receive(h.open(again), join({ token: 'user950' }));
+    expect(again.got[0]).toMatchObject({ type: 'reject', reason: expect.stringContaining('banned') });
+
+    // Unbanned while away, and in they come.
+    await h.receive(cm, JSON.stringify({ type: 'chat', text: '::unban Pest' }));
+    await settle();
+    const back = link();
+    await h.receive(h.open(back), join({ token: 'user950' }));
+    expect(back.got.some((m) => m.type === 'welcome')).toBe(true);
+    await h.receive(cm, JSON.stringify({ type: 'chat', text: '::who' }));
+    expect(said(mod, '2 online')).toBe(true);
+    delete process.env.ADMIN_EMAIL_SHA256;
   });
 });

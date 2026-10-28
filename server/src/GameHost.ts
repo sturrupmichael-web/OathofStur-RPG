@@ -11,7 +11,8 @@ import {
   type ServerMessage,
 } from '@rpg/shared';
 import type { Account } from './auth';
-import type { SaveStore } from './store';
+import { HELP, isAdmin, isBanned, isMuted, parseCommand, until, type Command, type Moderation } from './moderation';
+import type { SaveStore, StoredCharacter } from './store';
 
 /** One player's link to the world: a WebSocket in production, a stub in tests. */
 export interface Link {
@@ -46,10 +47,14 @@ interface Client {
   refilledAt: number;
   /** The last save written for this player, to skip writing when nothing changed. */
   lastStored: string;
+  /** Their mute or ban, stored with the character. */
+  mod: Moderation;
+  /** May use the moderator commands. */
+  admin: boolean;
 }
 
 /** A save without its timestamp, for telling whether anything changed. */
-const sameness = (save: SaveData) => JSON.stringify({ ...save, updatedAt: '' });
+const sameness = (save: StoredCharacter) => JSON.stringify({ ...save, updatedAt: '' });
 
 /**
  * The online world: one Simulation, ticked by the server, shared by every
@@ -84,7 +89,7 @@ export class GameHost {
 
   /** A new connection. It has to send `join` first. */
   open(link: Link): Client {
-    const client: Client = { link, playerId: null, account: null, joining: false, allowance: BURST, refilledAt: Date.now(), lastStored: '' };
+    const client: Client = { link, playerId: null, account: null, joining: false, allowance: BURST, refilledAt: Date.now(), lastStored: '', mod: {}, admin: false };
     this.clients.add(client);
     return client;
   }
@@ -112,6 +117,10 @@ export class GameHost {
       const save = this.persist(client);
       if (save) this.emit(client, { type: 'saveData', save });
       return;
+    }
+    if (msg.type === 'chat' && typeof msg.text === 'string') {
+      if (msg.text.trim().startsWith('::')) return this.command(client, msg.text);
+      if (isMuted(client.mod, Date.now())) return this.tell(client, `You're muted ${until(client.mod.mutedUntil)}.`);
     }
     // Online, a character's name is theirs alone.
     if (msg.type === 'setLook' && msg.name !== undefined && !this.player(client)?.look) {
@@ -169,7 +178,7 @@ export class GameHost {
       if (!account) return this.refuse(client, 'Sign in with Google to play online: ⚙ Options, Cloud save.');
       // A store write still on its way (a quick reload) lands before the character is read back.
       await this.writes.get(account.id);
-      let stored: SaveData | null;
+      let stored: StoredCharacter | null;
       try {
         stored = await this.opts.store.load(account.id);
       } catch (err) {
@@ -177,6 +186,7 @@ export class GameHost {
         return this.refuse(client, "Couldn't load your character just now. Please try again in a minute.");
       }
       if (!this.clients.has(client)) return; // left while we were busy
+      let mod: Moderation = stored?.moderation ?? {};
 
       // One character per account: joining again takes over from the old tab, as it is right now.
       let save = stored ? parseSave(stored) : null;
@@ -184,15 +194,19 @@ export class GameHost {
         if (other === client || other.account?.id !== account.id) continue;
         const live = other.playerId !== null ? this.sim.saveFor(other.playerId, this.now()) : null;
         if (live) save = live;
+        mod = other.mod;
         this.refuse(other, 'You joined the world from another tab or device.');
         this.clients.delete(other);
         this.leave(other, false);
       }
+      if (isBanned(mod, Date.now())) return this.refuse(client, `This account is banned from the online world ${until(mod.bannedUntil)}.`);
       // First visit: the character they already have comes with them, once.
       const imported = !stored && !save && !!msg.save;
       if (imported) save = parseSave(msg.save);
 
       client.account = account;
+      client.mod = mod;
+      client.admin = isAdmin(account.email);
       client.playerId = this.sim.addPlayer(String(msg.name ?? ''), save, this.now(), account.id);
       // A character brought over from solo may share its name with someone else's: it gets a number.
       const me = this.player(client)!;
@@ -234,12 +248,13 @@ export class GameHost {
     if (client.playerId === null || !client.account) return null;
     const save = this.sim.saveFor(client.playerId, this.now());
     if (!save) return null;
-    const key = sameness(save);
+    const row: StoredCharacter = Object.keys(client.mod).length ? { ...save, moderation: client.mod } : save;
+    const key = sameness(row);
     if (key === client.lastStored) return save;
     client.lastStored = key;
     const id = client.account.id;
     const write = (this.writes.get(id) ?? Promise.resolve())
-      .then(() => this.opts.store.save(id, save))
+      .then(() => this.opts.store.save(id, row))
       .catch((err) => {
         this.log('save failed', id, err);
         // Try again on the next autosave.
@@ -250,6 +265,61 @@ export class GameHost {
       if (this.writes.get(id) === write) this.writes.delete(id);
     });
     return save;
+  }
+
+  private tell(client: Client, text: string, kind: 'info' | 'warn' = 'warn'): void {
+    this.emit(client, { type: 'gameMessage', text, kind });
+  }
+
+  /** A moderator command typed in chat; anyone else is told there's no such thing. */
+  private async command(client: Client, text: string): Promise<void> {
+    if (!client.admin) return this.tell(client, "There's no such command.");
+    const cmd = parseCommand(text);
+    if (!cmd || cmd.kind === 'help') return this.tell(client, HELP, 'info');
+    if (cmd.kind === 'who') {
+      const names = [...this.clients].map((c) => this.player(c)?.name).filter(Boolean);
+      return this.tell(client, `${names.length} online: ${names.join(', ')}.`, 'info');
+    }
+    const lower = cmd.name.toLowerCase();
+    const target = [...this.clients].find((c) => this.player(c)?.name.toLowerCase() === lower);
+    if (cmd.kind === 'kick') {
+      if (!target) return this.tell(client, `${cmd.name} isn't online.`);
+      this.remove(target, 'A moderator removed you from the world.');
+      return this.tell(client, `${cmd.name} was kicked.`, 'info');
+    }
+    const change = (m: Moderation): Moderation => moderate(m, cmd);
+    if (target) {
+      target.mod = change(target.mod);
+      this.persist(target);
+      if (cmd.kind === 'ban') this.remove(target, `You've been banned from the online world ${until(target.mod.bannedUntil)}.`);
+      if (cmd.kind === 'mute') this.tell(target, `A moderator muted you ${until(target.mod.mutedUntil)}.`);
+      if (cmd.kind === 'unmute') this.tell(target, 'You can talk again.', 'info');
+    } else {
+      // Not online: change their stored character.
+      try {
+        const found = await this.opts.store.findByName(cmd.name);
+        if (!found) return this.tell(client, `There's no character called ${cmd.name}.`);
+        const id = found.userId;
+        const write = (this.writes.get(id) ?? Promise.resolve()).then(() =>
+          this.opts.store.save(id, { ...found.data, moderation: change(found.data.moderation ?? {}) }),
+        );
+        this.writes.set(id, write.catch(() => {}));
+        await write;
+      } catch (err) {
+        this.log('moderation failed', err);
+        return this.tell(client, "Couldn't reach the saves just now. Try again in a minute.");
+      }
+    }
+    const done = { mute: 'muted', unmute: 'unmuted', ban: 'banned', unban: 'unbanned' }[cmd.kind];
+    const amount = cmd.kind === 'mute' || cmd.kind === 'ban' ? ` (${cmd.amount ? `${cmd.amount} ${cmd.kind === 'mute' ? 'min' : 'h'}` : 'for good'})` : '';
+    this.tell(client, `${cmd.name} is ${done}${amount}.`, 'info');
+  }
+
+  /** Takes someone out of the world, with a reason, and stores them. */
+  private remove(client: Client, reason: string): void {
+    this.refuse(client, reason);
+    this.clients.delete(client);
+    this.leave(client);
   }
 
   private refuse(client: Client, reason: string): void {
@@ -275,6 +345,17 @@ export class GameHost {
     client.allowance--;
     return true;
   }
+}
+
+/** A mute or ban applied, or lifted. */
+function moderate(m: Moderation, cmd: Extract<Command, { name: string }>): Moderation {
+  const next = { ...m };
+  const later = (ms: number) => new Date(Date.now() + ms).toISOString();
+  if (cmd.kind === 'mute') next.mutedUntil = later((cmd.amount || 60 * 24 * 365 * 100) * 60_000);
+  if (cmd.kind === 'unmute') delete next.mutedUntil;
+  if (cmd.kind === 'ban') next.bannedUntil = cmd.amount ? later(cmd.amount * 3_600_000) : 'forever';
+  if (cmd.kind === 'unban') delete next.bannedUntil;
+  return next;
 }
 
 /** The shape checks every intent gets before the simulation sees it. */

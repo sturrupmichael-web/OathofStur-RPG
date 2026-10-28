@@ -53,7 +53,7 @@ const http = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
   if (path === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, players: host.playerCount, tick: host.sim.tick }));
+    res.end(JSON.stringify({ ok: true, players: host.playerCount, tick: host.sim.tick, saves: SECRET ? 'supabase' : 'memory' }));
     return;
   }
   const file = normalize(join(STATIC_DIR, path.endsWith('/') ? path + 'index.html' : path));

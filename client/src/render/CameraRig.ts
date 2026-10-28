@@ -35,12 +35,6 @@ export class CameraRig {
     this.applyProjection();
   }
 
-  /** How far from the centre of the view the visible ground reaches, in tiles (roughly). */
-  get groundReach(): number {
-    const halfH = this.baseTiles / 2 / this.zoom;
-    return Math.hypot(halfH * this.aspect, halfH / Math.sin(this.pitch));
-  }
-
   /** Ease toward `follow` (world coordinates) and place the camera. */
   update(follow: THREE.Vector3, snap = false): void {
     if (snap) this.target.copy(follow);

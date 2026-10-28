@@ -8,7 +8,7 @@ import { Effects } from './effects';
 import { buildFurniture } from './furniture';
 import { FLICKER, GATE_LEAF, RESOURCE_STYLES, buildStation, type PartStyle } from './models';
 import { buildGroundItem } from './itemModels';
-import { areaOf, freeze } from './batch';
+import { areaOf, freeze, mergeParts } from './batch';
 import type { Heightmap } from './heightmap';
 import { GLYPH_COLOURS, ROPE, buildObstacle, buildPatch } from './skillModels';
 import { hash2, shade, type TileInfo } from './palette';
@@ -327,6 +327,13 @@ export class EntityLayer {
     obj.position.set(data.x + 0.5, this.hm.tileCentre(data.x, data.y), data.y + 0.5);
     // Multi-tile props (tents) are laid out in map axes and keep their rotation.
     if ((data.kind === 'station' || data.kind === 'scenery' || data.kind === 'npc') && !obj.userData.span) obj.rotation.y = data.spot ? this.backToWall(data.x, data.y) : this.faceOpenSide(data.x, data.y);
+    // Still things are merged into a few meshes (gates, ropes and flickering flames keep their parts).
+    // Dropped items keep theirs, since a hovered item lights up its own materials.
+    if (data.kind !== 'player' && data.kind !== 'npc' && data.kind !== 'monster' && data.kind !== 'item') {
+      const live: THREE.Object3D[] = [];
+      obj.traverse((o) => (o.name === FLICKER || o.name === GATE_LEAF || o.name === ROPE) && live.push(o));
+      mergeParts(obj, { keep: live });
+    }
     const swinging: THREE.Object3D[] = [];
     obj.traverse((o) => {
       if (o.name === FLICKER) this.flickers.push(o);

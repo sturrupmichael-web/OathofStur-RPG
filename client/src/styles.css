@@ -176,14 +176,16 @@ body {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(6, 1fr) 28px;
+  grid-template-columns: repeat(7, 1fr);
   gap: 2px;
 }
 
 .tab {
+  display: grid;
+  place-items: center;
   font: inherit;
   font-size: 11px;
-  padding: 6px 0;
+  padding: 4px 0;
   color: var(--muted);
   background: var(--panel-dark);
   border: 1px solid var(--edge);
@@ -191,9 +193,32 @@ body {
   cursor: pointer;
 }
 
+.tab svg {
+  width: 24px;
+  height: 24px;
+  opacity: 0.75;
+  filter: saturate(0.7);
+}
+
+.tab:hover svg,
+.tab.active svg {
+  opacity: 1;
+  filter: none;
+}
+
 .tab.active {
   color: var(--gold);
   background: var(--panel-light);
+  box-shadow: inset 0 -2px 0 var(--gold);
+}
+
+.item-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
 }
 
 .panel {
@@ -1181,7 +1206,7 @@ body {
   }
 
   .tab {
-    padding: 12px 0;
+    padding: 8px 0;
     font-size: 12px;
     border-radius: 0;
     border-width: 0 1px 0 0;
@@ -1207,6 +1232,12 @@ body {
   #app.sheet-closed .tab.active {
     color: var(--muted);
     background: var(--panel-dark);
+    box-shadow: none;
+  }
+
+  #app.sheet-closed .tab.active svg {
+    opacity: 0.75;
+    filter: saturate(0.7);
   }
 
   #inventory-grid {

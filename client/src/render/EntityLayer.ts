@@ -3,12 +3,13 @@ import { PATCH_KINDS, areaAt, glyphForArea, isBow, obstacleAt, type EntityId, ty
 import type { ClientState, EntityView, HitEvent } from '../state/ClientState';
 import { CAST_MS, CAST_RELEASE, CHARACTER_STYLES, SHOOT_MS, SHOOT_RELEASE, activityPhase, animateCharacter, buildCharacter, characterBusy, crossingPose, playCharacter, styleForLook, styleForNpc, townsfolkStyle, withGear, type CharacterRig } from './character';
 import { animateCreature, buildCreature, creatureBusy, isCreature, playCreature, setShroud, shotMs, type CreatureRig } from './creatures';
-import { disposeModel } from './dispose';
+import { disposeModel, shared } from './dispose';
 import { Effects } from './effects';
 import { buildFurniture } from './furniture';
-import { FLICKER, GATE_LEAF, RESOURCE_STYLES, buildGroundItem, buildStation, type PartStyle } from './models';
+import { FLICKER, GATE_LEAF, RESOURCE_STYLES, buildStation, type PartStyle } from './models';
+import { buildGroundItem } from './itemModels';
 import type { Heightmap } from './heightmap';
-import { GLYPH_COLOURS, ROPE, buildObstacle, buildPatch, buildSkillItem } from './skillModels';
+import { GLYPH_COLOURS, ROPE, buildObstacle, buildPatch } from './skillModels';
 import { hash2, shade, type TileInfo } from './palette';
 
 /** One InstancedMesh per part of a resource model, shared by every node of that type. */
@@ -24,6 +25,18 @@ interface ResourcePool {
  * Draws entities the server has told us about. Resource nodes are instanced
  * (hundreds of trees and rocks); stations and characters are plain meshes.
  */
+/**
+ * An unseen pad over a dropped item's whole square, so a click anywhere
+ * near the item takes it, not just on its few pixels. Shared by every item.
+ */
+const ITEM_PAD = (() => {
+  const pad = new THREE.Mesh(shared(new THREE.BoxGeometry(0.96, 0.2, 0.96).translate(0, 0.1, 0)), shared(new THREE.MeshBasicMaterial({ visible: false })));
+  pad.userData.itemPad = true;
+  return pad;
+})();
+/** How much a hovered item brightens. */
+const ITEM_GLOW = new THREE.Color(0x3a3420);
+
 /** What a player wears and looks like; a change rebuilds their model. */
 function outfitKey(data: PublicEntity): string {
   return JSON.stringify([data.gear ?? {}, data.look ?? null]);
@@ -49,6 +62,8 @@ export class EntityLayer {
   private readonly ropes = new Map<string, THREE.Object3D>();
   /** Homestead gate leaves by tile, and when each was last walked through. */
   private readonly gates = new Map<string, { leaf: THREE.Object3D; openedAt: number }>();
+  /** The dropped item under the cursor, lit up so it's clear what a click will take. */
+  private lit: EntityId | null = null;
 
   constructor(
     private readonly state: ClientState,
@@ -130,6 +145,27 @@ export class EntityLayer {
     return instanced.concat([...this.meshes.values()]);
   }
 
+  /** True when a hit is only an item's click pad, which anything solid in the way should beat. */
+  isItemPad(hit: THREE.Intersection): boolean {
+    return !!hit.object.userData.itemPad;
+  }
+
+  /** Lights up a dropped item (or none) under the cursor. */
+  highlight(id: EntityId | null): void {
+    if (id !== null && this.state.entities.get(id)?.data.kind !== 'item') id = null;
+    if (id === this.lit) return;
+    for (const [target, on] of [[this.lit, false], [id, true]] as const) {
+      this.meshes.get(target as EntityId)?.traverse((o) => {
+        const mat = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined;
+        if (!mat?.emissive || mat.userData.shared) return;
+        mat.userData.emissive ??= mat.emissive.clone();
+        mat.emissive.copy(mat.userData.emissive as THREE.Color);
+        if (on) mat.emissive.add(ITEM_GLOW);
+      });
+    }
+    this.lit = id;
+  }
+
   entityFromHit(hit: THREE.Intersection): EntityId | null {
     let o: THREE.Object3D | null = hit.object;
     const pool = o.userData.pool as ResourcePool | undefined;
@@ -185,8 +221,11 @@ export class EntityLayer {
     let obj: THREE.Object3D;
     const obstacle = data.defKey === 'agility_obstacle' ? obstacleAt(data.x, data.y) : undefined;
     if (data.kind === 'item') {
-      obj = buildSkillItem(data.defKey ?? '') ?? buildGroundItem(data.defKey ?? '');
+      obj = buildGroundItem(data.defKey ?? '');
       obj.rotation.y = hash2(data.id, 11) * Math.PI * 2;
+      const pad = ITEM_PAD.clone();
+      pad.rotation.y = -obj.rotation.y; // square to the tile, whichever way the item lies
+      obj.add(pad);
     } else if (obstacle) {
       // Laid along the way it is crossed.
       obj = buildObstacle(obstacle.type);
@@ -254,6 +293,7 @@ export class EntityLayer {
       });
       disposeModel(obj);
       this.meshes.delete(id);
+      if (this.lit === id) this.lit = null;
       this.rigs.delete(id);
       this.creatures.delete(id);
       return;

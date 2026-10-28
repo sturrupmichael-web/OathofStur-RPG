@@ -45,6 +45,7 @@ import { ClientState } from './state/ClientState';
 import { CombatOverlay } from './ui/CombatOverlay';
 import { Creator } from './ui/Creator';
 import { Hud } from './ui/Hud';
+import { warmItemIcons } from './ui/itemIcons';
 import { Minimap } from './ui/Minimap';
 import { WorldMap } from './ui/WorldMap';
 import { PointerInput } from './ui/PointerInput';
@@ -350,14 +351,23 @@ async function start(): Promise<void> {
     return null;
   };
 
-  /** Fishing spots are ripples on the water, so a click on that tile counts as clicking the spot. */
+  /** Dropped items on a tile, newest on top as they're drawn. */
+  const itemsOn = (tile: Point): PublicEntity[] => {
+    const items: PublicEntity[] = [];
+    for (const { data } of state.entities.values()) if (data.kind === 'item' && data.x === tile.x && data.y === tile.y) items.push(data);
+    return items.reverse();
+  };
+  /**
+   * Fishing spots are ripples on the water, so a click on that tile counts as
+   * clicking the spot; the same goes for a dropped item anywhere on its tile.
+   */
   const entityAt = (pick: PickResult): EntityId | null => {
     if (pick.entityId !== null) return pick.entityId;
     for (const view of state.entities.values()) {
       const d = view.data;
       if (d.kind === 'resource' && d.x === pick.tile.x && d.y === pick.tile.y) return d.id;
     }
-    return null;
+    return itemsOn(pick.tile)[0]?.id ?? null;
   };
 
   /**
@@ -484,6 +494,10 @@ async function start(): Promise<void> {
         return;
       }
       if (primary) options.push({ label: primary.label, target, action: primary.run });
+      // Everything else lying on that square can be taken too, even under a creature.
+      for (const item of itemsOn(pick.tile)) {
+        if (item.id !== e?.id) options.push({ label: 'Take', target: nameOf(item), action: () => server.send({ type: 'interact', targetId: item.id, action: 'take' }) });
+      }
       if (e?.kind === 'station' && e.defKey === 'altar') {
         options.push({ label: 'Offer-bones', target, action: () => server.send({ type: 'interact', targetId: e.id, action: 'offer' }) });
       }
@@ -849,12 +863,14 @@ async function start(): Promise<void> {
       const rect = canvas.getBoundingClientRect();
       const pick = renderer.pick(pointer.x + rect.left, pointer.y + rect.top);
       renderer.setHover(pick?.tile ?? null);
+      renderer.highlight(pick && !casting ? entityAt(pick) : null);
       if (pick) {
         const { action, target } = describe(pick);
         hud.showTooltip(pointer.x, pointer.y, action, target);
       } else hud.hideTooltip();
     } else if (!hud.menuOpen) {
       renderer.setHover(null);
+      renderer.highlight(null);
       hud.hideTooltip();
     }
 
@@ -909,6 +925,8 @@ async function start(): Promise<void> {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+  // Draw every item's icon in spare moments, so a bank or shop opens without a stall.
+  setTimeout(() => warmItemIcons(Object.keys(ITEMS)), 3000);
 
   // Test hook for automated browser checks: only with #debug in the address.
   if (location.hash === '#debug') Object.assign(window, { __oath: { state, renderer, send: (m: Parameters<ServerConnection['send']>[0]) => server.send(m) } });

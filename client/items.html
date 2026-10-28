@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Item sheet</title>
+    <style>
+      html, body { margin: 0; background: #2a231b; color: #e8dcc0; font: 11px system-ui, sans-serif; }
+      #grid { display: grid; grid-template-columns: repeat(auto-fill, 92px); gap: 6px; padding: 8px; }
+      .cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+      .slot { width: 44px; height: 44px; padding: 3px; background: #3b3024; border: 1px solid rgba(0, 0, 0, 0.4); border-radius: 3px; }
+      .slot.big { width: 84px; height: 84px; }
+      .slot img { width: 100%; height: 100%; }
+      .name { text-align: center; word-break: break-all; opacity: 0.8; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <div id="grid"></div>
+    <script type="module" src="/src/itemsheet.ts"></script>
+  </body>
+</html>

@@ -47,6 +47,7 @@ import { Creator } from './ui/Creator';
 import { Hud } from './ui/Hud';
 import { warmItemIcons } from './ui/itemIcons';
 import { Minimap } from './ui/Minimap';
+import { showTitle } from './ui/TitleScreen';
 import { WorldMap } from './ui/WorldMap';
 import { PointerInput } from './ui/PointerInput';
 import { clearLocal, downloadSave, loadLocal, readSaveFile, storeLocal } from './ui/saves';
@@ -133,6 +134,62 @@ function worldMode(): WorldMode {
   }
   return location.hostname.endsWith('.fly.dev') || location.port === '8080' ? 'online' : 'solo';
 }
+/**
+ * The world to go straight into on the next load, skipping the title screen: set
+ * before a reload or a trip to Google that the player didn't start from the title.
+ */
+const NEXT_KEY = 'oathofstur.next.v1';
+function goNext(mode: WorldMode): void {
+  try {
+    sessionStorage.setItem(NEXT_KEY, mode);
+  } catch {
+    // storage blocked: the title screen shows again
+  }
+}
+function takeNext(): WorldMode | null {
+  try {
+    const next = sessionStorage.getItem(NEXT_KEY);
+    sessionStorage.removeItem(NEXT_KEY);
+    return next === 'online' || next === 'solo' ? next : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Which world to play: the title screen, unless a reload or sign-in already said.
+ * Automated checks (#debug) go straight in, in the saved world.
+ */
+async function chooseWorld(signIn: 'signed-in' | 'error' | null): Promise<WorldMode> {
+  const inFrame = window.top !== window;
+  const next = takeNext();
+  // The claude.ai preview frame can't open connections to the game server, so it stays solo.
+  if (location.hash === '#debug') return inFrame ? 'solo' : worldMode();
+  if (next && signIn !== 'error') return inFrame ? 'solo' : next;
+  for (;;) {
+    const choice = await showTitle({
+      user: account.user,
+      canSignIn: account.available,
+      local: loadLocal(),
+      last: worldMode(),
+      error: signIn === 'error' ? account.lastError : undefined,
+    });
+    if (choice === 'sign-in') {
+      goNext('online');
+      account.signIn();
+      return new Promise(() => {}); // leaving for Google
+    }
+    if (choice === 'sign-out') {
+      account.signOut();
+      cloud.reset();
+      signIn = null;
+      continue;
+    }
+    if (!inFrame) setWorldMode(choice);
+    return choice;
+  }
+}
+
 function setWorldMode(mode: WorldMode, justThisVisit = false): void {
   try {
     if (justThisVisit) sessionStorage.setItem(WORLD_KEY, mode);
@@ -147,7 +204,7 @@ function setWorldMode(mode: WorldMode, justThisVisit = false): void {
 
 async function start(): Promise<void> {
   // Back from Google with a sign-in, or not; then which character to play.
-  account.init();
+  const mode = await chooseWorld(account.init());
   const startSave = await cloud.pick(loadLocal(), chooseSave);
   // The sculpted bodies are inlined, so this is quick; characters wait for it so they never swap bodies mid-game.
   await loadBodyModels();
@@ -158,8 +215,6 @@ async function start(): Promise<void> {
   const grid = new WorldGrid(map);
 
   const state = new ClientState();
-  // The claude.ai preview frame can't open connections to the game server, so it stays solo.
-  const mode: WorldMode = window.top === window ? worldMode() : 'solo';
   const net = mode === 'online' ? new NetworkServer(serverUrl(), () => account.token()) : null;
   const server: ServerConnection = net ?? new LocalServer(map, WORLD_SEED);
   const hud = new Hud();
@@ -740,6 +795,7 @@ async function start(): Promise<void> {
     if (signInNext) {
       // Saved in this browser first, so nothing is lost on the trip to Google and back.
       savingEnabled = false;
+      goNext(mode);
       account.signIn();
       return;
     }
@@ -759,6 +815,7 @@ async function start(): Promise<void> {
       delete save.prayer;
       savingEnabled = false;
       storeLocal(save);
+      goNext(mode);
       location.reload();
     }
   });
@@ -786,6 +843,7 @@ async function start(): Promise<void> {
     }
     savingEnabled = false;
     storeLocal(save);
+    goNext(mode);
     location.reload();
   });
   // Testing shortcut, only shown with #dev in the address.
@@ -809,6 +867,7 @@ async function start(): Promise<void> {
     savingEnabled = false;
     clearLocal();
     // Signed in, the cloud copy goes too, or it would come straight back on reload.
+    goNext(mode);
     void cloud.remove().finally(() => location.reload());
   });
 
@@ -1014,7 +1073,10 @@ async function start(): Promise<void> {
   const bannerRetry = document.getElementById('net-retry') as HTMLButtonElement;
   const bannerSignin = document.getElementById('net-signin') as HTMLButtonElement;
   // Not in the game yet, so straight to Google; the solo save is already in this browser.
-  bannerSignin.onclick = () => account.signIn();
+  bannerSignin.onclick = () => {
+    goNext('online');
+    account.signIn();
+  };
   const showBanner = (text: string | null, buttons = false) => {
     banner.hidden = text === null;
     bannerText.textContent = text ?? '';
@@ -1023,9 +1085,13 @@ async function start(): Promise<void> {
   };
   bannerSolo.onclick = () => {
     setWorldMode('solo', true);
+    goNext('solo');
     location.reload();
   };
-  bannerRetry.onclick = () => location.reload();
+  bannerRetry.onclick = () => {
+    goNext(mode);
+    location.reload();
+  };
   const worldStatus = document.getElementById('world-status')!;
   const worldOnline = document.getElementById('world-online') as HTMLButtonElement;
   const worldSolo = document.getElementById('world-solo') as HTMLButtonElement;
@@ -1043,6 +1109,7 @@ async function start(): Promise<void> {
     if (switching) return;
     switching = true;
     setWorldMode(to);
+    goNext(to);
     state.on('saveData', () => location.reload());
     requestSave();
     setTimeout(() => location.reload(), 3000);

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { EntityId, MapData, Point, WorldGrid } from '@rpg/shared';
 import type { ClientState } from '../state/ClientState';
 import { CameraRig } from './CameraRig';
+import { freeze } from './batch';
 import { BuildingLayer, detectBuildings } from './buildings';
 import { EntityLayer } from './EntityLayer';
 import { buildTileColors, classifyAreas, tileInfo, type TileInfo } from './palette';
@@ -10,17 +11,24 @@ import { buildHeightmap, type Heightmap } from './heightmap';
 import { buildTerrain, type TerrainLayer } from './terrain';
 
 /**
- * How much work each frame asks of the graphics card. High is the full look;
- * Balanced draws at a lower resolution on sharp screens with simpler shadow
- * edges; Low drops shadows and smoothing for older laptops and phones.
+ * How much work each frame asks of the graphics card. High is the full look.
+ * Balanced (the default) draws at one pixel per screen point with simpler
+ * shadow edges, and lowers the resolution further on its own if the frame
+ * rate falls under 60. Low also drops shadows and smoothing.
  */
 export type Quality = 'high' | 'balanced' | 'low';
 
-const QUALITY: Record<Quality, { pixelRatio: number; shadows: boolean; shadowSize: number; soft: boolean; antialias: boolean }> = {
-  high: { pixelRatio: 2, shadows: true, shadowSize: 2048, soft: true, antialias: true },
-  balanced: { pixelRatio: 1.25, shadows: true, shadowSize: 1024, soft: false, antialias: true },
-  low: { pixelRatio: 1, shadows: false, shadowSize: 1024, soft: false, antialias: false },
+const QUALITY: Record<Quality, { pixelRatio: number; shadows: boolean; shadowSize: number; soft: boolean; antialias: boolean; adaptive: boolean; lights: number }> = {
+  high: { pixelRatio: 2, shadows: true, shadowSize: 2048, soft: true, antialias: true, adaptive: false, lights: 6 },
+  balanced: { pixelRatio: 1, shadows: true, shadowSize: 1024, soft: false, antialias: true, adaptive: true, lights: 3 },
+  low: { pixelRatio: 1, shadows: false, shadowSize: 1024, soft: false, antialias: false, adaptive: true, lights: 2 },
 };
+
+/** Frame times (ms) either side of 60 fps that make the adaptive resolution step down or back up. */
+const SLOW_FRAME = 18.5;
+const STEADY_FRAME = 17.4;
+/** Lowest share of the full resolution the adaptive step goes to. */
+const MIN_SCALE = 0.6;
 
 /** Widest the sun's shadows reach from the camera's centre, in tiles. */
 const SHADOW_REACH = 28;
@@ -54,13 +62,20 @@ export class Renderer {
   private hasSnapped = false;
   private size = { w: 1, h: 1 };
   private quality: Quality;
+  /** Share of the quality's resolution in use; below 1 when frames were too slow. */
+  private scale = 1;
+  /** Smoothed time between frames (ms), and how the frame rate has looked lately. */
+  private frameMs = 16.7;
+  private lastFrameAt = 0;
+  private checkedAt = 0;
+  private steadyChecks = 0;
 
   constructor(
     private readonly container: HTMLElement,
     private readonly map: MapData,
     grid: WorldGrid,
     private readonly state: ClientState,
-    quality: Quality = 'high',
+    quality: Quality = 'balanced',
   ) {
     this.quality = quality;
     // Smoothing can only be chosen as the canvas is made, so a change to it waits for the next visit.
@@ -74,7 +89,6 @@ export class Renderer {
     Object.assign(this.sun.shadow.camera, { left: -SHADOW_REACH, right: SHADOW_REACH, top: SHADOW_REACH, bottom: -SHADOW_REACH, near: 1, far: 120 });
     this.sun.shadow.bias = -0.0008;
     this.scene.add(this.sun, this.sun.target);
-    this.applyQuality();
 
     this.info = tileInfo(map);
     const areas = classifyAreas(map, grid, this.info);
@@ -85,6 +99,9 @@ export class Renderer {
     this.scene.add(this.terrain.group);
     this.buildings = new BuildingLayer(map, grid, this.info, buildings, this.heightmap);
     this.scene.add(this.buildings.group);
+    freeze(this.terrain.group);
+    freeze(this.buildings.group, this.buildings.moving);
+    this.applyQuality();
     this.scenery = new SceneryChunks(map, grid, this.info, areas, this.tileColors, this.heightmap);
     this.scenery.update(map.spawn);
     this.scene.add(this.scenery.group);
@@ -126,17 +143,51 @@ export class Renderer {
   setQuality(quality: Quality): void {
     if (quality === this.quality) return;
     this.quality = quality;
+    this.scale = 1;
     this.applyQuality();
+  }
+
+  /** Resolution in use, as a share of the chosen quality's (for the frame-rate readout). */
+  get resolutionScale(): number {
+    return this.scale;
+  }
+
+  /**
+   * Holds 60 fps on the adaptive qualities: a slow patch steps the resolution
+   * down a notch, and several steady seconds step it back up.
+   */
+  private adapt(now: number): void {
+    const gap = now - this.lastFrameAt;
+    this.lastFrameAt = now;
+    // A hidden tab or a stall while loading says nothing about the graphics card.
+    if (gap <= 0 || gap > 250) return;
+    this.frameMs += (gap - this.frameMs) * 0.05;
+    if (!QUALITY[this.quality].adaptive || now - this.checkedAt < 1000) return;
+    this.checkedAt = now;
+    if (this.frameMs > SLOW_FRAME && this.scale > MIN_SCALE) {
+      this.scale = Math.max(MIN_SCALE, this.scale - 0.1);
+      this.steadyChecks = 0;
+      this.webgl.setPixelRatio(this.pixelRatio());
+    } else if (this.frameMs < STEADY_FRAME && this.scale < 1 && ++this.steadyChecks >= 5) {
+      this.scale = Math.min(1, this.scale + 0.1);
+      this.steadyChecks = 0;
+      this.webgl.setPixelRatio(this.pixelRatio());
+    } else if (this.frameMs >= STEADY_FRAME) this.steadyChecks = 0;
+  }
+
+  private pixelRatio(): number {
+    return Math.min(window.devicePixelRatio, QUALITY[this.quality].pixelRatio) * this.scale;
   }
 
   private applyQuality(): void {
     const q = QUALITY[this.quality];
-    this.webgl.setPixelRatio(Math.min(window.devicePixelRatio, q.pixelRatio));
+    this.webgl.setPixelRatio(this.pixelRatio());
     const type = q.soft ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     const changed = this.webgl.shadowMap.enabled !== q.shadows || this.webgl.shadowMap.type !== type;
     this.webgl.shadowMap.enabled = q.shadows;
     this.webgl.shadowMap.type = type;
     this.sun.castShadow = q.shadows;
+    this.buildings.setLightBudget(q.lights);
     if (this.sun.shadow.mapSize.x !== q.shadowSize) {
       this.sun.shadow.mapSize.set(q.shadowSize, q.shadowSize);
       this.sun.shadow.map?.dispose();
@@ -244,6 +295,7 @@ export class Renderer {
   }
 
   frame(now: number): void {
+    this.adapt(now);
     const player = this.state.player;
     if (player) {
       const p = this.state.renderPosition(player, now);

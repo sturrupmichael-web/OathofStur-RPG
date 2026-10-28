@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { MapData, Point, WorldGrid } from '@rpg/shared';
 import type { Heightmap } from './heightmap';
 import type { Area, TileInfo } from './palette';
+import { freeze } from './batch';
 import { buildScenery } from './scenery';
 
 /** Tiles per chunk. Matches the region viewer's 32 x 32 chunks. */
@@ -60,6 +61,7 @@ export class SceneryChunks {
           x1: Math.min(this.map.width - 1, (x + 1) * CHUNK - 1),
           y1: Math.min(this.map.height - 1, (y + 1) * CHUNK - 1),
         });
+        freeze(group);
         this.chunks.set(key, group);
         this.group.add(group);
       }

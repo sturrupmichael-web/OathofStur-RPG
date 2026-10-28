@@ -181,3 +181,14 @@ export function lambert(color = 0xffffff, opts: { emissive?: number; map?: THREE
   }
   return m;
 }
+
+/**
+ * Stops the scene from re-working the place of every object under `root`
+ * each frame: for world that never moves, that's most of the objects in the
+ * scene. Objects in `moving` (and what's under them) keep updating.
+ */
+export function freeze(root: THREE.Object3D, moving: THREE.Object3D[] = []): void {
+  root.updateMatrixWorld(true);
+  root.traverse((o) => (o.matrixAutoUpdate = false));
+  for (const m of moving) m.traverse((o) => (o.matrixAutoUpdate = true));
+}

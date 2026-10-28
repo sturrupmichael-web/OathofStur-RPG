@@ -8,7 +8,7 @@ import { Effects } from './effects';
 import { buildFurniture } from './furniture';
 import { FLICKER, GATE_LEAF, RESOURCE_STYLES, buildStation, type PartStyle } from './models';
 import { buildGroundItem } from './itemModels';
-import { areaOf } from './batch';
+import { areaOf, freeze } from './batch';
 import type { Heightmap } from './heightmap';
 import { GLYPH_COLOURS, ROPE, buildObstacle, buildPatch } from './skillModels';
 import { hash2, shade, type TileInfo } from './palette';
@@ -35,6 +35,33 @@ const ITEM_PAD = (() => {
   pad.userData.itemPad = true;
   return pad;
 })();
+const CLICK_BOX_MATERIAL = shared(new THREE.MeshBasicMaterial({ visible: false }));
+
+/**
+ * Gives a person or creature an unseen box to be clicked by, in place of its
+ * skinned meshes: testing the cursor against a posed body means skinning
+ * thousands of vertices each time, which is most of the cost of hovering.
+ */
+function addClickBox(root: THREE.Object3D): void {
+  root.updateMatrixWorld(true);
+  const toRoot = root.matrixWorld.clone().invert();
+  const box = new THREE.Box3();
+  const part = new THREE.Box3();
+  const m = new THREE.Matrix4();
+  root.traverse((o) => {
+    if (!(o instanceof THREE.SkinnedMesh)) return;
+    o.raycast = () => {};
+    if (!o.visible) return;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    box.union(part.copy(o.geometry.boundingBox!).applyMatrix4(m.multiplyMatrices(toRoot, o.matrixWorld)));
+  });
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), CLICK_BOX_MATERIAL);
+  box.getCenter(pad.position);
+  root.add(pad);
+}
+
 /** How much a hovered item brightens. */
 const ITEM_GLOW = new THREE.Color(0x3a3420);
 
@@ -96,7 +123,11 @@ export class EntityLayer {
       const yaw = this.meshes.get(v.data.id)?.rotation.y;
       this.remove(v.data.id);
       this.add(v);
-      if (yaw !== undefined) this.meshes.get(v.data.id)!.rotation.y = yaw;
+      const obj = this.meshes.get(v.data.id);
+      if (yaw !== undefined && obj) {
+        obj.rotation.y = yaw;
+        obj.updateMatrix(); // still-standing things are frozen in place
+      }
     });
     state.on('animation', ({ entityId, kind }) => this.play(entityId, kind, performance.now()));
     // Whoever is hit flinches as the blow lands, unless busy with a move of their own.
@@ -222,6 +253,7 @@ export class EntityLayer {
       mesh.userData.pool = pool;
       pool!.parts.push({ style, mesh });
       if (style.ripple) pool!.ripple = true;
+      mesh.matrixAutoUpdate = false;
       this.group.add(mesh);
     });
     for (let i = capacity - 1; i >= 0; i--) pool.free.push(i);
@@ -291,13 +323,18 @@ export class EntityLayer {
       obj = rig.root;
     }
     obj.userData.entityId = data.id;
+    if (data.kind === 'player' || data.kind === 'npc' || data.kind === 'monster') addClickBox(obj);
     obj.position.set(data.x + 0.5, this.hm.tileCentre(data.x, data.y), data.y + 0.5);
     // Multi-tile props (tents) are laid out in map axes and keep their rotation.
     if ((data.kind === 'station' || data.kind === 'scenery' || data.kind === 'npc') && !obj.userData.span) obj.rotation.y = data.spot ? this.backToWall(data.x, data.y) : this.faceOpenSide(data.x, data.y);
+    const swinging: THREE.Object3D[] = [];
     obj.traverse((o) => {
       if (o.name === FLICKER) this.flickers.push(o);
       if (o.name === GATE_LEAF) this.gates.set(`${data.x},${data.y}`, { leaf: o, openedAt: -Infinity });
+      if (o.name === GATE_LEAF || o.name === ROPE) swinging.push(o);
     });
+    // Anything that doesn't walk about is fixed in place, bar gates and ropes.
+    if (data.kind !== 'player' && data.kind !== 'npc' && data.kind !== 'monster') freeze(obj, swinging);
     this.meshes.set(data.id, obj);
     this.group.add(obj);
   }

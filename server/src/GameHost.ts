@@ -165,7 +165,7 @@ export class GameHost {
       if (imported) save = parseSave(msg.save);
 
       client.account = account;
-      client.playerId = this.sim.addPlayer(String(msg.name ?? ''), save, this.now());
+      client.playerId = this.sim.addPlayer(String(msg.name ?? ''), save, this.now(), account.id);
       // Stored at once: an import happens only once, and a takeover keeps the live state.
       this.persist(client);
       this.flush(client);

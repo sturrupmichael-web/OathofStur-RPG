@@ -67,6 +67,8 @@ export type OpenUi =
 export interface PlayerEntity {
   id: EntityId;
   kind: 'player';
+  /** Who is playing (an account id online), so a rejoining player gets their ground items back. */
+  key?: string;
   name: string;
   x: number;
   y: number;

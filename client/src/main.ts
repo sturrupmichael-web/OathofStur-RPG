@@ -645,6 +645,16 @@ async function start(): Promise<void> {
   };
   state.on('saveData', (save) => {
     if (!savingEnabled) return;
+    if (net) {
+      // Online the server keeps the character; this copy is only for Export.
+      const time = new Date(save.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      saveStatus.textContent = `Your online character is kept on the server (saved at ${time}). Your solo save in this browser stays as it was.`;
+      if (exportNext) {
+        exportNext = false;
+        downloadSave(save);
+      }
+      return;
+    }
     const ok = storeLocal(save);
     void cloud.push(save);
     if (signInNext) {
@@ -672,7 +682,8 @@ async function start(): Promise<void> {
       location.reload();
     }
   });
-  setInterval(requestSave, net ? 10_000 : 30_000);
+  // Online, the server stores the character by itself.
+  if (!net) setInterval(requestSave, 30_000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') requestSave();
   });
@@ -751,6 +762,12 @@ async function start(): Promise<void> {
     requestSave();
     account.signOut();
     cloud.reset();
+    // Online needs the sign-in: leave the world (the server stores the character as it goes).
+    if (net) {
+      savingEnabled = false;
+      net.disconnect();
+      location.reload();
+    }
   });
 
   // On-screen camera buttons (shown on touch screens): hold to rotate or zoom.
@@ -882,10 +899,14 @@ async function start(): Promise<void> {
   const bannerText = document.getElementById('net-text')!;
   const bannerSolo = document.getElementById('net-solo') as HTMLButtonElement;
   const bannerRetry = document.getElementById('net-retry') as HTMLButtonElement;
+  const bannerSignin = document.getElementById('net-signin') as HTMLButtonElement;
+  // Not in the game yet, so straight to Google; the solo save is already in this browser.
+  bannerSignin.onclick = () => account.signIn();
   const showBanner = (text: string | null, buttons = false) => {
     banner.hidden = text === null;
     bannerText.textContent = text ?? '';
     bannerSolo.hidden = bannerRetry.hidden = !buttons;
+    bannerSignin.hidden = true;
   };
   bannerSolo.onclick = () => {
     setWorldMode('solo', true);
@@ -916,6 +937,14 @@ async function start(): Promise<void> {
   worldOnline.addEventListener('click', () => switchWorld('online'));
   worldSolo.addEventListener('click', () => switchWorld('solo'));
   if (net) {
+    // Online characters are kept by the server, so these belong to solo play.
+    for (const id of ['save-import', 'dev-max', 'save-reset']) (document.getElementById(id)!.closest('label') ?? document.getElementById(id)!).hidden = true;
+    if (!account.user) {
+      showBanner('Sign in with Google to play online. Your character comes with you.', true);
+      bannerRetry.hidden = true;
+      bannerSignin.hidden = !account.available;
+      return;
+    }
     net.onStatus = (status: NetStatus) => {
       if (status.kind === 'online') showBanner(null);
       else if (status.kind === 'reconnecting') showBanner(status.attempt > 2 ? 'Still trying to reach the online world...' : 'Connection lost. Reconnecting...');

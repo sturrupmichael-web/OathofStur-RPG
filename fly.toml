@@ -2,6 +2,9 @@
 # a separate world, so deploys use --ha=false (see .github/workflows/deploy.yml).
 app = "oath-of-stur"
 primary_region = "iad"
+# Time to store everyone's character before a restart.
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
 
 [build]
 

@@ -6,6 +6,7 @@ import vellReaches from '@rpg/shared/data/maps/vell-reaches.json';
 import { WebSocketServer } from 'ws';
 import { makeVerifier } from './auth';
 import { GameHost } from './GameHost';
+import { MemoryStore, SupabaseStore, type SaveStore } from './store';
 
 /**
  * The Oath of Stur game server: runs the shared world on its 600 ms tick and
@@ -18,16 +19,24 @@ const STATIC_DIR = resolve(process.env.STATIC_DIR ?? 'client/dist');
 const ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://michaelsturrup.com,https://www.michaelsturrup.com').split(',');
 const LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/;
 
+const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://abeqdmurddrkrqbnfylb.supabase.co';
+/** The project's secret key (a Fly secret): the only key that can read or write saves_oath_online. */
+const SECRET = process.env.SUPABASE_SECRET_KEY;
+/** Local testing only: any token "dev-<name>" signs in as that name. Never with real saves. */
+const DEV_ACCOUNTS = process.env.DEV_ACCOUNTS === '1' && !SECRET;
+const store: SaveStore = SECRET ? new SupabaseStore(SUPABASE_URL, SECRET) : new MemoryStore();
+
 const map = new JsonMapSource('vell-reaches', vellReaches as unknown as JsonMapFile).load();
 const host = new GameHost({
   map,
   seed: WORLD_SEED,
-  verify: makeVerifier({
-    url: process.env.SUPABASE_URL ?? 'https://abeqdmurddrkrqbnfylb.supabase.co',
-    key: process.env.SUPABASE_KEY ?? 'sb_publishable_8WUpbX-clRvdKgset72mkQ_C_NFL5E8',
-  }),
+  verify: DEV_ACCOUNTS
+    ? async (token) => (token.startsWith('dev-') ? { id: token, email: '' } : null)
+    : makeVerifier({ url: SUPABASE_URL, key: process.env.SUPABASE_KEY ?? 'sb_publishable_8WUpbX-clRvdKgset72mkQ_C_NFL5E8' }),
+  store,
   maxPlayers: Number(process.env.MAX_PLAYERS ?? 50),
 });
+setInterval(() => host.autosave(), 60_000);
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -109,12 +118,15 @@ setInterval(() => {
   }
 }, TICK_MS);
 
-http.listen(PORT, () => console.log(`Oath of Stur server on :${PORT}, serving ${STATIC_DIR}`));
+http.listen(PORT, () => console.log(`Oath of Stur server on :${PORT}, serving ${STATIC_DIR}, characters in ${store.label}`));
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(signal, () => {
-    host.saveAll();
+  // Fly gives a stopping machine a few seconds: everyone is stored before it goes.
+  process.on(signal, async () => {
+    const stop = setTimeout(() => process.exit(1), 8000);
+    await host.saveAll();
     for (const ws of wss.clients) ws.close(1012, 'restarting');
+    clearTimeout(stop);
     setTimeout(() => process.exit(0), 300);
   });
 }

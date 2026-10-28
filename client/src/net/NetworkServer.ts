@@ -7,16 +7,16 @@ export type NetStatus =
   /** The server turned us away (a newer game version, a full world, joined elsewhere): no retrying. */
   | { kind: 'refused'; reason: string };
 
-/** Waits this long for the world to answer before giving up on the first connect. */
-const CONNECT_MS = 10_000;
+/** Waits this long for the world to answer before giving up on the first connect (slow phones need a while to load the world too). */
+const CONNECT_MS = 20_000;
 /** Seconds between reconnect tries, growing to the last and staying there. */
 const BACKOFF = [1, 2, 4, 8, 15];
 
 /**
  * Plays in the shared online world over a WebSocket. Same messages as
- * LocalServer; the simulation just runs on the game server instead. After a
- * dropped connection (a deploy, a phone losing signal) it rejoins by itself
- * with the latest save the server sent.
+ * LocalServer; the simulation just runs on the game server instead, which also
+ * keeps the character. After a dropped connection (a deploy, a phone losing
+ * signal) it rejoins by itself.
  */
 export class NetworkServer implements ServerConnection {
   /** Told when the link drops, comes back, or is refused, for the banner. */
@@ -101,8 +101,6 @@ export class NetworkServer implements ServerConnection {
         if (first) first.welcome();
         else this.onStatus({ kind: 'online' });
       }
-      // Kept for rejoining after a drop, so nothing since the last save is lost.
-      if (msg.type === 'saveData') this.save = msg.save;
       for (const h of this.handlers) h(msg);
     };
     ws.onclose = (ev) => {

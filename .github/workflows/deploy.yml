@@ -1,7 +1,8 @@
 name: Deploy online world
 
 # Builds the game server (which also serves the client) and deploys it to Fly.io.
-# Needs the FLY_API_TOKEN repository secret (an org deploy token).
+# Needs the FLY_API_TOKEN repository secret (an org deploy token), and SUPABASE_SECRET_KEY
+# (Supabase's secret key) so the server can keep characters in saves_oath_online.
 on:
   push:
     branches: [main, claude/project-thread-z7jlud]
@@ -17,9 +18,15 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
       # First run only: make the app (later runs find it already there).
       - run: flyctl status --app oath-of-stur >/dev/null 2>&1 || flyctl apps create oath-of-stur --org personal
+      # Handed to the server as a Fly secret; read from stdin so it never shows in the log.
+      - run: |
+          if [ -n "$SUPABASE_SECRET_KEY" ]; then
+            printf 'SUPABASE_SECRET_KEY=%s\n' "$SUPABASE_SECRET_KEY" | flyctl secrets import --stage --app oath-of-stur
+          fi
       - run: flyctl deploy --remote-only --ha=false

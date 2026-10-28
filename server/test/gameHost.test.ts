@@ -2,6 +2,7 @@ import { PROTOCOL_VERSION, WORLD_SEED, type ServerMessage } from '@rpg/shared';
 import { describe, expect, it } from 'vitest';
 import { loadWorld } from '../../shared/test/helpers';
 import { GameHost, type Link } from '../src/GameHost';
+import { MemoryStore } from '../src/store';
 
 const map = loadWorld();
 
@@ -16,11 +17,15 @@ function link() {
   return l;
 }
 
-const join = (extra: Record<string, unknown> = {}) => JSON.stringify({ type: 'join', name: 'Tess', protocolVersion: PROTOCOL_VERSION, ...extra });
+let tokens = 0;
+/** A join as a fresh signed-in account, unless `token` names one. */
+const join = (extra: Record<string, unknown> = {}) => JSON.stringify({ type: 'join', name: 'Tess', protocolVersion: PROTOCOL_VERSION, token: `user${++tokens}`, ...extra });
+const settle = () => new Promise((r) => setTimeout(r, 0));
 
 describe('GameHost', () => {
-  const accounts: Record<string, { id: string; email: string }> = { good: { id: 'u1', email: 'a@b.c' } };
-  const host = () => new GameHost({ map, seed: WORLD_SEED, verify: async (t) => accounts[t] ?? null, maxPlayers: 3 });
+  // Any token "userN" is a valid account with id "uN"; anything else isn't.
+  const verify = async (t: string) => (/^user\d+$/.test(t) ? { id: t.replace('user', 'u'), email: '' } : null);
+  const host = (store = new MemoryStore()) => new GameHost({ map, seed: WORLD_SEED, verify, store, maxPlayers: 3, log: () => {} });
 
   it('puts two players in one world, each seeing the other', async () => {
     const h = host();
@@ -59,8 +64,8 @@ describe('GameHost', () => {
     const h = host();
     const first = link();
     const second = link();
-    await h.receive(h.open(first), join({ token: 'good' }));
-    await h.receive(h.open(second), join({ token: 'good' }));
+    await h.receive(h.open(first), join({ token: 'user900' }));
+    await h.receive(h.open(second), join({ token: 'user900' }));
     expect(first.closed).toBe(4000);
     expect(h.playerCount).toBe(1);
   });
@@ -86,5 +91,85 @@ describe('GameHost', () => {
     await h.receive(c, join());
     await h.receive(c, JSON.stringify({ type: 'requestSave' }));
     expect(a.got.at(-1)).toMatchObject({ type: 'saveData', save: { name: 'Tess' } });
+  });
+
+  it('turns away players who are not signed in', async () => {
+    const h = host();
+    const a = link();
+    await h.receive(h.open(a), join({ token: undefined }));
+    expect(a.got[0]).toMatchObject({ type: 'reject', reason: expect.stringContaining('Sign in') });
+    expect(h.playerCount).toBe(0);
+  });
+
+  it('brings an existing character over once, then keeps the server copy', async () => {
+    const store = new MemoryStore();
+    const h = host(store);
+    const a = link();
+    const ca = h.open(a);
+    const solo = { version: 1, name: 'Brann', position: { x: 0, y: 0 }, skills: { woodcutting: 5000 }, inventory: [], bank: [], quests: {}, createdAt: '', updatedAt: '' };
+    await h.receive(ca, join({ token: 'user500', save: solo }));
+    await settle();
+    expect(store.rows.get('u500')?.skills.woodcutting).toBe(5000);
+    expect(a.got.some((m) => m.type === 'gameMessage' && m.text.includes('came with you'))).toBe(true);
+    h.close(ca);
+    await settle();
+
+    // A doctored save offered later is ignored: the server's copy wins.
+    const b = link();
+    const cb = h.open(b);
+    await h.receive(cb, join({ token: 'user500', save: { ...solo, skills: { woodcutting: 13_000_000 } } }));
+    await h.receive(cb, JSON.stringify({ type: 'requestSave' }));
+    const back = b.got.filter((m) => m.type === 'saveData').at(-1);
+    expect(back).toMatchObject({ save: { name: 'Brann', skills: { woodcutting: 5000 } } });
+  });
+
+  it('stores the character when the player leaves, and on a takeover keeps the live one', async () => {
+    const store = new MemoryStore();
+    const h = host(store);
+    const a = link();
+    const ca = h.open(a);
+    await h.receive(ca, join({ token: 'user600' }));
+    const id = (a.got.find((m) => m.type === 'welcome') as { playerId: number }).playerId;
+    const p = h.sim.getEntity(id) as { x: number };
+    await h.receive(ca, JSON.stringify({ type: 'walk', x: p.x + 2, y: (h.sim.getEntity(id) as { y: number }).y }));
+    for (let i = 0; i < 4; i++) h.step();
+    const walkedTo = (h.sim.getEntity(id) as { x: number }).x;
+    // Second tab: the character arrives where the first tab left it, before any autosave.
+    const b = link();
+    await h.receive(h.open(b), join({ token: 'user600' }));
+    const idB = (b.got.find((m) => m.type === 'welcome') as { playerId: number }).playerId;
+    expect((h.sim.getEntity(idB) as { x: number }).x).toBe(walkedTo);
+    expect(a.closed).toBe(4000);
+    await settle();
+    expect(store.rows.get('u600')?.position.x).toBe(walkedTo);
+  });
+
+  it("refuses rather than starting over when the store can't be read", async () => {
+    const store = new MemoryStore();
+    store.load = async () => {
+      throw new Error('down');
+    };
+    const h = host(store);
+    const a = link();
+    await h.receive(h.open(a), join());
+    expect(a.got[0]).toMatchObject({ type: 'reject', reason: expect.stringContaining("Couldn't load") });
+    expect(h.playerCount).toBe(0);
+  });
+
+  it('stores everyone who changed before the server stops', async () => {
+    const store = new MemoryStore();
+    const h = host(store);
+    const a = link();
+    const ca = h.open(a);
+    await h.receive(ca, join({ token: 'user700' }));
+    await settle();
+    const id = (a.got.find((m) => m.type === 'welcome') as { playerId: number }).playerId;
+    const p = h.sim.getEntity(id) as { x: number; y: number };
+    const from = p.x;
+    await h.receive(ca, JSON.stringify({ type: 'walk', x: from + 2, y: p.y }));
+    for (let i = 0; i < 4; i++) h.step();
+    expect(store.rows.get('u700')?.position.x).toBe(from);
+    await h.saveAll();
+    expect(store.rows.get('u700')?.position.x).toBe(from + 2);
   });
 });

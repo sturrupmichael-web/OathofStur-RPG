@@ -5,9 +5,11 @@ import {
   type EntityId,
   parseSave,
   type MapData,
+  type SaveData,
   type ServerMessage,
 } from '@rpg/shared';
 import type { Account } from './auth';
+import type { SaveStore } from './store';
 
 /** One player's link to the world: a WebSocket in production, a stub in tests. */
 export interface Link {
@@ -20,8 +22,11 @@ export interface HostOptions {
   seed: number;
   /** Checks a sign-in token; null when it isn't valid. */
   verify: (token: string) => Promise<Account | null>;
+  /** Where characters live between visits. */
+  store: SaveStore;
   maxPlayers?: number;
   now?: () => string;
+  log?: (...args: unknown[]) => void;
 }
 
 /** Messages a client may send in a burst, and how many it earns back each second. */
@@ -37,23 +42,36 @@ interface Client {
   joining: boolean;
   allowance: number;
   refilledAt: number;
+  /** The last save written for this player, to skip writing when nothing changed. */
+  lastStored: string;
 }
+
+/** A save without its timestamp, for telling whether anything changed. */
+const sameness = (save: SaveData) => JSON.stringify({ ...save, updatedAt: '' });
 
 /**
  * The online world: one Simulation, ticked by the server, shared by every
  * connected player. Speaks the same messages as the browser's LocalServer, so
  * the client can't tell the difference beyond the network delay.
+ *
+ * Characters belong to Google accounts (checked with Supabase) and live in the
+ * store, not the browser. A player's first visit brings their existing character
+ * over once; after that the server's copy is the only one that counts.
  */
 export class GameHost {
   readonly sim: Simulation;
   private readonly clients = new Set<Client>();
   private readonly maxPlayers: number;
   private readonly now: () => string;
+  private readonly log: (...args: unknown[]) => void;
+  /** Each account's store writes, one after another, so a quick rejoin reads the latest. */
+  private readonly writes = new Map<string, Promise<void>>();
 
   constructor(private readonly opts: HostOptions) {
-    this.sim = new Simulation({ map: opts.map, seed: opts.seed, onError: (err, msg) => console.error('intent failed', msg.type, err) });
+    this.sim = new Simulation({ map: opts.map, seed: opts.seed, onError: (err, msg) => this.log('intent failed', msg.type, err) });
     this.maxPlayers = opts.maxPlayers ?? 50;
     this.now = opts.now ?? (() => new Date().toISOString());
+    this.log = opts.log ?? console.error;
   }
 
   get playerCount(): number {
@@ -64,16 +82,15 @@ export class GameHost {
 
   /** A new connection. It has to send `join` first. */
   open(link: Link): Client {
-    const client: Client = { link, playerId: null, account: null, joining: false, allowance: BURST, refilledAt: Date.now() };
+    const client: Client = { link, playerId: null, account: null, joining: false, allowance: BURST, refilledAt: Date.now(), lastStored: '' };
     this.clients.add(client);
     return client;
   }
 
-  /** The connection went away: the character leaves the world. */
+  /** The connection went away: the character is stored and leaves the world. */
   close(client: Client): void {
     if (!this.clients.delete(client)) return;
-    if (client.playerId !== null) this.sim.removePlayer(client.playerId);
-    client.playerId = null;
+    this.leave(client);
   }
 
   async receive(client: Client, text: string): Promise<void> {
@@ -88,21 +105,13 @@ export class GameHost {
 
     if (msg.type === 'join') return this.join(client, msg);
     if (client.playerId === null) return;
-    // Answered straight away, like LocalServer, so a save asked for as the tab closes still gets out.
+    // Stored now, and sent back so the player can export it.
     if (msg.type === 'requestSave') {
-      const save = this.sim.saveFor(client.playerId, this.now());
+      const save = this.persist(client);
       if (save) this.emit(client, { type: 'saveData', save });
       return;
     }
     this.sim.queueIntent(client.playerId, msg);
-  }
-
-  /** Before the server stops: every player gets their save, since browsers still keep them for now. */
-  saveAll(): void {
-    for (const c of this.clients) {
-      const save = c.playerId !== null ? this.sim.saveFor(c.playerId, this.now()) : null;
-      if (save) this.emit(c, { type: 'saveData', save });
-    }
   }
 
   /** One world tick, then everyone's messages go out. */
@@ -111,27 +120,96 @@ export class GameHost {
     for (const c of this.clients) this.flush(c);
   }
 
+  /** Every minute: store whoever changed. */
+  autosave(): void {
+    for (const c of this.clients) this.persist(c);
+  }
+
+  /** Before the server stops: store everyone and wait for it. */
+  async saveAll(): Promise<void> {
+    this.autosave();
+    await Promise.all(this.writes.values());
+  }
+
   private async join(client: Client, msg: Extract<ClientMessage, { type: 'join' }>): Promise<void> {
     if (client.playerId !== null || client.joining) return;
     if (msg.protocolVersion !== PROTOCOL_VERSION) return this.refuse(client, 'The game has been updated. Please reload the page.');
     if (this.playerCount >= this.maxPlayers) return this.refuse(client, 'The world is full right now. Try again in a little while.');
     client.joining = true;
-    const account = typeof msg.token === 'string' && msg.token ? await this.opts.verify(msg.token) : null;
-    client.joining = false;
-    if (!this.clients.has(client)) return; // left while the token was checked
-    if (account) {
-      // One character per account: signing in again takes over from the old tab.
-      for (const other of this.clients) {
-        if (other !== client && other.account?.id === account.id) {
-          this.refuse(other, 'You joined the world from another tab or device.');
-          this.close(other);
-        }
+    try {
+      const account = typeof msg.token === 'string' && msg.token ? await this.opts.verify(msg.token) : null;
+      if (!account) return this.refuse(client, 'Sign in with Google to play online: ⚙ Options, Cloud save.');
+      // A store write still on its way (a quick reload) lands before the character is read back.
+      await this.writes.get(account.id);
+      let stored: SaveData | null;
+      try {
+        stored = await this.opts.store.load(account.id);
+      } catch (err) {
+        this.log('load failed', account.id, err);
+        return this.refuse(client, "Couldn't load your character just now. Please try again in a minute.");
       }
+      if (!this.clients.has(client)) return; // left while we were busy
+
+      // One character per account: joining again takes over from the old tab, as it is right now.
+      let save = stored ? parseSave(stored) : null;
+      for (const other of [...this.clients]) {
+        if (other === client || other.account?.id !== account.id) continue;
+        const live = other.playerId !== null ? this.sim.saveFor(other.playerId, this.now()) : null;
+        if (live) save = live;
+        this.refuse(other, 'You joined the world from another tab or device.');
+        this.clients.delete(other);
+        this.leave(other, false);
+      }
+      // First visit: the character they already have comes with them, once.
+      const imported = !stored && !save && !!msg.save;
+      if (imported) save = parseSave(msg.save);
+
       client.account = account;
+      client.playerId = this.sim.addPlayer(String(msg.name ?? ''), save, this.now());
+      // Stored at once: an import happens only once, and a takeover keeps the live state.
+      this.persist(client);
+      this.flush(client);
+      if (imported) {
+        this.emit(client, {
+          type: 'gameMessage',
+          kind: 'info',
+          text: 'Your character came with you into the online world. From now on it is kept on the server, and your solo save stays as it was.',
+        });
+      }
+    } finally {
+      client.joining = false;
     }
-    const save = msg.save ? parseSave(msg.save) : null;
-    client.playerId = this.sim.addPlayer(String(msg.name ?? ''), save, this.now());
-    this.flush(client);
+  }
+
+  /** Takes the player out of the world, storing them first unless someone else is taking over. */
+  private leave(client: Client, store = true): void {
+    if (client.playerId === null) return;
+    if (store) this.persist(client);
+    this.sim.removePlayer(client.playerId);
+    client.playerId = null;
+  }
+
+  /** Queues a store write of the player's character when it changed. Returns the save. */
+  private persist(client: Client): SaveData | null {
+    if (client.playerId === null || !client.account) return null;
+    const save = this.sim.saveFor(client.playerId, this.now());
+    if (!save) return null;
+    const key = sameness(save);
+    if (key === client.lastStored) return save;
+    client.lastStored = key;
+    const id = client.account.id;
+    const write = (this.writes.get(id) ?? Promise.resolve())
+      .then(() => this.opts.store.save(id, save))
+      .catch((err) => {
+        this.log('save failed', id, err);
+        // Try again on the next autosave.
+        if (client.lastStored === key) client.lastStored = '';
+      });
+    this.writes.set(id, write);
+    void write.then(() => {
+      if (this.writes.get(id) === write) this.writes.delete(id);
+    });
+    return save;
   }
 
   private refuse(client: Client, reason: string): void {

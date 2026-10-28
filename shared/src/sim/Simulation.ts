@@ -13,6 +13,7 @@ import {
   type UiView,
 } from '../protocol/messages';
 import { Rng } from '../rng';
+import { CHAT_GAP, CHAT_RANGE, cleanChat, decentName, filterChat } from './chat';
 import { COURSES, OBSTACLE_KINDS, RUN_DRAIN, energyRestore, failChance, obstacleAt } from './agility';
 import { BOUNTY, bountyLevel, pickTask, pointsFor, taskName } from './bounty';
 import {
@@ -142,6 +143,8 @@ type HitSpell = { element: string; tier: number };
 export interface SimulationOptions {
   map: MapData;
   seed: number;
+  /** Told when an intent throws; the world carries on without it. */
+  onError?: (err: unknown, msg: ClientMessage) => void;
 }
 
 /** Per-connected-player bookkeeping for outgoing messages and state diffs. */
@@ -166,11 +169,16 @@ export class Simulation {
   /** Tiles taken by players and living monsters, rebuilt each tick; monsters don't share tiles. */
   private occupied = new Set<number>();
   private readonly sessions = new Map<EntityId, Session>();
+  /** Players who left, by key: the entity id their ground items still carry. */
+  private readonly departed = new Map<string, { id: EntityId; tick: number }>();
   private intents: { playerId: EntityId; msg: ClientMessage }[] = [];
   private nextId = 1;
 
-  constructor({ map, seed }: SimulationOptions) {
+  private readonly onError: SimulationOptions['onError'];
+
+  constructor({ map, seed, onError }: SimulationOptions) {
     this.map = map;
+    this.onError = onError;
     this.grid = new WorldGrid(map);
     this.rng = new Rng(seed);
     this.spawnStaticObjects();
@@ -186,7 +194,7 @@ export class Simulation {
    * been through parseSave; a saved position that is no longer walkable (the
    * map changed) falls back to the spawn point.
    */
-  addPlayer(name: string, save: SaveData | null = null, now = ''): EntityId {
+  addPlayer(name: string, save: SaveData | null = null, now = '', key?: string): EntityId {
     const inventory = save ? save.inventory.map((s) => (s ? { ...s } : null)) : emptyInventory();
     if (!save) for (const { itemId, qty } of STARTING_ITEMS) addItem(inventory, itemId, qty);
     const start = save && this.grid.isWalkable(save.position.x, save.position.y) ? save.position : this.map.spawn;
@@ -195,6 +203,7 @@ export class Simulation {
     const player: PlayerEntity = {
       id: this.allocateId(),
       kind: 'player',
+      ...(key !== undefined && { key }),
       name: (save?.name ?? name).trim().slice(0, 12) || 'Adventurer',
       x: start.x,
       y: start.y,
@@ -233,6 +242,12 @@ export class Simulation {
     const away = save ? offlineTicks(save.updatedAt, now) : 0;
     if (away) for (const patch of Object.values(player.farm)) growPatch(patch, away, this.rng);
     this.entities.set(player.id, player);
+    // Back after a disconnect: what they dropped, and the pile where they fell, is theirs again.
+    const before = key !== undefined ? this.departed.get(key) : undefined;
+    if (before) {
+      this.departed.delete(key!);
+      for (const e of this.entities.values()) if (e.kind === 'item' && e.owner === before.id) e.owner = player.id;
+    }
     const session: Session = { outbox: [], lastSent: new Map(), lastSelf: '' };
     this.sessions.set(player.id, session);
 
@@ -286,6 +301,12 @@ export class Simulation {
   }
 
   removePlayer(id: EntityId): void {
+    const p = this.entities.get(id);
+    if (p?.kind === 'player' && p.key !== undefined) {
+      // Nothing of theirs outlasts a death pile, so older records can go.
+      for (const [k, d] of this.departed) if (this.tick - d.tick > DEATH_PILE_TICKS) this.departed.delete(k);
+      this.departed.set(p.key, { id, tick: this.tick });
+    }
     for (const e of this.entities.values()) if (e.kind === 'monster' && e.target === id) e.target = null;
     this.entities.delete(id);
     this.sessions.delete(id);
@@ -300,7 +321,14 @@ export class Simulation {
     this.tick++;
     const intents = this.intents;
     this.intents = [];
-    for (const { playerId, msg } of intents) this.handleIntent(playerId, msg);
+    for (const { playerId, msg } of intents) {
+      // One malformed intent from a client mustn't stop the world for everyone else.
+      try {
+        this.handleIntent(playerId, msg);
+      } catch (err) {
+        this.onError?.(err, msg);
+      }
+    }
 
     for (const e of this.entities.values()) {
       if (e.kind === 'player' && e.deadUntil === undefined) this.movePlayer(e);
@@ -386,12 +414,15 @@ export class Simulation {
         if (!look) return;
         // Characters name themselves once, as they first choose a look.
         const name = msg.name !== undefined && !player.look ? cleanName(msg.name) : null;
+        if (name && !decentName(name)) return this.reject(player.id, "That name isn't allowed. Please pick another.");
         if (name) player.name = name;
         const first = !player.look;
         player.look = look;
         if (!first) this.message(player.id, 'You look in a mirror. Your new look suits you.');
         return;
       }
+      case 'chat':
+        return this.say(player, msg.text);
       case 'setRun':
         if (msg.on && player.energy < RUN_DRAIN) return this.message(player.id, "You're too tired to run.", 'warn');
         player.run = !!msg.on;
@@ -862,7 +893,19 @@ export class Simulation {
       return;
     }
     if (this.bountyLocked(player, target)) return;
+    if (this.fightingSomeoneElse(player, target)) return this.reject(player.id, 'Someone else is fighting that.');
     player.action = { kind: 'attack', targetId };
+  }
+
+  /**
+   * An ordinary creature fights one player at a time, so nobody can steal
+   * another's kill. Bosses, and the shades they call up, take on everyone.
+   */
+  private fightingSomeoneElse(player: PlayerEntity, monster: MonsterEntity): boolean {
+    if (MONSTERS[monster.defKey].boss || monster.summonedBy !== undefined) return false;
+    if (monster.target === null || monster.target === player.id) return false;
+    const other = this.entities.get(monster.target);
+    return other?.kind === 'player' && other.deadUntil === undefined;
   }
 
   /** A player fighting: close in on the target, then attack whenever the weapon is ready. */
@@ -871,6 +914,11 @@ export class Simulation {
     if (action?.kind !== 'attack') return;
     const target = this.entities.get(action.targetId);
     if (target?.kind !== 'monster' || !alive(target) || distance(player, target) > MAX_CHASE) {
+      player.action = null;
+      return;
+    }
+    if (this.fightingSomeoneElse(player, target)) {
+      this.message(player.id, 'Someone else is fighting that.', 'warn');
       player.action = null;
       return;
     }
@@ -1174,23 +1222,30 @@ export class Simulation {
     }
   }
 
-  /** Loot goes to whoever did the most damage, seen only by them for the first minute. */
+  /**
+   * Loot goes to whoever did the most damage, seen only by them for the first
+   * minute. A boss is fought together: everyone who hurt it gets the kill for
+   * their quest and bounty, and a roll of its drops of their own.
+   */
   private dropLoot(monster: MonsterEntity): void {
-    let killer: EntityId | undefined;
-    let best = 0;
+    const fighters: PlayerEntity[] = [];
     for (const [id, dealt] of monster.damageBy) {
-      if (dealt > best && this.entities.has(id)) [killer, best] = [id, dealt];
+      const p = this.entities.get(id);
+      if (dealt > 0 && p?.kind === 'player') fighters.push(p);
     }
-    const winner = killer !== undefined ? this.entities.get(killer) : undefined;
-    if (winner?.kind === 'player') {
+    fighters.sort((a, b) => monster.damageBy.get(b.id)! - monster.damageBy.get(a.id)!);
+    const winners = MONSTERS[monster.defKey].boss ? fighters : fighters.slice(0, 1);
+    for (const winner of winners) {
       this.questKill(winner, monster);
       this.bountyKill(winner, monster);
     }
-    for (const drop of MONSTERS[monster.defKey].drops) {
-      if (!this.rng.chance(drop.chance)) continue;
-      const qty = rollQty(drop.qty, (a, b) => this.rng.int(a, b));
-      if (ITEMS[drop.item].stackable) this.spawnItem(drop.item, qty, monster, killer, PRIVATE_TICKS, GROUND_ITEM_TICKS);
-      else for (let i = 0; i < qty; i++) this.spawnItem(drop.item, 1, monster, killer, PRIVATE_TICKS, GROUND_ITEM_TICKS);
+    for (const owner of winners.length ? winners.map((w) => w.id) : [undefined]) {
+      for (const drop of MONSTERS[monster.defKey].drops) {
+        if (!this.rng.chance(drop.chance)) continue;
+        const qty = rollQty(drop.qty, (a, b) => this.rng.int(a, b));
+        if (ITEMS[drop.item].stackable) this.spawnItem(drop.item, qty, monster, owner, PRIVATE_TICKS, GROUND_ITEM_TICKS);
+        else for (let i = 0; i < qty; i++) this.spawnItem(drop.item, 1, monster, owner, PRIVATE_TICKS, GROUND_ITEM_TICKS);
+      }
     }
   }
 
@@ -1479,6 +1534,7 @@ export class Simulation {
       this.message(player.id, 'You can only cast that on a creature you can fight.', 'warn');
       return;
     }
+    if (this.fightingSomeoneElse(player, target)) return this.reject(player.id, 'Someone else is fighting that.');
     this.stopActions(player);
     player.action = { kind: 'attack', targetId: target.id, spell: spell.id };
   }
@@ -2844,6 +2900,19 @@ export class Simulation {
 
   private message(playerId: EntityId, text: string, kind: GameMessageKind = 'info'): void {
     this.sessions.get(playerId)?.outbox.push({ type: 'gameMessage', text, kind });
+  }
+
+  /** Public chat: tidied, filtered, and heard by everyone within range. */
+  private say(player: PlayerEntity, raw: unknown): void {
+    const text = cleanChat(raw);
+    if (!text) return;
+    if (this.tick < (player.nextChat ?? 0)) return this.message(player.id, "You're talking too fast. Wait a moment.", 'warn');
+    player.nextChat = this.tick + CHAT_GAP;
+    const line: ServerMessage = { type: 'chat', fromId: player.id, from: player.name, text: filterChat(text) };
+    for (const [id, session] of this.sessions) {
+      const p = this.entities.get(id);
+      if (p && Math.max(Math.abs(p.x - player.x), Math.abs(p.y - player.y)) <= CHAT_RANGE) session.outbox.push(line);
+    }
   }
 
   /** Sends a message to every player close enough to see `near`. */

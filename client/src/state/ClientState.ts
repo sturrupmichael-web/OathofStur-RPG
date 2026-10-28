@@ -39,6 +39,8 @@ type Events = {
   levelUp: { skill: SkillId; level: number };
   saveData: SaveData;
   gameMessage: { text: string; kind: string };
+  chat: { fromId: EntityId; from: string; text: string };
+  nameTaken: string;
   tick: number;
   hit: HitEvent;
   animation: { entityId: EntityId; kind: string };
@@ -122,6 +124,12 @@ export class ClientState {
         break;
       case 'reject':
         this.emit('gameMessage', { text: msg.reason, kind: 'warn' });
+        break;
+      case 'chat':
+        this.emit('chat', { fromId: msg.fromId, from: msg.from, text: msg.text });
+        break;
+      case 'nameTaken':
+        this.emit('nameTaken', msg.name);
         break;
     }
   }

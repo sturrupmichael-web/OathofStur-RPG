@@ -67,7 +67,11 @@ export type OpenUi =
 export interface PlayerEntity {
   id: EntityId;
   kind: 'player';
+  /** Who is playing (an account id online), so a rejoining player gets their ground items back. */
+  key?: string;
   name: string;
+  /** No more chat before this tick. */
+  nextChat?: number;
   x: number;
   y: number;
   skills: SkillXp;

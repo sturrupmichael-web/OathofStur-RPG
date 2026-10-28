@@ -1,0 +1,37 @@
+name: Back up online characters
+
+# Every night: copies every online character (saves_oath_online) out of Supabase,
+# encrypted with the SUPABASE_SECRET_KEY secret, and keeps it as a run artifact for
+# 30 days. To restore, see supabase/README.md.
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: https://abeqdmurddrkrqbnfylb.supabase.co
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+    steps:
+      - name: Export and encrypt
+        run: |
+          set -euo pipefail
+          day=$(date -u +%Y-%m-%d)
+          # Pages of 1000 (Supabase's most per request) until one comes back short.
+          echo '[]' > all.json
+          for page in $(seq 0 99); do
+            curl -sSf "$SUPABASE_URL/rest/v1/saves_oath_online?select=*&order=user_id&limit=1000&offset=$((page * 1000))" \
+              -H "apikey: $SUPABASE_SECRET_KEY" > page.json
+            jq -s 'add' all.json page.json > next.json && mv next.json all.json
+            [ "$(jq length page.json)" -lt 1000 ] && break
+          done
+          echo "Backed up $(jq length all.json) characters"
+          gzip -c all.json | openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:SUPABASE_SECRET_KEY -out "oath-online-$day.json.gz.enc"
+          rm all.json page.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oath-online-backup
+          path: oath-online-*.json.gz.enc
+          retention-days: 30

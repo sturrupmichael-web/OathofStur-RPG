@@ -24,6 +24,7 @@
           <p class="lu-hint">The other one is replaced. Export a save file first if you want to keep both.</p>
           <button id="save-choice-export">Export this browser's save first</button>
         </div>
+        <div id="net-banner" role="status" hidden><span id="net-text"></span><button id="net-signin" hidden>Sign in with Google</button><button id="net-solo" hidden>Play solo</button><button id="net-retry" hidden>Try again</button></div>
         <div id="boss-bar" hidden><span id="boss-name"></span><div id="boss-hp"><div id="boss-hp-fill"></div></div></div>
         <div id="dialogue" role="dialog" aria-live="polite" hidden></div>
         <div id="window" role="dialog" aria-labelledby="win-title" hidden>
@@ -107,10 +108,20 @@
             <button id="change-look">Change your look</button>
             <button id="fit-room" hidden>Fitting room (testing)</button>
           </div>
+          <h3>Chat</h3>
+          <label class="check-row"><input type="checkbox" id="chat-hide" /> Hide what other players say</label>
+          <p class="muted" id="blocked-status">You haven't blocked anyone. Right-click a player to block them.</p>
+          <div id="blocked-list"></div>
           <h3>Sound</h3>
           <div class="sound-row">
             <button id="sound-toggle" aria-pressed="true">Sound on</button>
             <input id="sound-volume" type="range" min="0" max="100" value="70" aria-label="Volume" />
+          </div>
+          <h3>World</h3>
+          <p class="muted" id="world-status"></p>
+          <div class="option-buttons">
+            <button id="world-online" hidden>Play online</button>
+            <button id="world-solo" hidden>Play solo</button>
           </div>
           <h3>Cloud save</h3>
           <p class="muted" id="cloud-status"></p>
@@ -131,7 +142,7 @@
       </aside>
       <footer id="chat">
         <div id="chat-log" aria-live="polite"></div>
-        <input id="chat-input" placeholder="Player chat arrives with multiplayer" disabled />
+        <input id="chat-input" placeholder="Chat is for the online world (⚙ Options, World)" maxlength="80" disabled />
       </footer>
     </div>
     <div id="context-menu" hidden></div>

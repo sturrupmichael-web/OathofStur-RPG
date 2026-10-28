@@ -31,3 +31,16 @@ select count(*) from public.saves_oath;
 reset role;
 \echo 'Left (should be A with x=1 only):'
 select user_id, data from public.saves_oath;
+
+-- saves_oath_online (002): only the game server, never a player.
+reset role;
+insert into public.saves_oath_online (user_id, data) values ('11111111-1111-1111-1111-111111111111', '{"name":"A"}');
+set role authenticated;
+set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+\echo 'A reads their online character (should fail: permission denied):'
+select count(*) from public.saves_oath_online;
+\echo 'A edits their online character (should fail: permission denied):'
+update public.saves_oath_online set data = '{"name":"A","rich":true}';
+set role anon;
+\echo 'Signed out reads online characters (should fail: permission denied):'
+select count(*) from public.saves_oath_online;

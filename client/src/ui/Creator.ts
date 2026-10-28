@@ -12,7 +12,7 @@ import {
 } from '@rpg/shared';
 import { headFits } from '../render/bodyModels';
 import { METALS, animateCharacter, buildCharacter, styleForLook, type CharacterRig, type CharacterStyle } from '../render/character';
-import type { HeadFit } from '../render/humanoid';
+import type { HeadFit, Headwear } from '../render/humanoid';
 import { disposeModel } from '../render/dispose';
 
 const HAIR_LABELS: Record<HairStyle, string> = { short: 'Short', long: 'Long', bun: 'Bun', ponytail: 'Ponytail', spiky: 'Spiky', none: 'Bald' };
@@ -27,7 +27,7 @@ const SWATCHES: { key: ColourKey; label: string; colours: number[] }[] = [
 ];
 
 /** Headwear to try on in the fitting room. */
-const HEADWEAR: [string, string, Partial<CharacterStyle>][] = [
+const HEADWEAR: [Headwear | 'none', string, Partial<CharacterStyle>][] = [
   ['none', 'None', {}],
   ['helm', 'Helmet', { helm: METALS.steel }],
   ['wizard', 'Wizard hat', { hat: 'wizard', hatColor: 0x2c3f8f, trim: 0xd8d8e0 }],
@@ -84,7 +84,7 @@ export class Creator {
   private running = false;
   /** The fitting room (for testing): headwear to try, and sliders that move hair and hats on the sculpted heads. */
   private fitting = false;
-  private headwear = 'none';
+  private headwear: Headwear | 'none' = 'none';
   private fitTarget: 'hair' | 'hat' = 'hair';
   private view = 'front';
   private fitText!: HTMLTextAreaElement;
@@ -256,7 +256,11 @@ export class Creator {
   }
 
   private addFitting(): void {
-    this.addChoice('Try on', HEADWEAR.map(([v, t]) => [v, t]), () => this.headwear, (v) => (this.headwear = v), 'fit');
+    this.addChoice('Try on', HEADWEAR.map(([v, t]) => [v, t]), () => this.headwear, (v) => {
+      this.headwear = v as Headwear | 'none';
+      // Picking something to wear means fitting it.
+      if (v !== 'none') this.fitTarget = 'hat';
+    }, 'fit');
     this.addChoice('View', VIEWS.map(([v, t]) => [v, t]), () => this.view, (v) => {
       this.view = v;
       const yaw = VIEWS.find(([k]) => k === v)![2];
@@ -264,11 +268,12 @@ export class Creator {
     }, 'fit');
     this.addChoice('Adjust', [
       ['hair', 'Hair'],
-      ['hat', 'Hats and helmets'],
+      ['hat', 'Hat or helmet being tried on'],
     ], () => this.fitTarget, (v) => (this.fitTarget = v as 'hair' | 'hat'), 'fit');
     const sliders = this.row('Fit (for this body)', 'fit');
     sliders.classList.add('fit-sliders');
-    const fit = () => headFits(this.look.body)[this.fitTarget];
+    // The hair, or the headwear being tried on (the helmet's, when nothing is).
+    const fit = () => (this.fitTarget === 'hair' ? headFits(this.look.body).hair : headFits(this.look.body).hats[this.headwear === 'none' ? 'helm' : this.headwear]);
     for (const [key, label, min, max, step] of FIT_SLIDERS) {
       const wrap = document.createElement('label');
       const input = document.createElement('input');
@@ -313,7 +318,10 @@ export class Creator {
     out.append(this.fitText, copy);
     this.readers.push(() => {
       const round = (f: HeadFit) => Object.fromEntries(Object.entries(f).map(([k, v]) => [k, Math.round(v * 1000) / 1000]));
-      const both = (['male', 'female'] as const).map((b) => [b, { hair: round(headFits(b).hair), hat: round(headFits(b).hat) }]);
+      const both = (['male', 'female'] as const).map((b) => {
+        const f = headFits(b);
+        return [b, { hair: round(f.hair), hats: Object.fromEntries(Object.entries(f.hats).map(([k, v]) => [k, round(v)])) }];
+      });
       this.fitText.value = JSON.stringify(Object.fromEntries(both));
     });
   }

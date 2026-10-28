@@ -37,8 +37,8 @@ export type BodyFrame = typeof BODY & {
    * not shaped like the built-in egg: smoothed outward, or (`tucked`) inward.
    */
   headRadius?: (u: THREE.Vector3, tucked?: boolean) => number;
-  /** Hand-tuned nudges for a sculpted head's hair (and beard) and for what's worn over it (see HeadFit). */
-  fit?: { hair: HeadFit; hat: HeadFit };
+  /** Hand-tuned nudges for a sculpted head's hair (and beard) and for each thing worn over it (see HeadFit). */
+  fit?: { hair: HeadFit; hats: Record<Headwear, HeadFit> };
   /** For capes over a sculpted body: how far its back and front reach at each height, and how high its shoulders are. */
   torso?: { back: (y: number) => number; front: (y: number) => number; shoulderTop: number };
 };
@@ -59,6 +59,10 @@ export interface HeadFit {
   d: number;
   tilt: number;
 }
+
+/** The kinds of headwear, each fitted to a sculpted head on its own. */
+export const HEADWEAR = ['helm', 'wizard', 'chef', 'hood', 'cap'] as const;
+export type Headwear = (typeof HEADWEAR)[number];
 
 export interface BodyBones {
   hips: THREE.Bone;
@@ -585,13 +589,14 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     );
     onHead(blob(0.03, 0.008, 0.01, 10), fp(0, -0.36, 0.004), s.beard);
   }
-  fitTo(fits?.hat);
   const hat = s.hatColor ?? 0x555555;
   if (s.hat === 'cap') {
+    fitTo(fits?.hats.cap);
     b.add(atHead(shell(1.11, (u) => u.y > 0.32 - u.z * 0.1)), () => hat, () => [[head, 1]]);
     onHead(blob(0.066, 0.006, 0.05, 14), hp(new THREE.Vector3(0, 0.54, 0.84)).add(new THREE.Vector3(0, 0, 0.018 * hs.z)), shade(hat, 0.85));
   }
   if (s.hat === 'chef') {
+    fitTo(fits?.hats.chef);
     b.add(atHead(shell(1.1, (u) => u.y > 0.3)), () => hat, () => [[head, 1]]);
     b.tube(
       [0.075, 0.1, 0.13, 0.16, 0.17].map((dy, i) => ring(headC.x, headC.y + dy * hs.y, headC.z - 0.004, [0.07, 0.083, 0.095, 0.085, 0.03][i] * hs.x, [0.078, 0.09, 0.1, 0.09, 0.03][i] * hs.z, hat, [[head, 1]])),
@@ -599,6 +604,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     );
   }
   if (s.hat === 'wizard') {
+    fitTo(fits?.hats.wizard);
     // A tall pointed hat with a wide brim, the tip bent back a little.
     // Over a sculpted head, only under the brim: the cone covers the crown.
     b.add(atHead(shell(1.1, (u) => u.y > (R ? 0.42 : 0.22) - u.z * 0.12 && (!R || hp(u).y < (0.04 + WIZ_LIFT) * hs.y))), () => hat, () => [[head, 1]]);
@@ -621,6 +627,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     );
   }
   if (s.helm !== undefined) {
+    fitTo(fits?.hats.helm);
     // An open-faced helm with a nose guard and a rim.
     b.add(
       atHead(shell(1.12, (u) => u.y > (R ? -0.22 : -0.35) && !(u.z > 0.55 && u.y < 0.25 && Math.abs(u.x) < 0.62))),
@@ -637,6 +644,7 @@ export function buildBody(s: CharacterStyle, parent: THREE.Object3D, opts: { tra
     else onHead(new THREE.BoxGeometry(0.012, 0.02, 0.15), new THREE.Vector3(0, hp(new THREE.Vector3(0, 1, 0), 1.12).y - 0.007 * hs.y, -0.01 * hs.z), shade(s.helm, 0.85), head, 'metal');
   }
   if (s.hat === 'hood') {
+    fitTo(fits?.hats.hood);
     // A hood over the head and down onto the shoulders, open at the face.
     b.doubleSided();
     b.add(

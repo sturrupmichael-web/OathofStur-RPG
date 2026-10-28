@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { BodyType } from '@rpg/shared';
 import { shared } from './dispose';
 import { loadGlb } from './loadGlb';
-import type { BodyBones, BodyFrame, HeadFit } from './humanoid';
+import { HEADWEAR, type BodyBones, type BodyFrame, type HeadFit, type Headwear } from './humanoid';
 import femaleGlb from './models/body_female.glb?inline';
 import femaleMask from './models/body_female_mask.png?inline';
 import maleGlb from './models/body_male.glb?inline';
@@ -27,8 +27,13 @@ import maleMask from './models/body_male_mask.png?inline';
 export const REGIONS = ['keep', 'skin', 'shirt', 'trousers', 'boots', 'belt', 'brows'] as const;
 /** A head fit that changes nothing. */
 const FIT0: HeadFit = { x: 0, y: 0, z: 0, size: 1, w: 1, h: 1, d: 1, tilt: 0 };
-/** Fits for hair and headwear on each sculpt, tuned by eye in the fitting room. */
-const fit = (hair: Partial<HeadFit>, hat: Partial<HeadFit> = {}) => ({ hair: { ...FIT0, ...hair }, hat: { ...FIT0, ...hat } });
+/** Fits for hair and for each kind of headwear on a sculpt, tuned by eye in the fitting room. */
+const fit = (hair: Partial<HeadFit>, hats: Partial<Record<Headwear, Partial<HeadFit>>> = {}) => ({
+  hair: { ...FIT0, ...hair },
+  hats: Object.fromEntries(HEADWEAR.map((h) => [h, { ...FIT0, ...hats[h] }])) as Record<Headwear, HeadFit>,
+});
+/** The same fit for every kind of headwear. */
+const allHats = (f: Partial<HeadFit>) => Object.fromEntries(HEADWEAR.map((h) => [h, f]));
 
 export type Region = (typeof REGIONS)[number];
 
@@ -56,7 +61,7 @@ const SOURCES: Record<BodyType, Source> = {
     mask: maleMask,
     scale: S,
     frame: {
-      fit: fit({ y: 0.027, size: 0.805, d: 1.2 }, { y: 0.06, z: 0.009, size: 0.7, tilt: 0.01 }),
+      fit: fit({ y: 0.027, size: 0.805, d: 1.2 }, allHats({ y: 0.06, z: 0.009, size: 0.7, tilt: 0.01 })),
       hipsY: 0.46 * S,
       hipX: 0.065 * S,
       hipJoint: -0.03 * S,
@@ -89,7 +94,7 @@ const SOURCES: Record<BodyType, Source> = {
     mask: femaleMask,
     scale: S,
     frame: {
-      fit: fit({ y: 0.022, z: -0.007, size: 0.815, d: 1.2 }, { y: 0.02, size: 0.91, d: 1.065 }),
+      fit: fit({ y: 0.022, z: -0.007, size: 0.815, d: 1.2 }, allHats({ y: 0.02, size: 0.91, d: 1.065 })),
       hipsY: 0.45 * S,
       hipX: 0.056 * S,
       hipJoint: -0.03 * S,
@@ -149,7 +154,7 @@ export function loadBodyModels(): Promise<void> {
 
 /** The joints of a sculpted body, once it has loaded. */
 /** The head fits in use, for the fitting room to change live. */
-export function headFits(kind: BodyType): { hair: HeadFit; hat: HeadFit } {
+export function headFits(kind: BodyType): { hair: HeadFit; hats: Record<Headwear, HeadFit> } {
   return SOURCES[kind].frame.fit!;
 }
 

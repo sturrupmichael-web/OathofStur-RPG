@@ -5,7 +5,7 @@ name: Deploy online world
 # (Supabase's secret key) so the server can keep characters in saves_oath_online.
 on:
   push:
-    branches: [main, claude/project-thread-z7jlud]
+    branches: [main]
     paths: [client/**, shared/**, server/**, Dockerfile, fly.toml, package-lock.json, .github/workflows/deploy.yml]
   workflow_dispatch:
 

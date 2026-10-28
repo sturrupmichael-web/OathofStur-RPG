@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SIDEWAYS_PHONE } from '../layout';
 
 /**
  * Angled top-down orthographic camera that follows a target. Yaw rotates
@@ -12,6 +13,9 @@ export class CameraRig {
   zoom = 1;
   private aspect = 1;
   private readonly baseTiles = 20;
+  /** Tiles from the top of the view to the bottom at zoom 1. */
+  private tilesTall = this.baseTiles;
+  private readonly sideways = window.matchMedia(SIDEWAYS_PHONE);
 
   constructor() {
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 300);
@@ -19,6 +23,9 @@ export class CameraRig {
 
   resize(width: number, height: number): void {
     this.aspect = width / Math.max(1, height);
+    // A phone on its side is only a few hundred pixels tall: showing the usual
+    // 20 tiles top to bottom makes everyone tiny, so it frames a little closer.
+    this.tilesTall = this.sideways.matches ? this.baseTiles * THREE.MathUtils.clamp(height / 560, 0.7, 1) : this.baseTiles;
     this.applyProjection();
   }
 
@@ -50,7 +57,7 @@ export class CameraRig {
   }
 
   private applyProjection(): void {
-    const halfH = this.baseTiles / 2 / this.zoom;
+    const halfH = this.tilesTall / 2 / this.zoom;
     const halfW = halfH * this.aspect;
     Object.assign(this.camera, { left: -halfW, right: halfW, top: halfH, bottom: -halfH });
     this.camera.updateProjectionMatrix();

@@ -3,15 +3,21 @@ import { SUPABASE } from './supabase';
 /**
  * Google sign-in through Supabase Auth's REST API (no library), as in Michael's other
  * games: the page goes to Google by way of Supabase and comes back with tokens in the
- * address, which `init()` picks up. The session lives in localStorage; every call
- * resolves to `{ ok, ... }` instead of throwing, so the game plays on when offline.
+ * address, which `init()` picks up. Every call resolves to `{ ok, ... }` instead of
+ * throwing, so the game plays on when offline.
+ *
+ * The session lives in localStorage under SITE_KEY, the one Google sign-in shared by every
+ * game on michaelsturrup.com and the main page's "Sign in with Google", so signing in
+ * anywhere on the site signs in here too. It's read fresh before each use, since another
+ * page may have refreshed it (Supabase hands out a new refresh token each time and the old
+ * one stops working). See docs/site-sign-in.md in the sturrupmichael-web.github.io repo.
  */
 export interface Session {
   access_token: string;
   refresh_token: string;
   /** Seconds since 1970. */
   expires_at: number;
-  user: { id: string; email: string };
+  user: { id: string; email: string; guest?: boolean };
 }
 
 export interface Reply<T = unknown> {
@@ -20,26 +26,49 @@ export interface Reply<T = unknown> {
   body?: T;
 }
 
-const KEY = 'oathofstur.auth.v1';
+/** Where the game kept its own sign-in before the site-wide one. */
+const OLD_KEY = 'oathofstur.auth.v1';
+export const SITE_KEY = 'michaelsturrup.auth.v1';
 
-let session: Session | null = load();
+/** The session when storage is blocked. */
+let memory: Session | null = null;
+
+function read(key: string): Session | null {
+  const s = JSON.parse(localStorage.getItem(key) ?? 'null') as Session | null;
+  return s?.user?.id && s.access_token && !s.user.guest ? s : null;
+}
 
 function load(): Session | null {
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? 'null') as Session | null;
+    const site = read(SITE_KEY);
+    if (site) return site;
+    // Move a sign-in kept under the old key over to the shared one.
+    const old = read(OLD_KEY);
+    localStorage.removeItem(OLD_KEY);
+    if (old) localStorage.setItem(SITE_KEY, JSON.stringify(old));
+    return old;
   } catch {
-    return null;
+    return memory;
   }
 }
 
+let session: Session | null = load();
+
 function store(s: Session | null): void {
   session = s;
+  memory = s;
   try {
-    if (s) localStorage.setItem(KEY, JSON.stringify(s));
-    else localStorage.removeItem(KEY);
+    if (s) localStorage.setItem(SITE_KEY, JSON.stringify(s));
+    else localStorage.removeItem(SITE_KEY);
   } catch {
     // Storage blocked: the sign-in lasts for this page only.
   }
+}
+
+/** Pick up a sign-in, sign-out or refresh made by another page of the site. */
+function sync(): Session | null {
+  session = load();
+  return session;
 }
 
 /** The account's id and email come from the access token itself. */
@@ -51,7 +80,7 @@ function fromTokens(t: Record<string, unknown>): Session | null {
       access_token: access,
       refresh_token: String(t.refresh_token),
       expires_at: Number(t.expires_at) || claims.exp,
-      user: { id: claims.sub, email: claims.email ?? '' },
+      user: { id: claims.sub, email: claims.email ?? '', guest: false },
     };
   } catch {
     return null;
@@ -84,7 +113,7 @@ export const account = {
   lastError: '',
 
   get user(): Session['user'] | null {
-    return session?.user ?? null;
+    return sync()?.user ?? null;
   },
 
   /**
@@ -119,6 +148,7 @@ export const account = {
 
   /** A valid session, refreshing it when it's about to run out. */
   async ensure(): Promise<boolean> {
+    const session = sync();
     if (!session) return false;
     if (session.expires_at - 60 > Date.now() / 1000) return true;
     const r = await request<Record<string, unknown>>(`${SUPABASE.url}/auth/v1/token?grant_type=refresh_token`, {
@@ -130,7 +160,11 @@ export const account = {
       store(fresh);
       return true;
     }
-    if (r.status !== 0) store(null); // revoked or expired for good; offline keeps it for later
+    if (r.status === 0) return false; // offline: keep it for later
+    // Refused. Another page of the site may have refreshed it a moment ago: use theirs.
+    const now = sync();
+    if (now && now.refresh_token !== session.refresh_token) return now.expires_at - 60 > Date.now() / 1000;
+    store(null); // revoked or expired for good
     return false;
   },
 
@@ -153,8 +187,12 @@ export const account = {
     location.assign(`${SUPABASE.url}/auth/v1/authorize?${new URLSearchParams({ provider: 'google', redirect_to: returnUrl() })}`);
   },
 
-  /** Signs out on this device. The character stays in this browser; it just stops syncing. */
+  /**
+   * Signs out here and on the rest of the site (the sign-in is shared). The character stays
+   * in this browser; it just stops syncing.
+   */
   signOut(): void {
+    sync();
     if (session) void request(`${SUPABASE.url}/auth/v1/logout`, { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}` } });
     store(null);
   },
